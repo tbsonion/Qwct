@@ -125,6 +125,23 @@ and `self.liquidate` alone cannot guarantee broker flat. Intraday
 portfolio risk/position rules remain unimplemented. Retain explicit
 blockers rather than writing a second OMS.
 
+**B8 / QuantConnect ObjectStore plan requirement and quotas (P1):**
+Official [Object Store documentation](https://www.quantconnect.com/docs/v2/writing-algorithms/object-store)
+states that QuantConnect Cloud ObjectStore requires a **paid QuantConnect
+organization** and must stay within `object_store.max_size` and
+`object_store.max_files`. Local LEAN has a different storage model.
+The original report implementation cannot be claimed universally
+deployable without verifying these permissions and available quota.
+Failure in `object_store.save()` logs an error and does NOT mean a
+durable daily journal was saved.
+
+**B9 / Daily snapshot still not truly broker-complete (P1):**
+Even with an `after_market_close` scheduled checkpoint, a broker could
+report a late order fill after that snapshot or after a crash. Future
+reconciliation from LEAN/broker-authoritative data must be verified;
+avoid saying a daily ObjectStore CSV is a complete audited Schwab fill
+ledger. No new shadow order database is approved.
+
 ## Acceptance and safety rules
 
 - Only official LEAN/Schwab supported operations. No custom brokerage

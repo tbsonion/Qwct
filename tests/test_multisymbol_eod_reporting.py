@@ -74,7 +74,7 @@ def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
     cancel = src.index("    def _cancel_before_close(self)")
     end = src.index("    def _end_session(self)")
     verify = src.index("    def _verify_flat_before_close(self)")
-    events = src.index("    def on_order_event(self)")
+    events = src.index("    def on_order_event(self, event: OrderEvent)")
     assert cancel < end < verify < events
     assert "self.transactions.cancel_open_orders()" in src[cancel:end]
     assert "if self.transactions.get_open_orders():" in src[end:verify]

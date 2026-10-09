@@ -59,6 +59,17 @@ In backtest, save at end of algorithm. This still DOES NOT create
 crash-proof persistence; in live scheduled events occur on a separate
 thread. No UI/report claim of verified runtime behavior.
 
+**A5 / Repeated costly history requests contradicted official LEAN guide:**
+The original PR #2 presumed native typed multi-symbol History returned
+DataDictionary objects and therefore requested 180 D1 candles separately
+for each one of up to 50 new stocks. The **official
+[LEAN Algorithm Performance](https://www.quantconnect.com/docs/v2/writing-algorithms/key-concepts/algorithm-performance)**
+guide says to call `history[TradeBar](symbols, 180, Resolution.DAILY)`
+once and iterate its typed TradeBars, avoiding a pandas DataFrame.
+Changed universe warmup to batch all newly registered symbols in one
+native call and the manual clock ticker in one native single-item call.
+Python signature and market-data behavior still need runtime verification.
+
 ## Open issues / incorrect prior confidence — NOT solved by documentation
 
 **B1 / EOD FLAT isn't guaranteed (P0):**
@@ -125,6 +136,7 @@ blockers rather than writing a second OMS.
 - A passing GitHub Actions Python CI check is **not** a LEAN integration test.
 
 Summary: Two verifiable reporting bugs fixed, default round-trip
-grouping corrected, and EOD journal checkpoint scheduled after close.
+grouping corrected, EOD journal checkpoint scheduled after close, and
+redundant stock-history requests replaced with native batched history.
 EOD liquidation, order partial fills, actual LEAN compatibility,
 and Schwab-specific behavior remain blocked and explicitly unverified.

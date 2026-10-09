@@ -40,18 +40,22 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
     closed = [
         SimpleNamespace(symbol="AAPL", entry_time="09:30", exit_time="10:00",
                         direction="Long", quantity=10, entry_price=200.,
-                        exit_price=203., profit_loss=30., fees=0., is_win=True),
+                        exit_price=203., profit_loss=30., total_fees=5., is_win=True),
         SimpleNamespace(symbol="MSFT", entry_time="10:30", exit_time="11:00",
                         direction="Short", quantity=5, entry_price=400.,
-                        exit_price=402., profit_loss=-10., fees=0., is_win=False),
+                        exit_price=402., profit_loss=-10., total_fees=1., is_win=False),
     ]
     rows = native_closed_trade_rows(closed)
     assert all(set(x) == set(TRADE_FIELDS) for x in rows)
     parsed = json.loads(summary_json(
         [{"type": "INTENT"}, {"type": "REJECT"}], [], rows, invested=False))
     assert parsed["closed_trades"] == 2
-    assert parsed["winning_trades"] == 1
-    assert parsed["closed_trade_profit_loss"] == 20
+    assert parsed["net_winning_trades"] == 1
+    assert parsed["closed_trade_gross_profit_loss"] == 20
+    assert parsed["closed_trade_total_fees"] == 6
+    assert parsed["closed_trade_net_profit_loss"] == 14
+    assert rows[0]["net_profit_loss"] == "25.0"
+    assert rows[1]["net_profit_loss"] == "-11.0"
     assert parsed["signals"] == 1
     assert parsed["positions_still_open"] is False
 
@@ -93,3 +97,8 @@ def test_native_reporting_object_store_and_trade_builder():
     assert "self.trade_builder.closed_trades" in src
     assert "self.object_store.save(" in src
     assert "on_end_of_algorithm" in src
+    assert "self.set_trade_builder(TradeBuilder(" in src
+    assert "FillGroupingMethod.FLAT_TO_FLAT" in src
+    assert "self.time_rules.after_market_close(self.symbol, 1)" in src
+    assert "def _checkpoint_reports(self)" in src
+    assert "def on_end_of_day(self, symbol:" not in src

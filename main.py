@@ -18,6 +18,7 @@ from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
+from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
 
 
 ET = ZoneInfo("America/New_York")
@@ -56,6 +57,18 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._signals_open = False
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
+
+        # QC's native daily Fundamental Universe selects price/volume/liquidity.
+        # Stage two uses native ATR and SMA(volume) on closed D1 bars.
+        # The existing single-symbol signal engine remains unchanged; the
+        # ranked scanner watchlist is research-only and does NOT send orders.
+        self._screen_states = {}
+        self._screen_ranks = {}
+        self.screen_watchlist = ()
+        self.universe_settings.resolution = Resolution.DAILY
+        self.universe_settings.asynchronous = False
+        self.universe_settings.data_normalization_mode = DataNormalizationMode.SPLIT_ADJUSTED
+        self._screen_universe = self.add_universe(self._select_screen_universe)
 
         # Prime from LEAN's native typed history. No custom CSV feed or
         # homemade holiday calendar; fail closed if no usable history.
@@ -106,6 +119,98 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
     def _on_daily(self, bar: TradeBar) -> None:
         self._append_daily(bar)
+        # The manually-added anchor has minute resolution, so its D1 screen
+        # indicator must be updated by the actual D1 consolidator, not M1 bars.
+        self._screen_update_daily(bar)
+
+    def _select_screen_universe(self, fundamentals):
+        # Native LEAN supplies the previous completed daily universe snapshot.
+        # Do not request History or inspect Portfolio inside this function.
+        selected = select_liquid_fundamentals(fundamentals, self.cfg)
+        self._screen_ranks = {symbol: i for i, symbol in enumerate(selected)}
+        return selected
+
+    def on_securities_changed(self, changes: SecurityChanges) -> None:
+        added = [security.symbol for security in changes.added_securities]
+        for security in changes.removed_securities:
+            self._screen_states.pop(security.symbol, None)
+
+        if not added:
+            return
+        for symbol in added:
+            # Only actual LEAN indicator objects; no rolling virtual market.
+            self._screen_states[symbol] = {
+                "atr": AverageTrueRange(self.cfg.atr_period, MovingAverageType.WILDERS),
+                "volume": SimpleMovingAverage(self.cfg.volume_lookback_days),
+                "last_date": None,
+                "last_price": None,
+            }
+        try:
+            # One batch request for newly subscribed stocks; history here is
+            # explicitly supported by LEAN OnSecuritiesChanged. No broker I/O.
+            lookback = max(self.cfg.volume_lookback_days,
+                           self.cfg.atr_period + 1) + 10
+            history = self.history[TradeBar](
+                added, lookback, Resolution.DAILY,
+                data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED)
+            for bar in history:
+                if _time_index(bar.time).date() < self.time.date():
+                    self._screen_update_daily(bar)
+        except Exception as exc:
+            self.error(f"Native screener history unavailable: {exc}")
+            # Unready indicators fail closed. No estimated ATR/volume.
+
+    def _screen_update_daily(self, bar: TradeBar) -> None:
+        state = self._screen_states.get(bar.symbol)
+        if state is None:
+            return
+        trading_day = _time_index(bar.time).date()
+        if state["last_date"] is not None and trading_day <= state["last_date"]:
+            return
+        state["atr"].update(bar)
+        state["volume"].update(bar.end_time, bar.volume)
+        state["last_date"] = trading_day
+        state["last_price"] = float(bar.close)
+
+    def on_data(self, data: Slice) -> None:
+        # Scanned securities have DAILY subscription. The separately-added
+        # anchor ticker has M1 bars: NEVER feed M1 into daily ATR/volume SMA.
+        for symbol in tuple(self._screen_states):
+            bar = data.bars.get(symbol)
+            if bar is None or bar.period < timedelta(hours=20):
+                continue
+            self._screen_update_daily(bar)
+
+    def _refresh_screen_watchlist(self) -> None:
+        qualifying = []
+        for symbol, rank in self._screen_ranks.items():
+            state = self._screen_states.get(symbol)
+            if state is None or state["last_date"] is None:
+                continue
+            # Reject old snapshots / any future bar at pre-market decision.
+            age = (self.time.date() - state["last_date"]).days
+            if age <= 0 or age > 7:
+                continue
+            if not state["atr"].is_ready or not state["volume"].is_ready:
+                continue
+            a = float(state["atr"].current.value)
+            v = float(state["volume"].current.value)
+            p = state["last_price"]
+            if passes_gerchik_screener(p, a, v, self.cfg):
+                qualifying.append((rank, symbol, p, a, v))
+
+        # Fundamental candidates are already sorted by daily dollar volume.
+        qualifying.sort(key=lambda x: (x[0], x[1].value))
+        self.screen_watchlist = tuple(x[1] for x in
+                                      qualifying[:self.cfg.screener_watchlist_limit])
+        details = ", ".join(
+            f"{sym.value}(P={p:.2f},ATR={a:.2f},V20={v:.0f})"
+            for _, sym, p, a, v in
+            qualifying[:self.cfg.screener_watchlist_limit])
+        self.debug(f"GERCHIK SCREEN {self.time.date()}: "
+                   f"{len(qualifying)} qualified / "
+                   f"{len(self._screen_ranks)} liquid candidates. "
+                   f"TOP: {details or 'none'} [SIGNAL ONLY]")
 
     def _daily_frame(self) -> pd.DataFrame:
         if not self._daily_rows:
@@ -124,6 +229,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._minute5_rows = []
         self._decision = None
         self._levels = []
+        self._refresh_screen_watchlist()
 
         d1 = self._daily_frame()
         d1 = d1[d1.index < _time_index(self.time).normalize()] if not d1.empty else d1

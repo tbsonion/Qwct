@@ -66,8 +66,9 @@ def test_missing_native_atr_cannot_evaluate_features():
     cfg = StrategyConfig()
     d1 = daily(native_atr=False)
     lvl = Level(price=100, kind="support")
-    with pytest.raises(ValueError, match="Native LEAN ATR"):
-        evaluate_all(d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    result = evaluate_all(d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert all(x.value is None for x in result.values())
+    assert all("Native LEAN ATR" in x.reason for x in result.values())
 
 
 def test_market_data_is_asof_not_future():

@@ -7,7 +7,7 @@ A separate reviewed change is needed before ANY broker execution, even
 single-target 3R: native Bracket holds exits until entry completely fills.
 """
 from AlgorithmImports import *
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -16,6 +16,7 @@ from strategy.config import StrategyConfig
 from strategy.data import MarketData
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
+from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
 
 
@@ -54,6 +55,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._qualified_today = False
         self._session_date = None
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
+        self._session_policy = SessionPolicy(self.cfg)
 
         # Prime from LEAN's native typed history. No custom CSV feed or
         # homemade holiday calendar; fail closed if no usable history.
@@ -67,7 +69,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
         # LEAN handles daily / M5 aggregation and exchange trading hours.
         self.consolidate(self.symbol, Resolution.DAILY, self._on_daily)
-        self.consolidate(self.symbol, pd.Timedelta(minutes=5), self._on_m5)
+        self.consolidate(self.symbol, timedelta(minutes=5), self._on_m5)
 
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
@@ -178,6 +180,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self.cfg,
                 equity=float(self.portfolio.total_portfolio_value))
             if intent and intent.all_gates_passed:
+                window_ok, _ = self._session_policy.is_entry_allowed(
+                    intent.model, _time_index(bar.end_time).to_pydatetime())
+                if not window_ok:
+                    return
                 self._qualified_today = True
                 # This is an INTENT, NOT an order. A final LEAN buying-power
                 # check would be required if execution were ever enabled.

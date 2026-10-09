@@ -39,7 +39,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self.set_time_zone("America/New_York")
         name = (self.get_parameter("symbol") or "AAPL").strip().upper()
         security = self.add_equity(name, Resolution.MINUTE)
-        security.set_data_normalization_mode(DataNormalizationMode.RAW)
+        # Match the native screener universe and D1 indicator warmup across
+        # stock splits; the latest split-adjusted price is still tradable.
+        security.set_data_normalization_mode(DataNormalizationMode.SPLIT_ADJUSTED)
         self.symbol = security.symbol
 
         # These are actual LEAN indicators. The strategy never recalculates

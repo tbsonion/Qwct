@@ -59,6 +59,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # source-level kill switch until protective entries are independently
         # verified with the LEAN/Schwab brokerage integration.
         self._native_exit_enabled = False
+        # LEAN defaults to FILL_TO_FILL, which is not a full position
+        # round-trip. Use its official FLAT_TO_FLAT TradeBuilder grouping.
+        self.set_trade_builder(TradeBuilder(
+            FillGroupingMethod.FLAT_TO_FLAT, FillMatchingMethod.FIFO))
         self._signal_rows = []
         self._order_event_rows = []
 
@@ -92,6 +96,12 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_close(self.symbol, 1),
             self._verify_flat_before_close)
+        # Avoid the per-symbol OnEndOfDay callback for daily report
+        # checkpointing; run after the actual exchange close instead.
+        self.schedule.on(
+            self.date_rules.every_day(self.symbol),
+            self.time_rules.after_market_close(self.symbol, 1),
+            self._checkpoint_reports)
 
         self.debug("Qwct: multi-symbol Gerchik signal-only; ALL ORDERS DISABLED")
 
@@ -350,11 +360,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._order_event_rows.append(row)
         self.log(f"LEAN OrderEvent {row}")
 
-    def on_end_of_day(self, symbol: Symbol) -> None:
-        # Native LEAN event: in live deployments checkpoint after the
-        # exchange closes. Avoid 50 duplicate writes for 50 watchlist stocks.
-        # Backtests follow QuantConnect advice: save once at algorithm end.
-        if self.live_mode and symbol == self.symbol:
+    def _checkpoint_reports(self) -> None:
+        # The native after-market-close scheduled event is anchored to the
+        # exchange calendar, not per-symbol OnEndOfDay timing. In a backtest
+        # only save once at algorithm end to avoid rewriting every bar day.
+        if self.live_mode:
             self._write_reports()
 
     def on_end_of_algorithm(self) -> None:

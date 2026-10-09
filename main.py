@@ -350,7 +350,17 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._order_event_rows.append(row)
         self.log(f"LEAN OrderEvent {row}")
 
+    def on_end_of_day(self, symbol: Symbol) -> None:
+        # Native LEAN event: in live deployments checkpoint after the
+        # exchange closes. Avoid 50 duplicate writes for 50 watchlist stocks.
+        # Backtests follow QuantConnect advice: save once at algorithm end.
+        if self.live_mode and symbol == self.symbol:
+            self._write_reports()
+
     def on_end_of_algorithm(self) -> None:
+        self._write_reports()
+
+    def _write_reports(self) -> None:
         # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
         trades = native_closed_trade_rows(self.trade_builder.closed_trades)
         outputs = {

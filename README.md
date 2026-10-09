@@ -13,6 +13,21 @@ The eight standalone tests are not LEAN/runtime/broker validation. Risk policy,
 partial entry protection and broker compatibility must be investigated
 alongside the strategy logic, not deferred behind new homemade wrappers.
 
+## Automatic US-stock screener (feature branch)
+
+The native Fundamental Universe filters price above $5 and prior-session
+share volume >= 500k, ranks by dollar liquidity and subscribes to up to
+50 stocks at daily resolution. Native LEAN ATR(14) and SMA(20) of completed
+D1 share volume then produce a top-10 eligible **watchlist**, printed
+before market open. The list is **not** an automatic list of trades:
+the existing single-symbol AAPL-by-default Gerchik signal logic remains
+separate; watchlist symbols do not yet run their own M5 scenarios.
+
+**Read [docs/EQUITY_SCREENER_2026-10-09.md](docs/EQUITY_SCREENER_2026-10-09.md)**
+for the official API references, a deliberate conservative one-day
+volume prefilter, and all runtime verification gaps. No custom data feed,
+new ATR calculator, brokerage access or execution is introduced.
+
 ## Architecture: use LEAN instead of writing a second LEAN
 
 | Concern | Owner |

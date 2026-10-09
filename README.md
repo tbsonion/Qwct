@@ -5,6 +5,14 @@ orders, connect Schwab, simulate fills, claim profitability, or maintain a
 second broker ledger. The 2024–2025 dates in `main.py` are placeholder
 algorithm initialization dates, not a completed backtest.
 
+## Full strategy status (October 9, 2026)
+
+The feature-by-feature completion matrix and unanswered trading-strategy
+questions are in **[docs/STRATEGY_STATUS_2026-10-09.md](docs/STRATEGY_STATUS_2026-10-09.md)**.
+The eight standalone tests are not LEAN/runtime/broker validation. Risk policy,
+partial entry protection and broker compatibility must be investigated
+alongside the strategy logic, not deferred behind new homemade wrappers.
+
 ## Architecture: use LEAN instead of writing a second LEAN
 
 | Concern | Owner |

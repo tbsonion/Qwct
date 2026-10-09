@@ -62,9 +62,10 @@ operational liquidation assurance.
 
 - [LEAN OnOrderEvent](https://www.quantconnect.com/docs/v2/writing-algorithms/trading-and-orders/order-events) supplies genuine order statuses and fill events.
 - [LEAN TradeBuilder](https://www.quantconnect.com/docs/v2/writing-algorithms/trading-and-orders/trade-statistics) supplies completed round-trip trades and P&L.
-- [LEAN Object Store](https://www.quantconnect.com/docs/v2/writing-algorithms/object-store): store CSV and JSON at algorithm end, in a unique `project_id/algorithm_id` namespace.
+- [LEAN Object Store](https://www.quantconnect.com/docs/v2/writing-algorithms/object-store): store CSV and JSON once at algorithm end, or daily in live, in a unique `project_id/algorithm_id` namespace.
+- [LEAN event handlers](https://www.quantconnect.com/docs/v2/writing-algorithms/key-concepts/event-handlers): `on_end_of_day(symbol)` and `on_end_of_algorithm()`.
 
-`main.py` exports at `on_end_of_algorithm`:
+`main.py` exports on `on_end_of_algorithm`, or daily in LEAN `on_end_of_day` during live operation:
 - `signal_decisions.csv` — premarket scenarios, declines/errors and
   accepted signal intents for **every** watchlist ticker
 - `native_order_events.csv` — *actual* LEAN `OnOrderEvent` events only;
@@ -77,9 +78,11 @@ operational liquidation assurance.
 Since Qwct cannot place any order, order/trade CSVs will currently contain
 headers and **zero trade rows**. That's correct, not an error.
 
-Limits: This is **not yet a full cross-restart or end-of-day live journal**;
-persistence currently occurs at algorithm termination. Live restarts and
-interrupted engine runs may not save end-of-run data. ObjectStore may require
+Limits: This is **not yet a crash-proof cross-restart live journal**.
+Native `on_end_of_day` checkpoints the reports for the clock ticker once
+per live trading day; `on_end_of_algorithm` saves once at backtest end.
+Unexpected crashes between daily checkpoints can lose recent events.
+`on_end_of_day` timing and ObjectStore permissions require a LEAN test. ObjectStore may require
 specific cloud write permissions, so failed saves are logged. It is not
 an Excel/Google Sheets integration or an audited broker reconciliation.
 

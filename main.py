@@ -126,33 +126,37 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             del self._symbols[symbol]
 
         for security in changes.added_securities:
-            symbol = security.symbol
-            if symbol not in self._screen_ranks or symbol in self._symbols:
-                continue
-            state = {
-                "atr": AverageTrueRange(
-                    self.cfg.atr_period, MovingAverageType.WILDERS),
-                "sma": SimpleMovingAverage(self.cfg.trend_sma),
-                "volume": SimpleMovingAverage(self.cfg.volume_lookback_days),
-                "daily_rows": [], "m5_rows": [],
-                "last_date": None, "last_price": None,
-                "decision": None, "qualified_today": False,
-            }
-            self._symbols[symbol] = state
-            # Native LEAN consolidators must be removed on universe removal.
-            state["daily_consolidator"] = self.consolidate(
-                symbol, Resolution.DAILY, self._on_daily)
-            state["m5_consolidator"] = self.consolidate(
-                symbol, timedelta(minutes=5), self._on_m5)
-            try:
-                for bar in self.history[TradeBar](
-                        symbol, 180, Resolution.DAILY,
-                        data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
-                    if _time_index(bar.time).date() < self.time.date():
-                        self._append_daily(bar)
-            except Exception as exc:
-                # No synthetic fallback. Without D1 warmup signal rejects.
-                self.error(f"LEAN History error {symbol}: {exc}")
+            if security.symbol in self._screen_ranks:
+                self._register_symbol(security.symbol)
+
+    def _register_symbol(self, symbol) -> None:
+        """Subscribe native D1/M5 handlers once per selected LEAN Symbol."""
+        if symbol in self._symbols:
+            return
+        state = {
+            "atr": AverageTrueRange(
+                self.cfg.atr_period, MovingAverageType.WILDERS),
+            "sma": SimpleMovingAverage(self.cfg.trend_sma),
+            "volume": SimpleMovingAverage(self.cfg.volume_lookback_days),
+            "daily_rows": [], "m5_rows": [],
+            "last_date": None, "last_price": None,
+            "decision": None, "qualified_today": False,
+        }
+        self._symbols[symbol] = state
+        # Native LEAN consolidators must be removed on universe removal.
+        state["daily_consolidator"] = self.consolidate(
+            symbol, Resolution.DAILY, self._on_daily)
+        state["m5_consolidator"] = self.consolidate(
+            symbol, timedelta(minutes=5), self._on_m5)
+        try:
+            for bar in self.history[TradeBar](
+                    symbol, 180, Resolution.DAILY,
+                    data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
+                if _time_index(bar.time).date() < self.time.date():
+                    self._append_daily(bar)
+        except Exception as exc:
+            # No synthetic fallback. Without D1 warmup signal rejects.
+            self.error(f"LEAN History error {symbol}: {exc}")
 
     def _append_daily(self, bar: TradeBar) -> None:
         state = self._symbols.get(bar.symbol)
@@ -217,6 +221,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
         self._signals_open = True
+        # A manually subscribed clock stock may already exist before the
+        # fundamental universe selects it and won't necessarily appear in
+        # added_securities. Use the same native setup path, once.
+        if self.symbol in self._screen_ranks:
+            self._register_symbol(self.symbol)
         self._refresh_screen_watchlist()
         for state in self._symbols.values():
             state["qualified_today"] = False

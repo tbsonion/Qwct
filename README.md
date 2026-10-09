@@ -41,8 +41,9 @@ liquidate all holdings → verify flat** sequence has been coded behind the
 permanently disabled `_native_exit_enabled = False` safety flag.
 **EOD flattening is NOT active and not broker-verified.**
 
-The end-of-algorithm report uses genuine `OnOrderEvent` events and
-`TradeBuilder.closed_trades` only, saved through native LEAN Object Store.
+Reports use genuine `OnOrderEvent` events and
+`TradeBuilder.closed_trades` only, saved through native LEAN Object Store
+at algorithm end and checkpointed once daily during live operation.
 Signal-only mode produces decision logs and **zero trades**, as expected.
 
 Review [docs/MULTISYMBOL_EOD_REPORTING_2026-10-09.md](docs/MULTISYMBOL_EOD_REPORTING_2026-10-09.md)

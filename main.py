@@ -135,14 +135,20 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self.subscription_manager.remove_consolidator(symbol, consolidator)
             del self._symbols[symbol]
 
+        new_symbols = []
         for security in changes.added_securities:
-            if security.symbol in self._screen_ranks:
-                self._register_symbol(security.symbol)
+            symbol = security.symbol
+            if symbol in self._screen_ranks and self._register_symbol(symbol):
+                new_symbols.append(symbol)
+        # Official LEAN performance guidance: batch symbols in ONE typed
+        # History[TradeBar] call. A typed multi-symbol enumerable yields bars,
+        # not a pandas DataFrame; avoid 50 separate history requests.
+        self._warm_symbols(new_symbols)
 
-    def _register_symbol(self, symbol) -> None:
+    def _register_symbol(self, symbol) -> bool:
         """Subscribe native D1/M5 handlers once per selected LEAN Symbol."""
         if symbol in self._symbols:
-            return
+            return False
         state = {
             "atr": AverageTrueRange(
                 self.cfg.atr_period, MovingAverageType.WILDERS),
@@ -158,15 +164,21 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             symbol, Resolution.DAILY, self._on_daily)
         state["m5_consolidator"] = self.consolidate(
             symbol, timedelta(minutes=5), self._on_m5)
+        return True
+
+    def _warm_symbols(self, symbols) -> None:
+        if not symbols:
+            return
         try:
             for bar in self.history[TradeBar](
-                    symbol, 180, Resolution.DAILY,
+                    symbols, 180, Resolution.DAILY,
                     data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
                 if _time_index(bar.time).date() < self.time.date():
                     self._append_daily(bar)
         except Exception as exc:
             # No synthetic fallback. Without D1 warmup signal rejects.
-            self.error(f"LEAN History error {symbol}: {exc}")
+            self.error(f"Native typed history failed for {len(symbols)} "
+                       f"symbols: {exc}")
 
     def _append_daily(self, bar: TradeBar) -> None:
         state = self._symbols.get(bar.symbol)
@@ -235,7 +247,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # fundamental universe selects it and won't necessarily appear in
         # added_securities. Use the same native setup path, once.
         if self.symbol in self._screen_ranks:
-            self._register_symbol(self.symbol)
+            if self._register_symbol(self.symbol):
+                self._warm_symbols([self.symbol])
         self._refresh_screen_watchlist()
         for state in self._symbols.values():
             state["qualified_today"] = False

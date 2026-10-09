@@ -102,3 +102,24 @@ def test_native_reporting_object_store_and_trade_builder():
     assert "self.time_rules.after_market_close(self.symbol, 1)" in src
     assert "def _checkpoint_reports(self)" in src
     assert "def on_end_of_day(self, symbol:" not in src
+
+
+def test_missing_real_trade_fee_property_fails_instead_of_lying():
+    # The upstream LEAN Trade class exposes total_fees, not fees.
+    closed = [SimpleNamespace(
+        symbol="AAPL", entry_time="9:30", exit_time="10:00",
+        direction="Long", quantity=1, entry_price=100,
+        exit_price=104, profit_loss=4, fees=0, is_win=True)]
+    import pytest
+    with pytest.raises(AttributeError):
+        native_closed_trade_rows(closed)
+
+
+def test_native_batched_history_warmup_and_no_synthetic_indicators():
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    assert "def _warm_symbols(self, symbols)" in src
+    assert "symbols, 180, Resolution.DAILY" in src
+    assert "self._warm_symbols(new_symbols)" in src
+    assert "if self._register_symbol(self.symbol):" in src
+    assert "FillGroupingMethod.FLAT_TO_FLAT" in src
+    assert "self.time_rules.after_market_close(self.symbol, 1)" in src

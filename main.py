@@ -33,10 +33,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
         self.set_start_date(2024, 1, 1)
         self.set_end_date(2025, 1, 1)
-        self.set_cash(25_000)
-        self.set_time_zone("America/New_York")
-
         self.cfg = StrategyConfig()
+        self.set_cash(self.cfg.starting_equity)
+        self.set_time_zone("America/New_York")
         name = (self.get_parameter("symbol") or "AAPL").strip().upper()
         security = self.add_equity(name, Resolution.MINUTE)
         security.set_data_normalization_mode(DataNormalizationMode.RAW)
@@ -54,6 +53,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._levels = []
         self._qualified_today = False
         self._session_date = None
+        self._signals_open = False
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
 
@@ -119,6 +119,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
+        self._signals_open = True
         self._qualified_today = False
         self._minute5_rows = []
         self._decision = None
@@ -158,6 +159,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.error(f"Gerchik session calculation failed: {exc}")
 
     def _on_m5(self, bar: TradeBar) -> None:
+        # This cutoff is driven by LEAN's exchange-specific market-close
+        # schedule, including early-close days; never use 16:00 as a shortcut.
+        if not self._signals_open:
+            return
         if self._session_date != _time_index(bar.end_time).date():
             return
         self._minute5_rows.append({
@@ -197,8 +202,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.error(f"Gerchik M5 calculation failed: {exc}")
 
     def _end_session(self) -> None:
-        # LEAN's event uses the actual market calendar, including half-days.
-        # No liquidate() is needed here because NO orders are ever placed.
+        # This event fires five minutes before the *actual* market close.
+        # Disable further signals; no positions/orders exist to liquidate.
+        self._signals_open = False
         self.debug("Session ending: signal-only, no broker action")
 
     def on_order_event(self, event: OrderEvent) -> None:

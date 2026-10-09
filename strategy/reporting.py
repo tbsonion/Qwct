@@ -1,11 +1,12 @@
-"""Export LEAN's actual events and completed trades; never simulate fills.
+"""Format real LEAN OrderEvents and TradeBuilder closed trades, not synthetic fills.
 
-These are formatting functions, not a broker state machine. TradeBuilder and
-Transactions remain the sole authorities for fills and closed positions.
+LEAN Trade.ProfitLoss is GROSS; LEAN Trade.TotalFees is a separate positive
+amount. Native TradeBuilder is the only source of completed trade results.
 """
 import csv
 import io
 import json
+from decimal import Decimal
 
 SIGNAL_FIELDS = (
     "time_et", "symbol", "type", "model", "side", "level", "score",
@@ -17,7 +18,8 @@ ORDER_FIELDS = (
 )
 TRADE_FIELDS = (
     "symbol", "entry_time", "exit_time", "direction", "quantity",
-    "entry_price", "exit_price", "profit_loss", "fees", "is_win"
+    "entry_price", "exit_price", "gross_profit_loss", "total_fees",
+    "net_profit_loss", "is_win"
 )
 
 
@@ -31,7 +33,7 @@ def csv_rows(rows, columns):
 
 
 def native_order_event_row(event, tag=""):
-    """Fields come only from LEAN OnOrderEvent (not synthetic fill records)."""
+    """Only actual LEAN OrderEvent data; do not fabricate a filled order."""
     return {
         "utc_time": str(event.utc_time),
         "order_id": str(event.order_id),
@@ -47,24 +49,43 @@ def native_order_event_row(event, tag=""):
 
 
 def native_closed_trade_rows(trades):
-    """TradeBuilder.closed_trades owns the calculation of trade P&L."""
-    return [
-        {field: str(getattr(trade, field, ""))
-         for field in TRADE_FIELDS}
-        for trade in trades
-    ]
+    """Read real LEAN Trade.ProfitLoss and Trade.TotalFees, no substitutions."""
+    rows = []
+    for trade in trades:
+        gross = Decimal(str(trade.profit_loss))
+        fees = Decimal(str(trade.total_fees))
+        rows.append({
+            "symbol": str(trade.symbol),
+            "entry_time": str(trade.entry_time),
+            "exit_time": str(trade.exit_time),
+            "direction": str(trade.direction),
+            "quantity": str(trade.quantity),
+            "entry_price": str(trade.entry_price),
+            "exit_price": str(trade.exit_price),
+            "gross_profit_loss": str(gross),
+            "total_fees": str(fees),
+            "net_profit_loss": str(gross - fees),
+            "is_win": str(trade.is_win),
+        })
+    return rows
 
 
 def summary_json(signal_rows, order_rows, closed_trade_rows, invested):
-    """Counts and P&L are derived from native TradeBuilder trades only."""
-    realized = sum(float(row["profit_loss"]) for row in closed_trade_rows)
-    wins = sum(float(row["profit_loss"]) > 0 for row in closed_trade_rows)
+    """Gross, fees and net MUST stay separate, including negative net trades."""
+    gross = sum((Decimal(r["gross_profit_loss"])
+                 for r in closed_trade_rows), Decimal(0))
+    fees = sum((Decimal(r["total_fees"])
+                for r in closed_trade_rows), Decimal(0))
+    net_wins = sum(Decimal(r["net_profit_loss"]) > 0
+                   for r in closed_trade_rows)
     return json.dumps({
-        "signals": len([r for r in signal_rows if r.get("type") == "INTENT"]),
+        "signals": sum(r.get("type") == "INTENT" for r in signal_rows),
         "order_events": len(order_rows),
         "closed_trades": len(closed_trade_rows),
-        "winning_trades": wins,
-        "closed_trade_profit_loss": round(realized, 2),
+        "net_winning_trades": net_wins,
+        "closed_trade_gross_profit_loss": float(gross),
+        "closed_trade_total_fees": float(fees),
+        "closed_trade_net_profit_loss": float(gross - fees),
         "positions_still_open": bool(invested),
         "source": "LEAN OnOrderEvent + TradeBuilder; no fabricated fills",
     }, ensure_ascii=False, sort_keys=True, indent=2)

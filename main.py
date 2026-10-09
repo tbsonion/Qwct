@@ -59,6 +59,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # source-level kill switch until protective entries are independently
         # verified with the LEAN/Schwab brokerage integration.
         self._native_exit_enabled = False
+        # LEAN defaults to FILL_TO_FILL, which is not a full position
+        # round-trip. Use its official FLAT_TO_FLAT TradeBuilder grouping.
+        self.set_trade_builder(TradeBuilder(
+            FillGroupingMethod.FLAT_TO_FLAT, FillMatchingMethod.FIFO))
         self._signal_rows = []
         self._order_event_rows = []
 
@@ -92,6 +96,12 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_close(self.symbol, 1),
             self._verify_flat_before_close)
+        # Avoid the per-symbol OnEndOfDay callback for daily report
+        # checkpointing; run after the actual exchange close instead.
+        self.schedule.on(
+            self.date_rules.every_day(self.symbol),
+            self.time_rules.after_market_close(self.symbol, 1),
+            self._checkpoint_reports)
 
         self.debug("Qwct: multi-symbol Gerchik signal-only; ALL ORDERS DISABLED")
 
@@ -125,14 +135,20 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self.subscription_manager.remove_consolidator(symbol, consolidator)
             del self._symbols[symbol]
 
+        new_symbols = []
         for security in changes.added_securities:
-            if security.symbol in self._screen_ranks:
-                self._register_symbol(security.symbol)
+            symbol = security.symbol
+            if symbol in self._screen_ranks and self._register_symbol(symbol):
+                new_symbols.append(symbol)
+        # Official LEAN performance guidance: batch symbols in ONE typed
+        # History[TradeBar] call. A typed multi-symbol enumerable yields bars,
+        # not a pandas DataFrame; avoid 50 separate history requests.
+        self._warm_symbols(new_symbols)
 
-    def _register_symbol(self, symbol) -> None:
+    def _register_symbol(self, symbol) -> bool:
         """Subscribe native D1/M5 handlers once per selected LEAN Symbol."""
         if symbol in self._symbols:
-            return
+            return False
         state = {
             "atr": AverageTrueRange(
                 self.cfg.atr_period, MovingAverageType.WILDERS),
@@ -148,15 +164,21 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             symbol, Resolution.DAILY, self._on_daily)
         state["m5_consolidator"] = self.consolidate(
             symbol, timedelta(minutes=5), self._on_m5)
+        return True
+
+    def _warm_symbols(self, symbols) -> None:
+        if not symbols:
+            return
         try:
             for bar in self.history[TradeBar](
-                    symbol, 180, Resolution.DAILY,
+                    symbols, 180, Resolution.DAILY,
                     data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
                 if _time_index(bar.time).date() < self.time.date():
                     self._append_daily(bar)
         except Exception as exc:
             # No synthetic fallback. Without D1 warmup signal rejects.
-            self.error(f"LEAN History error {symbol}: {exc}")
+            self.error(f"Native typed history failed for {len(symbols)} "
+                       f"symbols: {exc}")
 
     def _append_daily(self, bar: TradeBar) -> None:
         state = self._symbols.get(bar.symbol)
@@ -225,7 +247,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # fundamental universe selects it and won't necessarily appear in
         # added_securities. Use the same native setup path, once.
         if self.symbol in self._screen_ranks:
-            self._register_symbol(self.symbol)
+            if self._register_symbol(self.symbol):
+                self._warm_symbols([self.symbol])
         self._refresh_screen_watchlist()
         for state in self._symbols.values():
             state["qualified_today"] = False
@@ -350,11 +373,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._order_event_rows.append(row)
         self.log(f"LEAN OrderEvent {row}")
 
-    def on_end_of_day(self, symbol: Symbol) -> None:
-        # Native LEAN event: in live deployments checkpoint after the
-        # exchange closes. Avoid 50 duplicate writes for 50 watchlist stocks.
-        # Backtests follow QuantConnect advice: save once at algorithm end.
-        if self.live_mode and symbol == self.symbol:
+    def _checkpoint_reports(self) -> None:
+        # The native after-market-close scheduled event is anchored to the
+        # exchange calendar, not per-symbol OnEndOfDay timing. In a backtest
+        # only save once at algorithm end to avoid rewriting every bar day.
+        if self.live_mode:
             self._write_reports()
 
     def on_end_of_algorithm(self) -> None:

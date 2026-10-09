@@ -19,8 +19,10 @@ Official QuantConnect APIs provide:
    `Fundamental.dollar_volume`, `Fundamental.symbol`,
    `has_fundamental_data`. LEAN manages constituent subscriptions.
 2. `self.on_securities_changed(changes)` for new/removed symbols.
-3. `self.history[TradeBar](symbols, n, Resolution.DAILY)` for history
-   warmup when constituents are added.
+3. `self.history[TradeBar](symbol, n, Resolution.DAILY)` per newly
+   subscribed ticker for native TradeBar indicator warmup (the
+   multiple-symbol generic History overload may return dictionaries,
+   not flat TradeBar objects).
 4. `AverageTrueRange(14, MovingAverageType.WILDERS)` and
    `SimpleMovingAverage(20)` for ATR and 20-day mean share volume.
    The SMA is updated on **daily bar.volume**, not on prices and not
@@ -85,6 +87,8 @@ Official references:
 - No M5 subscriptions or signals for watchlist members, no automatic
   ticker substitution into existing D1/M5 logic, no dynamic sector/news,
   spread/stale-quote screener, no "familiar instrument" allowlist.
+- Separate single-symbol historical requests (up to 50 on first load)
+  increase startup data work; optimize only with verified native responses.
 - Corporate-action adjustment compatibility with `SPLIT_ADJUSTED`
   D1 indicator warmup needs actual LEAN verification.
 - No transactions, stop/TP changes, broker credentials, or risk engine.

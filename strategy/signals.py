@@ -249,9 +249,7 @@ def _atr(d1: pd.DataFrame, cfg: StrategyConfig) -> float | None:
         return None
     v = atr(d1, cfg.atr_period).iloc[-1]
     if pd.isna(v) or v <= 0:
-        v = (d1["high"] - d1["low"]).tail(cfg.atr_period).mean()
-    if pd.isna(v) or v <= 0:
-        return None
+        return None  # No homemade ATR fallback
     return float(v)
 
 

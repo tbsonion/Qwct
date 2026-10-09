@@ -1,0 +1,28 @@
+name: Pure Strategy Checks
+
+on:
+  push:
+    branches:
+      - "feat/lean-native-gerchik-foundation-20261009"
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rules-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install pure research dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Compile all project Python
+        run: python -m compileall -q main.py strategy tests
+      - name: Test rules without LEAN, credentials or brokerage
+        run: python -m pytest -q tests

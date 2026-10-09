@@ -1,0 +1,4 @@
+# Dependencies for the pure Gerchik rule modules.
+# LEAN runtime supplies AlgorithmImports and its native trading APIs.
+pandas>=2.0,<3
+numpy>=1.24,<3

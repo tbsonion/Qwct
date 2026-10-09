@@ -1,0 +1,95 @@
+"""No broker simulations: test the report format and fail-closed source contract."""
+import csv
+import io
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+from strategy.reporting import (
+    SIGNAL_FIELDS, ORDER_FIELDS, TRADE_FIELDS, csv_rows,
+    native_order_event_row, native_closed_trade_rows, summary_json
+)
+
+
+def test_decisions_export_as_consistent_csv():
+    rows = [{"time_et": "2026-10-09 11:00", "symbol": "MSFT",
+             "type": "INTENT", "model": "bounce", "side": "long",
+             "reason": "NO ORDERS SENT"}]
+    result = list(csv.DictReader(io.StringIO(csv_rows(rows, SIGNAL_FIELDS))))
+    assert len(result) == 1
+    assert result[0]["symbol"] == "MSFT"
+    assert result[0]["model"] == "bounce"
+    assert result[0]["entry"] == ""
+
+
+def test_real_order_event_fields_are_passed_through_unchanged():
+    # This validates serialization only, NOT a fake broker or simulated fill.
+    ev = SimpleNamespace(
+        utc_time="2026-10-09T17:00:00Z", order_id=42, symbol="AAPL",
+        status="Filled", direction="Buy", fill_quantity=10,
+        fill_price=200.5, order_fee="0 USD", message="Filled")
+    row = native_order_event_row(ev, tag="ENTRY")
+    assert row["order_id"] == "42"
+    assert row["fill_price"] == "200.5"
+    assert row["tag"] == "ENTRY"
+    parsed = list(csv.DictReader(io.StringIO(csv_rows([row], ORDER_FIELDS))))
+    assert parsed[0] == row
+
+
+def test_closed_trade_data_comes_from_trade_builder_fields():
+    closed = [
+        SimpleNamespace(symbol="AAPL", entry_time="09:30", exit_time="10:00",
+                        direction="Long", quantity=10, entry_price=200.,
+                        exit_price=203., profit_loss=30., fees=0., is_win=True),
+        SimpleNamespace(symbol="MSFT", entry_time="10:30", exit_time="11:00",
+                        direction="Short", quantity=5, entry_price=400.,
+                        exit_price=402., profit_loss=-10., fees=0., is_win=False),
+    ]
+    rows = native_closed_trade_rows(closed)
+    assert all(set(x) == set(TRADE_FIELDS) for x in rows)
+    parsed = json.loads(summary_json(
+        [{"type": "INTENT"}, {"type": "REJECT"}], [], rows, invested=False))
+    assert parsed["closed_trades"] == 2
+    assert parsed["winning_trades"] == 1
+    assert parsed["closed_trade_profit_loss"] == 20
+    assert parsed["signals"] == 1
+    assert parsed["positions_still_open"] is False
+
+
+def test_source_uses_actual_leans_native_multi_symbol_events():
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self._symbols[symbol] = state" in src
+    assert "self.consolidate(" in src
+    assert "self.subscription_manager.remove_consolidator(" in src
+    assert "symbol not in self.screen_watchlist" in src
+    assert "MarketData(" in src
+    assert "self._scenario_evaluator.evaluate(" in src
+    assert "self._session_policy.is_entry_allowed(" in src
+    assert "self._native_exit_enabled = False" in src
+
+
+def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    cancel = src.index("    def _cancel_before_close(self)")
+    end = src.index("    def _end_session(self)")
+    verify = src.index("    def _verify_flat_before_close(self)")
+    events = src.index("    def on_order_event(self, event: OrderEvent)")
+    assert cancel < end < verify < events
+    assert "self.transactions.cancel_open_orders()" in src[cancel:end]
+    assert "if self.transactions.get_open_orders():" in src[end:verify]
+    assert "self.liquidate(tag=" in src[end:verify]
+    assert "if not self._native_exit_enabled:" in src[cancel:end]
+    assert "if not self._native_exit_enabled:" in src[end:verify]
+    assert "self.portfolio.invested" in src[verify:events]
+    assert not any(k in src for k in ("class OrderManager", "NativeGateway",
+                                      "self.bracket_order(", "self.market_order("))
+
+
+def test_native_reporting_object_store_and_trade_builder():
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    assert "def on_order_event(" in src
+    assert "native_order_event_row(event, tag)" in src
+    assert "self.trade_builder.closed_trades" in src
+    assert "self.object_store.save(" in src
+    assert "on_end_of_algorithm" in src

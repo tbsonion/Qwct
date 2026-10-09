@@ -82,13 +82,14 @@ def test_screener_only_uses_official_lean_market_and_indicator_apis():
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
     assert "self.add_universe(self._select_screen_universe)" in src
     assert "def on_securities_changed(" in src
-    assert "def on_data(" in src
+    assert "def _on_m5(" in src
     assert "AverageTrueRange(" in src
     assert "SimpleMovingAverage(self.cfg.volume_lookback_days)" in src
     assert "self.history[TradeBar](" in src
     assert "self._refresh_screen_watchlist()" in src
     assert "self.screen_watchlist = " in src
-    assert "self.universe_settings.resolution = Resolution.DAILY" in src
+    assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self._native_exit_enabled = False" in src
     assert not any(x in src for x in (
         "self.market_order(", "self.limit_order(",
-        "self.bracket_order(", "self.liquidate(", "OrderManager("))
+        "self.bracket_order(", "OrderManager("))

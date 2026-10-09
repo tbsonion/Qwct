@@ -1,10 +1,9 @@
-"""Qwct: LEAN-native market infrastructure + original Gerchik signal rules.
+"""Gerchik D1 / M5 multi-equity signal research using native LEAN APIs.
 
-SIGNAL-ONLY. NO ORDERS. NO CUSTOM OMS, BROKER ADAPTER, NYSE CALENDAR,
-VIRTUAL PORTFOLIO, OR INDICATOR CALCULATORS.
-
-A separate reviewed change is needed before ANY broker execution, even
-single-target 3R: native Bracket holds exits until entry completely fills.
+Execution is HARD DISABLED. No entries, custom broker adapter, fill simulator,
+software OCO or shadow portfolio. Native EOD cancellation/liquidation is
+prepared but gated off until a reviewed Schwab-compatible execution solution
+exists. Schwab requires order cancel confirmations BEFORE market liquidation.
 """
 from AlgorithmImports import *
 from datetime import datetime, timedelta
@@ -19,13 +18,16 @@ from strategy.scenarios import ScenarioEvaluator
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
+from strategy.reporting import (
+    SIGNAL_FIELDS, ORDER_FIELDS, TRADE_FIELDS, csv_rows,
+    native_order_event_row, native_closed_trade_rows, summary_json
+)
 
 
 ET = ZoneInfo("America/New_York")
 
 
 def _time_index(ts: datetime) -> pd.Timestamp:
-    """LEAN equity TradeBar times are exchange-local, naive datetimes."""
     t = pd.Timestamp(ts)
     return t.tz_localize(ET) if t.tzinfo is None else t.tz_convert(ET)
 
@@ -37,287 +39,346 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self.cfg = StrategyConfig()
         self.set_cash(self.cfg.starting_equity)
         self.set_time_zone("America/New_York")
-        name = (self.get_parameter("symbol") or "AAPL").strip().upper()
-        security = self.add_equity(name, Resolution.MINUTE)
-        # Match the native screener universe and D1 indicator warmup across
-        # stock splits; the latest split-adjusted price is still tradable.
-        security.set_data_normalization_mode(DataNormalizationMode.SPLIT_ADJUSTED)
-        self.symbol = security.symbol
 
-        # These are actual LEAN indicators. The strategy never recalculates
-        # ATR or SMA in pandas. Historical indicator values are kept alongside
-        # closed daily candles purely for 14-group as-of feature evaluation.
-        self._atr = AverageTrueRange(
-            self.cfg.atr_period, MovingAverageType.WILDERS)
-        self._sma = SimpleMovingAverage(self.cfg.trend_sma)
-        self._daily_rows = []
-        self._minute5_rows = []
-        self._decision = None
-        self._levels = []
-        self._qualified_today = False
-        self._session_date = None
-        self._signals_open = False
+        # The anchor is a clock only. All actual Gerchik decisions use
+        # independently warmed symbols selected by the native universe.
+        anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
+        self.symbol = self.add_equity(anchor, Resolution.MINUTE).symbol
+        self.securities[self.symbol].set_data_normalization_mode(
+            DataNormalizationMode.SPLIT_ADJUSTED)
+
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
-
-        # QC's native daily Fundamental Universe selects price/volume/liquidity.
-        # Stage two uses native ATR and SMA(volume) on closed D1 bars.
-        # The existing single-symbol signal engine remains unchanged; the
-        # ranked scanner watchlist is research-only and does NOT send orders.
-        self._screen_states = {}
         self._screen_ranks = {}
+        self._symbols = {}
         self.screen_watchlist = ()
-        self.universe_settings.resolution = Resolution.DAILY
+        self._session_date = None
+        self._signals_open = False
+
+        # NO runtime parameter can turn on trading. This is an explicit
+        # source-level kill switch until protective entries are independently
+        # verified with the LEAN/Schwab brokerage integration.
+        self._native_exit_enabled = False
+        self._signal_rows = []
+        self._order_event_rows = []
+
+        # Native Fundamental Universe owns stock membership and data feeds.
+        # Minute resolution is required for real M5 consolidators on *each*
+        # selected stock, not only on the anchor or first watchlist stock.
+        self.universe_settings.resolution = Resolution.MINUTE
         self.universe_settings.asynchronous = False
-        self.universe_settings.data_normalization_mode = DataNormalizationMode.SPLIT_ADJUSTED
+        self.universe_settings.data_normalization_mode = (
+            DataNormalizationMode.SPLIT_ADJUSTED)
         self._screen_universe = self.add_universe(self._select_screen_universe)
-
-        # Prime from LEAN's native typed history. No custom CSV feed or
-        # homemade holiday calendar; fail closed if no usable history.
-        try:
-            bars = self.history[TradeBar](
-                self.symbol, 180, Resolution.DAILY)
-            for bar in bars:
-                self._append_daily(bar)
-        except Exception as exc:
-            self.error(f"Native daily history failed: {exc}")
-
-        # LEAN handles daily / M5 aggregation and exchange trading hours.
-        self.consolidate(self.symbol, Resolution.DAILY, self._on_daily)
-        self.consolidate(self.symbol, timedelta(minutes=5), self._on_m5)
 
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_open(self.symbol, 1),
             self._prepare_session)
+        # Two-stage EOD is mandated by documented Schwab cancellation lag.
+        # First cancel broker orders, then check confirmed cancellations;
+        # never submit Liquidate while contingent orders remain pending.
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
-            self.time_rules.before_market_close(self.symbol, 5),
+            self.time_rules.before_market_close(
+                self.symbol, self.cfg.flatten_before_close_min + 3),
+            self._cancel_before_close)
+        self.schedule.on(
+            self.date_rules.every_day(self.symbol),
+            self.time_rules.before_market_close(
+                self.symbol, self.cfg.flatten_before_close_min),
             self._end_session)
+        self.schedule.on(
+            self.date_rules.every_day(self.symbol),
+            self.time_rules.before_market_close(self.symbol, 1),
+            self._verify_flat_before_close)
 
-        self.debug("Qwct signal-only mode: NO order submission, NO brokerage")
+        self.debug("Qwct: multi-symbol Gerchik signal-only; ALL ORDERS DISABLED")
 
-    def _append_daily(self, bar: TradeBar) -> None:
-        day = _time_index(bar.time).normalize()
-        # Do not include duplicate daily history/consolidated samples in ATR.
-        if self._daily_rows and day <= self._daily_rows[-1]["date"]:
-            return
-        self._atr.update(bar)
-        self._sma.update(bar.end_time, bar.close)
-        self._daily_rows.append({
-            "date": day,
-            "open": float(bar.open), "high": float(bar.high),
-            "low": float(bar.low), "close": float(bar.close),
-            "volume": float(bar.volume),
-            f"atr{self.cfg.atr_period}": (
-                float(self._atr.current.value) if self._atr.is_ready else float("nan")
-            ),
-            f"sma{self.cfg.trend_sma}": (
-                float(self._sma.current.value) if self._sma.is_ready else float("nan")
-            ),
+    def _record(self, symbol, kind, model="", side="", level="",
+                score="", entry="", stop="", risk="", gates="", reason=""):
+        self._signal_rows.append({
+            "time_et": str(self.time), "symbol": symbol.value,
+            "type": kind, "model": model, "side": side, "level": level,
+            "score": score, "entry": entry, "stop": stop,
+            "risk_per_share": risk, "gates": gates, "reason": reason
         })
-        # Memory cap; keep enough D1 bars for level clustering/50 SMA.
-        self._daily_rows = self._daily_rows[-240:]
-
-    def _on_daily(self, bar: TradeBar) -> None:
-        self._append_daily(bar)
-        # The manually-added anchor has minute resolution, so its D1 screen
-        # indicator must be updated by the actual D1 consolidator, not M1 bars.
-        self._screen_update_daily(bar)
 
     def _select_screen_universe(self, fundamentals):
-        # Native LEAN supplies the previous completed daily universe snapshot.
-        # Do not request History or inspect Portfolio inside this function.
+        # Never call History/Portfolio/Transactions inside universe selection.
         selected = select_liquid_fundamentals(fundamentals, self.cfg)
         self._screen_ranks = {symbol: i for i, symbol in enumerate(selected)}
         return selected
 
     def on_securities_changed(self, changes: SecurityChanges) -> None:
-        added = [security.symbol for security in changes.added_securities]
         for security in changes.removed_securities:
-            self._screen_states.pop(security.symbol, None)
+            symbol = security.symbol
+            state = self._symbols.get(symbol)
+            if state is None:
+                continue
+            if security.invested or self.transactions.get_open_orders(symbol):
+                self.error(f"Universe removal but position/order remains: {symbol}")
+                # Never silently forget a currently owned security.
+                continue
+            for consolidator in (state["daily_consolidator"],
+                                 state["m5_consolidator"]):
+                self.subscription_manager.remove_consolidator(symbol, consolidator)
+            del self._symbols[symbol]
 
-        if not added:
+        for security in changes.added_securities:
+            if security.symbol in self._screen_ranks:
+                self._register_symbol(security.symbol)
+
+    def _register_symbol(self, symbol) -> None:
+        """Subscribe native D1/M5 handlers once per selected LEAN Symbol."""
+        if symbol in self._symbols:
             return
-        for symbol in added:
-            # Only actual LEAN indicator objects; no rolling virtual market.
-            self._screen_states[symbol] = {
-                "atr": AverageTrueRange(self.cfg.atr_period, MovingAverageType.WILDERS),
-                "volume": SimpleMovingAverage(self.cfg.volume_lookback_days),
-                "last_date": None,
-                "last_price": None,
-            }
+        state = {
+            "atr": AverageTrueRange(
+                self.cfg.atr_period, MovingAverageType.WILDERS),
+            "sma": SimpleMovingAverage(self.cfg.trend_sma),
+            "volume": SimpleMovingAverage(self.cfg.volume_lookback_days),
+            "daily_rows": [], "m5_rows": [],
+            "last_date": None, "last_price": None,
+            "decision": None, "qualified_today": False,
+        }
+        self._symbols[symbol] = state
+        # Native LEAN consolidators must be removed on universe removal.
+        state["daily_consolidator"] = self.consolidate(
+            symbol, Resolution.DAILY, self._on_daily)
+        state["m5_consolidator"] = self.consolidate(
+            symbol, timedelta(minutes=5), self._on_m5)
         try:
-            # A typed single-symbol History[TradeBar] yields TradeBars.
-            # The MULTI-symbol overload can yield DataDictionary[TradeBar];
-            # do not iterate it as a flat list of bars. These are native
-            # historical requests, not a replacement market-data client.
-            lookback = max(self.cfg.volume_lookback_days,
-                           self.cfg.atr_period + 1) + 10
-            for symbol in added:
-                history = self.history[TradeBar](
-                    symbol, lookback, Resolution.DAILY,
-                    data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED)
-                for bar in history:
-                    if _time_index(bar.time).date() < self.time.date():
-                        self._screen_update_daily(bar)
+            for bar in self.history[TradeBar](
+                    symbol, 180, Resolution.DAILY,
+                    data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
+                if _time_index(bar.time).date() < self.time.date():
+                    self._append_daily(bar)
         except Exception as exc:
-            self.error(f"Native screener history unavailable: {exc}")
-            # Unready indicators fail closed. No estimated ATR/volume.
+            # No synthetic fallback. Without D1 warmup signal rejects.
+            self.error(f"LEAN History error {symbol}: {exc}")
 
-    def _screen_update_daily(self, bar: TradeBar) -> None:
-        state = self._screen_states.get(bar.symbol)
+    def _append_daily(self, bar: TradeBar) -> None:
+        state = self._symbols.get(bar.symbol)
         if state is None:
             return
-        trading_day = _time_index(bar.time).date()
+        trading_day = _time_index(bar.time).normalize()
         if state["last_date"] is not None and trading_day <= state["last_date"]:
             return
         state["atr"].update(bar)
+        state["sma"].update(bar.end_time, bar.close)
         state["volume"].update(bar.end_time, bar.volume)
         state["last_date"] = trading_day
         state["last_price"] = float(bar.close)
+        state["daily_rows"].append({
+            "date": trading_day,
+            "open": float(bar.open), "high": float(bar.high),
+            "low": float(bar.low), "close": float(bar.close),
+            "volume": float(bar.volume),
+            f"atr{self.cfg.atr_period}": (
+                float(state["atr"].current.value)
+                if state["atr"].is_ready else float("nan")),
+            f"sma{self.cfg.trend_sma}": (
+                float(state["sma"].current.value)
+                if state["sma"].is_ready else float("nan")),
+        })
+        state["daily_rows"] = state["daily_rows"][-240:]
 
-    def on_data(self, data: Slice) -> None:
-        # Scanned securities have DAILY subscription. The separately-added
-        # anchor ticker has M1 bars: NEVER feed M1 into daily ATR/volume SMA.
-        for symbol in tuple(self._screen_states):
-            bar = data.bars.get(symbol)
-            if bar is None or bar.period < timedelta(hours=20):
-                continue
-            self._screen_update_daily(bar)
+    def _on_daily(self, bar: TradeBar) -> None:
+        self._append_daily(bar)
+
+    @staticmethod
+    def _frame(rows):
+        return (pd.DataFrame(rows).set_index("date").sort_index()
+                if rows else pd.DataFrame())
 
     def _refresh_screen_watchlist(self) -> None:
         qualifying = []
         for symbol, rank in self._screen_ranks.items():
-            state = self._screen_states.get(symbol)
+            state = self._symbols.get(symbol)
             if state is None or state["last_date"] is None:
                 continue
-            # Reject old snapshots / any future bar at pre-market decision.
-            age = (self.time.date() - state["last_date"]).days
-            if age <= 0 or age > 7:
+            age = (self.time.date() - state["last_date"].date()).days
+            if not 0 < age <= 7:
                 continue
             if not state["atr"].is_ready or not state["volume"].is_ready:
                 continue
-            a = float(state["atr"].current.value)
-            v = float(state["volume"].current.value)
+            a, v = (float(state["atr"].current.value),
+                    float(state["volume"].current.value))
             p = state["last_price"]
             if passes_gerchik_screener(p, a, v, self.cfg):
                 qualifying.append((rank, symbol, p, a, v))
 
-        # Fundamental candidates are already sorted by daily dollar volume.
-        qualifying.sort(key=lambda x: (x[0], x[1].value))
-        self.screen_watchlist = tuple(x[1] for x in
-                                      qualifying[:self.cfg.screener_watchlist_limit])
-        details = ", ".join(
-            f"{sym.value}(P={p:.2f},ATR={a:.2f},V20={v:.0f})"
-            for _, sym, p, a, v in
-            qualifying[:self.cfg.screener_watchlist_limit])
-        self.debug(f"GERCHIK SCREEN {self.time.date()}: "
-                   f"{len(qualifying)} qualified / "
-                   f"{len(self._screen_ranks)} liquid candidates. "
-                   f"TOP: {details or 'none'} [SIGNAL ONLY]")
-
-    def _daily_frame(self) -> pd.DataFrame:
-        if not self._daily_rows:
-            return pd.DataFrame()
-        return pd.DataFrame(self._daily_rows).set_index("date").sort_index()
-
-    def _m5_frame(self) -> pd.DataFrame:
-        if not self._minute5_rows:
-            return pd.DataFrame()
-        return pd.DataFrame(self._minute5_rows).set_index("date").sort_index()
+        qualifying.sort(key=lambda item: (item[0], item[1].value))
+        qualifying = qualifying[:self.cfg.screener_watchlist_limit]
+        self.screen_watchlist = tuple(row[1] for row in qualifying)
+        detail = ", ".join(
+            f"{s.value}(P={p:.2f},ATR={a:.2f},V20={v:.0f})"
+            for _, s, p, a, v in qualifying)
+        self.debug(f"SCREEN {self.time.date()}: "
+                   f"{len(qualifying)} qualified: {detail or 'none'}")
 
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
         self._signals_open = True
-        self._qualified_today = False
-        self._minute5_rows = []
-        self._decision = None
-        self._levels = []
+        # A manually subscribed clock stock may already exist before the
+        # fundamental universe selects it and won't necessarily appear in
+        # added_securities. Use the same native setup path, once.
+        if self.symbol in self._screen_ranks:
+            self._register_symbol(self.symbol)
         self._refresh_screen_watchlist()
+        for state in self._symbols.values():
+            state["qualified_today"] = False
+            state["decision"] = None
+            state["m5_rows"] = []
 
-        d1 = self._daily_frame()
-        d1 = d1[d1.index < _time_index(self.time).normalize()] if not d1.empty else d1
-        min_len = max(80, self.cfg.trend_sma + 26)
-        if len(d1) < min_len:
-            self.debug("NO SIGNAL: insufficient closed D1 history")
-            return
-
-        last = d1.iloc[-1]
-        atr_value = last.get(f"atr{self.cfg.atr_period}", float("nan"))
-        vol = float(d1["volume"].tail(self.cfg.volume_lookback_days).mean())
-        if (pd.isna(atr_value) or float(atr_value) < self.cfg.min_atr
-                or float(last["close"]) <= self.cfg.min_price
-                or vol < self.cfg.min_volume):
-            self.debug("NO SIGNAL: price/ATR/volume eligibility not met")
-            return
-
-        try:
-            self._levels = levels_for_session(d1, self._session_date, self.cfg)
-            self._decision = self._scenario_evaluator.evaluate(
-                self.symbol.value, self._session_date,
-                _time_index(self.time).to_pydatetime(),
-                d1, None, self._levels)
-            if self._decision.accepted:
-                self.debug(
-                    f"Prepared {self._decision.model}/{self._decision.side}"
-                    f" @ {self._decision.level.price:.2f}"
-                    f" score={self._decision.score:.2f}"
-                    " (no orders)")
-        except Exception as exc:
-            # Invalid strategy calculation must NEVER trigger fallback orders.
-            self._decision = None
-            self.error(f"Gerchik session calculation failed: {exc}")
+        for symbol in self.screen_watchlist:
+            state = self._symbols[symbol]
+            d1 = self._frame(state["daily_rows"])
+            if not d1.empty:
+                d1 = d1.loc[d1.index < _time_index(self.time).normalize()]
+            if len(d1) < max(80, self.cfg.trend_sma + 26):
+                self._record(symbol, "REJECT", reason="insufficient closed D1")
+                continue
+            try:
+                levels = levels_for_session(d1, self._session_date, self.cfg)
+                decision = self._scenario_evaluator.evaluate(
+                    symbol.value, self._session_date,
+                    _time_index(self.time).to_pydatetime(), d1, None, levels)
+                state["decision"] = decision
+                if decision.accepted:
+                    self._record(
+                        symbol, "SCENARIO", decision.model, decision.side,
+                        decision.level.price, decision.score,
+                        reason="D1 setup only; awaiting closed M5")
+                else:
+                    self._record(
+                        symbol, "REJECT", reason="; ".join(
+                            decision.rejected_reasons)[:500])
+            except Exception as exc:
+                state["decision"] = None
+                self._record(symbol, "ERROR", reason=str(exc))
+                self.error(f"Scenario error {symbol}: {exc}")
 
     def _on_m5(self, bar: TradeBar) -> None:
-        # This cutoff is driven by LEAN's exchange-specific market-close
-        # schedule, including early-close days; never use 16:00 as a shortcut.
-        if not self._signals_open:
+        symbol = bar.symbol
+        if (not self._signals_open or
+                symbol not in self.screen_watchlist or
+                _time_index(bar.end_time).date() != self._session_date):
             return
-        if self._session_date != _time_index(bar.end_time).date():
+        state = self._symbols.get(symbol)
+        if state is None:
             return
-        self._minute5_rows.append({
+        state["m5_rows"].append({
             "date": _time_index(bar.end_time),
             "open": float(bar.open), "high": float(bar.high),
             "low": float(bar.low), "close": float(bar.close),
-            "volume": float(bar.volume),
-        })
-        if self._qualified_today or not self._decision or not self._decision.accepted:
+            "volume": float(bar.volume)})
+        state["m5_rows"] = state["m5_rows"][-80:]
+        decision = state["decision"]
+        if state["qualified_today"] or decision is None or not decision.accepted:
             return
-
-        d1 = self._daily_frame()
-        if d1.empty:
-            return
-        market = MarketData(self.symbol.value, d1, self._m5_frame())
+        market = MarketData(
+            symbol.value, self._frame(state["daily_rows"]),
+            self._frame(state["m5_rows"]))
         try:
             intent = build_intent(
-                self._decision, market,
-                _time_index(bar.end_time).to_pydatetime(),
-                self.cfg,
-                equity=float(self.portfolio.total_portfolio_value))
-            if intent and intent.all_gates_passed:
-                window_ok, _ = self._session_policy.is_entry_allowed(
-                    intent.model, _time_index(bar.end_time).to_pydatetime())
-                if not window_ok:
-                    return
-                self._qualified_today = True
-                # This is an INTENT, NOT an order. A final LEAN buying-power
-                # check would be required if execution were ever enabled.
-                self.debug(
-                    f"SIGNAL {intent.model}/{intent.side} {self.symbol.value}"
-                    f" entry={intent.limit_price:.2f}"
-                    f" stop={intent.stop_price:.2f}"
-                    f" 3R risk/sh={intent.risk_per_share:.2f}"
-                    " [NO ORDER SENT]")
+                decision, market, _time_index(bar.end_time).to_pydatetime(),
+                self.cfg, equity=float(self.portfolio.total_portfolio_value))
+            if intent is None or not intent.all_gates_passed:
+                return
+            window_ok, _ = self._session_policy.is_entry_allowed(
+                intent.model, _time_index(bar.end_time).to_pydatetime())
+            if not window_ok:
+                return
+            state["qualified_today"] = True
+            # Portfolio/order limits remain research-only until entry
+            # execution is approved; no broker orders are generated here.
+            gates = ",".join(
+                f"{name}:{gate.passed}" for name, gate in intent.gates.items())
+            self._record(symbol, "INTENT", intent.model, intent.side,
+                         intent.level_price, decision.score,
+                         intent.limit_price, intent.stop_price,
+                         intent.risk_per_share, gates, "NO ORDERS SENT")
+            self.debug(
+                f"SIGNAL {symbol.value} {intent.model}/{intent.side}"
+                f" entry={intent.limit_price:.2f}"
+                f" stop={intent.stop_price:.2f} [NO ORDER]")
         except Exception as exc:
-            self.error(f"Gerchik M5 calculation failed: {exc}")
+            self._record(symbol, "ERROR", reason=str(exc))
+            self.error(f"Signal error {symbol}: {exc}")
+
+    def _cancel_before_close(self) -> None:
+        # Stop issuing signals before starting any native broker lifecycle.
+        self._signals_open = False
+        if not self._native_exit_enabled:
+            return
+        # Schwab may reject a new market exit while the cancelled stop
+        # still counts as open exposure. Give the broker 3 scheduled minutes.
+        self.transactions.cancel_open_orders()
 
     def _end_session(self) -> None:
-        # This event fires five minutes before the *actual* market close.
-        # Disable further signals; no positions/orders exist to liquidate.
         self._signals_open = False
-        self.debug("Session ending: signal-only, no broker action")
+        if not self._native_exit_enabled:
+            self.debug("EOD SIGNAL-ONLY: no orders/positions submitted")
+            return
+        # Fail closed on unresolved cancellations; do not invent an
+        # OCO/OMS cancellation workaround. Alert that FLAT is NOT proven.
+        if self.transactions.get_open_orders():
+            self.error("EOD CRITICAL: open/cancel-pending orders remain. "
+                       "No overlapping liquidation orders submitted; NOT FLAT.")
+            return
+        if self.portfolio.invested:
+            # LEAN native liquidation of ALL holdings. Schwab still
+            # may reject/partially fill a market exit, so verify separately.
+            self.liquidate(tag="GERCHIK EOD FLAT")
+
+    def _verify_flat_before_close(self) -> None:
+        if not self._native_exit_enabled:
+            return
+        if self.portfolio.invested or self.transactions.get_open_orders():
+            self.error("EOD CRITICAL: NOT FLAT; investigate in broker! "
+                       "No invented retries or orders.")
+        else:
+            self.log("EOD confirmed: no positions and no open LEAN orders")
 
     def on_order_event(self, event: OrderEvent) -> None:
-        # Never maintain a duplicate order ledger or emulate broker OCO.
-        self.log(f"LEAN order event (unexpected in signal-only mode): {event}")
+        # LEAN OrderEvent is authoritative, not a synthetic fill or ledger.
+        order = self.transactions.get_order_by_id(event.order_id)
+        tag = str(order.tag) if order is not None else ""
+        row = native_order_event_row(event, tag)
+        self._order_event_rows.append(row)
+        self.log(f"LEAN OrderEvent {row}")
+
+    def on_end_of_day(self, symbol: Symbol) -> None:
+        # Native LEAN event: in live deployments checkpoint after the
+        # exchange closes. Avoid 50 duplicate writes for 50 watchlist stocks.
+        # Backtests follow QuantConnect advice: save once at algorithm end.
+        if self.live_mode and symbol == self.symbol:
+            self._write_reports()
+
+    def on_end_of_algorithm(self) -> None:
+        self._write_reports()
+
+    def _write_reports(self) -> None:
+        # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
+        trades = native_closed_trade_rows(self.trade_builder.closed_trades)
+        outputs = {
+            "signal_decisions.csv": csv_rows(self._signal_rows, SIGNAL_FIELDS),
+            "native_order_events.csv": csv_rows(
+                self._order_event_rows, ORDER_FIELDS),
+            "native_closed_trades.csv": csv_rows(trades, TRADE_FIELDS),
+            "summary.json": summary_json(
+                self._signal_rows, self._order_event_rows, trades,
+                self.portfolio.invested),
+        }
+        # LEAN ObjectStore: save at algorithm end to avoid constant writes.
+        # A unique AlgorithmId avoids overwriting another backtest's results.
+        prefix = f"{self.project_id}/{self.algorithm_id}/gerchik"
+        for filename, body in outputs.items():
+            try:
+                if not self.object_store.save(f"{prefix}/{filename}", body):
+                    self.error(f"ObjectStore could not save {filename}")
+            except Exception as exc:
+                self.error(f"ObjectStore error saving {filename}: {exc}")
+        self.log(f"Gerchik journal and trade report: {prefix}")

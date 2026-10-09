@@ -17,16 +17,38 @@ alongside the strategy logic, not deferred behind new homemade wrappers.
 
 The native Fundamental Universe filters price above $5 and prior-session
 share volume >= 500k, ranks by dollar liquidity and subscribes to up to
-50 stocks at daily resolution. Native LEAN ATR(14) and SMA(20) of completed
+50 stocks at minute resolution (required for per-symbol M5 candles). Native LEAN ATR(14) and SMA(20) of completed
 D1 share volume then produce a top-10 eligible **watchlist**, printed
-before market open. The list is **not** an automatic list of trades:
-the existing single-symbol AAPL-by-default Gerchik signal logic remains
-separate; watchlist symbols do not yet run their own M5 scenarios.
+before market open. The list is **not** an automatic list of trades: the selected watchlist
+stocks are now analyzed independently through D1 + closed M5 conditions,
+but there are still NO broker order submissions.
 
 **Read [docs/EQUITY_SCREENER_2026-10-09.md](docs/EQUITY_SCREENER_2026-10-09.md)**
 for the official API references, a deliberate conservative one-day
 volume prefilter, and all runtime verification gaps. No custom data feed,
 new ATR calculator, brokerage access or execution is introduced.
+
+## Multi-stock Gerchik signals, EOD preparation and native reports (PR #3)
+
+The branch based on the unfinished [PR #2 screener] contains D1/M5
+consolidators, native ATR/SMA and **independent Gerchik decisions for up to
+10 shortlisted stocks**. Universe candidate subscriptions are at minute
+resolution (capped at 50) and managed by LEAN, including native removal
+of old consolidators.
+
+LEAN's native, Schwab-documented **cancel first → wait for confirmation →
+liquidate all holdings → verify flat** sequence has been coded behind the
+permanently disabled `_native_exit_enabled = False` safety flag.
+**EOD flattening is NOT active and not broker-verified.**
+
+Reports use genuine `OnOrderEvent` events and
+`TradeBuilder.closed_trades` only, saved through native LEAN Object Store
+at algorithm end and checkpointed once daily during live operation.
+Signal-only mode produces decision logs and **zero trades**, as expected.
+
+Review [docs/MULTISYMBOL_EOD_REPORTING_2026-10-09.md](docs/MULTISYMBOL_EOD_REPORTING_2026-10-09.md)
+before any claim of execution readiness. Python-only tests do not prove
+LEAN/Schwab behavior. No order-entry code has been added.
 
 ## Architecture: use LEAN instead of writing a second LEAN
 

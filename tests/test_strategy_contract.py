@@ -100,11 +100,14 @@ def test_eight_original_signal_gates_exist():
 def test_no_shadow_oms_or_trading_in_lean_entrypoint():
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
     assert "class QwctGerchikAlgorithm(QCAlgorithm)" in src
-    assert "self._atr = AverageTrueRange(" in src
-    assert "self._sma = SimpleMovingAverage(" in src
+    assert '"atr": AverageTrueRange(' in src
+    assert '"sma": SimpleMovingAverage(' in src
     assert "self.schedule.on(" in src
     assert "self.portfolio.total_portfolio_value" in src
+    assert 'self._native_exit_enabled = False' in src
+    assert 'self.transactions.cancel_open_orders()' in src
+    assert 'self.liquidate(tag="GERCHIK EOD FLAT")' in src
     assert not any(x in src for x in (
         "OrderManager", "BrokerAdapter", "NativeBracketGateway",
         "self.market_order(", "self.limit_order(",
-        "self.bracket_order(", "self.liquidate("))
+        "self.bracket_order("))

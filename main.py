@@ -146,16 +146,19 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 "last_price": None,
             }
         try:
-            # One batch request for newly subscribed stocks; history here is
-            # explicitly supported by LEAN OnSecuritiesChanged. No broker I/O.
+            # A typed single-symbol History[TradeBar] yields TradeBars.
+            # The MULTI-symbol overload can yield DataDictionary[TradeBar];
+            # do not iterate it as a flat list of bars. These are native
+            # historical requests, not a replacement market-data client.
             lookback = max(self.cfg.volume_lookback_days,
                            self.cfg.atr_period + 1) + 10
-            history = self.history[TradeBar](
-                added, lookback, Resolution.DAILY,
-                data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED)
-            for bar in history:
-                if _time_index(bar.time).date() < self.time.date():
-                    self._screen_update_daily(bar)
+            for symbol in added:
+                history = self.history[TradeBar](
+                    symbol, lookback, Resolution.DAILY,
+                    data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED)
+                for bar in history:
+                    if _time_index(bar.time).date() < self.time.date():
+                        self._screen_update_daily(bar)
         except Exception as exc:
             self.error(f"Native screener history unavailable: {exc}")
             # Unready indicators fail closed. No estimated ATR/volume.

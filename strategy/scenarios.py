@@ -164,5 +164,5 @@ def _atr_value(d1: pd.DataFrame, cfg: StrategyConfig) -> float:
     from .indicators import atr
     v = atr(d1, cfg.atr_period).iloc[-1]
     if pd.isna(v) or v <= 0:
-        v = (d1["high"] - d1["low"]).tail(14).mean()
-    return float(max(v, 1e-9))
+        raise ValueError("Native LEAN ATR is not ready")
+    return float(v)

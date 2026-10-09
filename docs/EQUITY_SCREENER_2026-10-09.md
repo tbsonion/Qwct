@@ -89,8 +89,9 @@ Official references:
   spread/stale-quote screener, no "familiar instrument" allowlist.
 - Separate single-symbol historical requests (up to 50 on first load)
   increase startup data work; optimize only with verified native responses.
-- Corporate-action adjustment compatibility with `SPLIT_ADJUSTED`
-  D1 indicator warmup needs actual LEAN verification.
+- The original manually subscribed ticker now also uses `SPLIT_ADJUSTED`
+  to match scanned symbols and prevent mixing raw vs adjusted D1 history.
+  Split/corporate-action behavior still needs actual LEAN verification.
 - No transactions, stop/TP changes, broker credentials, or risk engine.
   The strategy remains signal-only.
 

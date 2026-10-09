@@ -35,8 +35,8 @@ class FeatureResult:
 def _a(d1: pd.DataFrame, cfg: StrategyConfig) -> float:
     v = atr(d1, cfg.atr_period).iloc[-1]
     if pd.isna(v) or v <= 0:
-        v = (d1["high"] - d1["low"]).tail(14).mean()
-    return float(max(v, 1e-9))
+        raise ValueError("Native LEAN ATR is not ready; do not approximate it")
+    return float(v)
 
 
 def _dist(price: float, lvl: float, a: float) -> float:

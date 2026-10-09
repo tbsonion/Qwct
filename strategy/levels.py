@@ -83,7 +83,7 @@ def detect_levels(d1_asof: pd.DataFrame, cfg: StrategyConfig) -> list[Level]:
     a = atr(d1_asof, cfg.atr_period)
     tol = float((a * cfg.level_tolerance_atr).median())
     if not np.isfinite(tol) or tol <= 0:
-        tol = float(d1_asof["close"].iloc[-1] * 0.005)
+        return []  # No native ATR -> no guessed cluster tolerance
 
     highs, lows = _confirmed_swings(d1_asof, cfg.swing_k)
     levels: list[Level] = []

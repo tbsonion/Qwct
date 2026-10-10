@@ -81,6 +81,29 @@ def test_repeated_or_out_of_order_bars_must_not_form_bpu2():
     assert d.on_bar(m5(BPU1_END, 100.05, 100.45)).phase == "invalidated"
 
 
+def test_historical_bsu_bar_must_finish_before_bpu1_begins():
+    # BSU ends 2 minutes before BPU1 closes, which is INSIDE
+    # that five-minute BPU1 candle; they overlap rather than
+    # being sequential historical and confirming bars.
+    d = BsuDetector(
+        StrategyConfig(), 100., "long", atr_value=4., tick_size=.01,
+        bsu_ts=BPU1_END - timedelta(minutes=2))
+    assert d.on_bar(m5(BPU1_END, 100., 100.4)).phase == "invalidated"
+
+
+def test_one_second_bpu_cannot_have_30s_preclose_after_bpu1():
+    d = detector()
+    at = BPU1_END
+    sec_bar = Bar(at, 100.2, 100.4, 100., 100.2, "SEC")
+    assert d.on_bar(sec_bar).phase == "bpu1"
+    with pytest.raises(ValueError):
+        d.observe_preclose(
+            observed_at=at + timedelta(seconds=1) - timedelta(seconds=30),
+            bpu2_end=at + timedelta(seconds=1),
+            observed_low=100.1, observed_high=100.4,
+            last_price=100.2, source="TICK")
+
+
 def test_unknown_source_bsu_or_native_tick_size_cannot_be_guessed():
     with pytest.raises(ValueError):
         BsuDetector(StrategyConfig(), 100., "long", atr_value=4.)

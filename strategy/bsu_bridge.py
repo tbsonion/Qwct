@@ -24,6 +24,10 @@ class BsuResearchLink:
     detector: BsuDetector
     origin_time: datetime
     tick_size: float
+    # The median of a D1 swing cluster is a screening/scenario level, not
+    # automatically the native origin swing's exact high/low.
+    cluster_price: float
+    origin_price: float
     provenance: str = "D1_CONFIRMED_SWING_PROXY_NOT_CANONICAL_BSU"
 
 
@@ -92,15 +96,23 @@ def create_bsu_research_observer(
             return None, "historical origin not closed before session"
         origin_price = float(d1_asof.iloc[lvl.first_idx][
             "low" if lvl.kind == "support" else "high"])
-        if (not isfinite(origin_price) or origin_price <= 0
-                or not isfinite(lvl.price) or lvl.price <= 0
-                or abs(origin_price - lvl.price) > tick * 0.500001):
-            return None, "swing origin price is not an exact native-tick level"
         atr_value = float(d1_asof.iloc[-1][f"atr{cfg.atr_period}"])
         if not isfinite(atr_value) or atr_value <= 0:
             return None, "native D1 ATR is not ready"
+        if (not isfinite(origin_price) or origin_price <= 0
+                or not isfinite(lvl.price) or lvl.price <= 0):
+            return None, "swing origin price/cluster level is invalid"
+        # Swing clustering is allowed to group nearby, but distinct,
+        # native daily highs/lows. The *first actual pivot extreme* is a
+        # traceable research origin; the cluster median cannot be called
+        # the exact price that originated BSU. Ensure both belong to the
+        # same as-of ATR-tolerance cluster; don't fabricate an origin.
+        cluster_tol = atr_value * cfg.level_tolerance_atr
+        if (not isfinite(cluster_tol) or cluster_tol <= 0
+                or abs(origin_price - lvl.price) > cluster_tol + tick * 1e-7):
+            return None, "native pivot lies outside the D1 cluster tolerance"
         detector = BsuDetector(
-            cfg, float(lvl.price), decision.side,
+            cfg, origin_price, decision.side,
             atr_value=atr_value, tick_size=tick,
             bsu_ts=origin_end.to_pydatetime())
     except (ValueError, TypeError, KeyError, IndexError, OverflowError) as exc:
@@ -110,4 +122,7 @@ def create_bsu_research_observer(
         detector=detector,
         origin_time=origin_end.to_pydatetime(),
         tick_size=tick,
-    ), "research-only D1 swing origin linked; NOT a canonical BSU or TVX"
+        cluster_price=float(lvl.price),
+        origin_price=origin_price,
+    ), ("research-only D1 native pivot linked; cluster median distinct "
+        "from pivot; NOT a canonical BSU or TVX")

@@ -67,12 +67,36 @@ def test_native_short_resistance_proxy_can_follow_same_rules():
     assert link is not None, reason
 
 
-def test_mixed_price_average_cannot_be_presented_as_precise_bsu_origin():
+def test_cluster_median_kept_separate_from_native_bsu_pivot():
+    # Two native D1 swings may legitimately cluster at 100.00/100.06.
+    # Their median 100.03 is NOT an exact native BSU touch level.
+    # Retain 100.00 as the *labeled proxy pivot* rather than inventing
+    # a precisely touched 100.03 BSU or rejecting all clustered levels.
     decision, daily = evidence(level_price=100.03)
     link, reason = create_bsu_research_observer(
         decision, daily, native_tick_size=.01, cfg=StrategyConfig())
+    assert link is not None, reason
+    assert link.detector.state.level_price == 100.
+    assert link.cluster_price == 100.03
+    assert link.origin_price == 100.
+    assert link.provenance.startswith("D1_CONFIRMED_SWING_PROXY")
+
+
+def test_cluster_outside_native_atr_tolerance_still_blocks():
+    decision, daily = evidence(level_price=101.51)
+    link, reason = create_bsu_research_observer(
+        decision, daily, native_tick_size=.01, cfg=StrategyConfig())
     assert link is None
-    assert "origin" in reason.lower()
+    assert "cluster" in reason.lower()
+
+
+def test_short_cluster_median_uses_resistance_pivot():
+    decision, daily = evidence(kind="resistance", side="short",
+                               level_price=99.97)
+    link, reason = create_bsu_research_observer(
+        decision, daily, native_tick_size=.01, cfg=StrategyConfig())
+    assert link is not None, reason
+    assert link.detector.state.level_price == 100.
 
 
 def test_no_native_bar_end_means_no_bsu_origin():

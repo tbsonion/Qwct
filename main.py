@@ -82,6 +82,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # Minute resolution is required for real M5 consolidators on *each*
         # selected stock, not only on the anchor or first watchlist stock.
         self.universe_settings.resolution = Resolution.MINUTE
+        # By default LEAN forward-fills bars when there are no trades.
+        # Gerchik M5 confirmation must not be inferred from those
+        # previously observed prices as if a real fresh bar arrived.
+        self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
         self.universe_settings.data_normalization_mode = (
             DataNormalizationMode.SPLIT_ADJUSTED)

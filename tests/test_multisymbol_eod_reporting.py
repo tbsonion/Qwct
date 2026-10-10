@@ -159,7 +159,11 @@ def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
     assert 'self.plot("Qwct Focus", "D1 Level",' in src
     assert 'self._chart_symbol' in src
     assert 'if self._chart_symbol is None and self.screen_watchlist:' in src
-    assert 'if symbol == self._chart_symbol:' in src
+    assert 'if symbol == self._chart_symbol and self._focus_m5_plotted < 3500:' in src
+    assert 'and self._focus_m5_plotted < 3500):' in src
+    assert '"Qwct focus M5 plotted"' in src
+    assert '"Qwct top BSU blocker"' in src
+    assert '"Qwct top M5 gate"' in src
     # LEAN Free has 10 allowed chart series; existing research has 5,
     # focus chart must be <=4 rather than allocating one chart per stock.
     assert 'self.plot("Qwct Focus", "BPU1",' in src

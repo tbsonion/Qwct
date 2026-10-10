@@ -175,7 +175,6 @@ def test_preclose_fails_closed_without_precise_timing(source, at_delta):
         d.observe_preclose(
             observed_at=at, bpu2_end=BPU2_END,
             observed_since=BPU1_END,
-        observed_since=BPU1_END,
             observed_low=100.10, observed_high=100.45,
             last_price=100.2, source=source)
 

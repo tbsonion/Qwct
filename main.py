@@ -173,6 +173,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "daily_rows": [], "m5_rows": [],
             "last_date": None, "last_price": None,
             "decision": None, "qualified_today": False,
+            "session_levels": None,
         }
         self._symbols[symbol] = state
         # Native LEAN consolidators must be removed on universe removal.
@@ -273,6 +274,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         for state in self._symbols.values():
             state["qualified_today"] = False
             state["decision"] = None
+            state["session_levels"] = None
             state["m5_rows"] = []
 
         for symbol in self.screen_watchlist:
@@ -284,7 +286,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self._record(symbol, "REJECT", reason="insufficient closed D1")
                 continue
             try:
-                levels = levels_for_session(d1, self._session_date, self.cfg)
+                levels = tuple(levels_for_session(d1, self._session_date, self.cfg))
+                # Freeze exactly the D1 levels used to rank the morning
+                # scenarios. Recalculate neither their kind nor their
+                # next-level distances while a live M5 is arriving.
+                state["session_levels"] = levels
                 decision = self._scenario_evaluator.evaluate(
                     symbol.value, self._session_date,
                     _time_index(self.time).to_pydatetime(), d1, None, levels)
@@ -333,7 +339,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             return
         market = MarketData(
             symbol.value, self._frame(state["daily_rows"]),
-            self._frame(state["m5_rows"]))
+            self._frame(state["m5_rows"]),
+            session_levels=state["session_levels"])
         try:
             self._m5_checks += 1
             intent = build_intent(

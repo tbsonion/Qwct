@@ -300,9 +300,15 @@ def _atr(d1: pd.DataFrame, cfg: StrategyConfig) -> float | None:
 
 
 def _session_levels(market: MarketData, ts: datetime, cfg: StrategyConfig,
-                    session: date) -> list[Level]:
+                    session: date) -> tuple[Level, ...]:
+    # Session D1 levels are frozen once before trading. A missing or empty
+    # snapshot is significant: never silently add/recalculate levels
+    # from data that may have changed since the 09:29 decision.
+    if market.session_levels is not None:
+        return market.session_levels
+    # Backwards-compatible only for pure callers without a frozen snapshot.
     from .levels import levels_for_session
-    return levels_for_session(market.d1_asof(ts), session, cfg)
+    return tuple(levels_for_session(market.d1_asof(ts), session, cfg))
 
 
 def build_intent(decision: ScenarioDecision, market: MarketData,

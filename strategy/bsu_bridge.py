@@ -15,6 +15,7 @@ from math import isfinite
 import pandas as pd
 
 from .config import StrategyConfig
+from .levels import native_cluster_tolerance
 from .patterns_bsu import BsuDetector
 from .scenarios import ScenarioDecision
 
@@ -107,9 +108,9 @@ def create_bsu_research_observer(
         # traceable research origin; the cluster median cannot be called
         # the exact price that originated BSU. Ensure both belong to the
         # same as-of ATR-tolerance cluster; don't fabricate an origin.
-        cluster_tol = atr_value * cfg.level_tolerance_atr
-        if (not isfinite(cluster_tol) or cluster_tol <= 0
-                or abs(origin_price - lvl.price) > cluster_tol + tick * 1e-7):
+        cluster_tol = native_cluster_tolerance(d1_asof, cfg)
+        if (cluster_tol is None or
+                abs(origin_price - lvl.price) > cluster_tol + tick * 1e-7):
             return None, "native pivot lies outside the D1 cluster tolerance"
         detector = BsuDetector(
             cfg, origin_price, decision.side,

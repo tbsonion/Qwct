@@ -41,6 +41,7 @@ class MarketData:
         return self.d1.loc[self.d1.index < current_day]
 
     def m5_asof(self, ts: datetime) -> pd.DataFrame:
+        asof = _et(ts)
         if self.m5 is None:
             return pd.DataFrame()
-        return self.m5.loc[self.m5.index <= _et(ts)]
+        return self.m5.loc[self.m5.index <= asof]

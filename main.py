@@ -60,6 +60,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # source-level kill switch until protective entries are independently
         # verified with the LEAN/Schwab brokerage integration.
         self._native_exit_enabled = False
+        # QuantConnect Cloud Free organizations cannot write ObjectStore.
+        # Keep signal research usable without misleading export errors.
+        # This is a SOURCE-LEVEL research setting, not a trading toggle.
+        self._object_store_export_enabled = False
         # LEAN defaults to FILL_TO_FILL, which is not a full position
         # round-trip. Use its official FLAT_TO_FLAT TradeBuilder grouping.
         self.set_trade_builder(TradeBuilder(
@@ -400,6 +404,20 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._write_reports()
 
     def _write_reports(self) -> None:
+        if not self._object_store_export_enabled:
+            # The Free cloud plan has no ObjectStore write permission.
+            # Emit only a short end-of-run count; DO NOT claim the complete
+            # decision journal was saved (it remains in-memory only).
+            counts = {key: sum(row["type"] == key
+                               for row in self._signal_rows)
+                      for key in ("INTENT", "SCENARIO", "REJECT", "ERROR")}
+            self.log(
+                "Qwct end-of-run signal summary: "
+                + ", ".join(f"{key}={value}" for key, value in counts.items())
+                + "; ObjectStore export DISABLED (Free organization). "
+                  "Full decision CSV/JSON NOT saved."
+            )
+            return
         # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
         trades = native_closed_trade_rows(self.trade_builder.closed_trades)
         outputs = {

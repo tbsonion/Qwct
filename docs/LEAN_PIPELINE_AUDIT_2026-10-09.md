@@ -164,3 +164,100 @@ Changes are **not merged**. No brokerage submissions were added or enabled.
 **Truth boundary:** GitHub CI passing means source/pure tests pass.
 It is NOT proof that the unverified diagnostic modifications run in
 LEAN or that a Gerchik signal would be executed safely at Schwab.
+
+
+## Second-pass source audit: additional concrete failures and fixes
+
+These were identified only after inspecting all files under `strategy/`
+against the D1/M5 Gerchik specification, rather than inferring success
+from the $25k flat equity chart.
+
+### A. P0 false positives caused by LEAN default fill-forward
+
+LEAN defaults `UniverseSettings.FillForward=True`. It may emit the
+previous price when no new trade arrived. A 5-minute consolidator can
+therefore receive derived/fill-forward data instead of exclusively
+fresh trade evidence, while the signal gate treats any M5 close on
+the right side of the level as a confirmation.
+
+**Fix (code, not cloud-validated):**
+`self.universe_settings.fill_forward = False` before `add_universe`.
+The manually added SPY clock is not a trading candidate. Source-level
+unit guard added. Actual resulting M5 volume/coverage must be checked
+using LEAN (this change has NOT had that verification).
+
+Official: https://www.quantconnect.com/docs/v2/writing-algorithms/securities/asset-classes/us-equity/requesting-data
+and https://www.quantconnect.com/docs/v2/writing-algorithms/algorithm-framework/universe-selection/universe-settings
+
+### B. P0 scenario approval despite hidden feature exceptions
+
+`features.evaluate_all` converts exceptions into
+`FeatureResult(value=None, reason="ошибка: ...")`. Previously,
+`ScenarioEvaluator` could still accept the model if the *other* features
+scored 4+, silently hiding a failed calculation.
+
+**Fix:** `ScenarioEvaluator.evaluate` now rejects a candidate level
+if any feature has a computation error. Missing/unknown evidence that
+was not caused by a computation error remains separate. A regression
+test verifies that 4+ points cannot override one feature error.
+
+### C. P1 a fake D1 liquidity-sweep signal (g14)
+
+`g14_liquidity_sweep` previously calculated
+`max(bar.high - level, level - bar.low)`, so a bar that **never crossed**
+a level could be labelled a liquidity sweep if the next close crossed
+the level in the opposite direction.
+
+**Fix:** require the price to begin on the starting side, exceed the
+level by a finite small amount (<=0.5 ATR), and have a subsequent
+**closed D1** candle back on the original side. Regression covers an
+all-below-resistance bar (reject) and an actual upward probe followed
+by a next-day rejection (accept). This is a *simple* D1 feature;
+complex Gerchik false breakouts remain unimplemented.
+
+### D. P1 level strength fabricated from an OHLC range
+
+Prior `_aval` returned the single bar high-low range as the ATR value
+when native LEAN ATR for that historical index was unready. This
+could award the +2 consolidation / +1 reversal strength bonuses
+with **invented ATR** during indicator warmup.
+
+**Fix:** `_native_atr` returns `None` when the per-bar native ATR
+is missing, nonfinite or nonpositive. Such strength bonuses are
+skipped, not estimated. Pure rule regression verifies a
+strength=2 level does not grow to strength=4 under missing ATR.
+
+### E. Critical limitations still OPEN
+
+1. **Real risk manager not wired**: `build_intent(... risk_mgr=None)`
+   uses a preliminary affordability calculation and can produce a
+   `risk_approved=True` gate while daily, weekly, monthly, exposure,
+   position count, losing streak, attempt count and buying power
+   constraints are not checked. This is NOT an execution approval;
+   all orders remain disabled.
+2. **Full decision journal absent on Free**: ObjectStore write is denied;
+   counters/charts do not provide per-signal evidence sufficient for
+   independent evaluation. A supported export mechanism is required
+   before systematic validation.
+3. **No empirically verified model quality**: independent historical
+   bar-to-indicator comparisons, chart-validated Gerchik levels,
+   3 model/8 gate outcomes, timestamp alignment, and P&L validation
+   have not been performed in this tool environment. Source-only CI
+   cannot certify them.
+4. **No approved-symbol universe restriction**: spec says trade only
+   familiar tickers; current screener is automatic top liquidity.
+5. **No live spread/no-chase enforcement**: `max_spread_bps` and
+   `max_entry_distance_atr` are declared but unused in active
+   decision code.
+6. **No EOD brokerage execution certification**: forced-flat code
+   remains behind a hard FALSE flag, and Schwab cancel/partial-fill
+   semantics must not be inferred from docs or pure tests.
+
+### Trust boundary for revisions
+
+The real Cloud LEAN smoke that completed in 57.36 seconds predates
+these second-pass corrections. The latest revisions have *only*
+passed GitHub's Python compile/rules-only CI; there has been NO
+fresh native LEAN execution with the revision. Keep PR draft and
+unmerged. Never request the user to perform repetitive manual tests
+while material source-level gaps remain.

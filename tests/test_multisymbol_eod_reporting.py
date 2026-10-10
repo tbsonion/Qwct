@@ -78,6 +78,8 @@ def test_source_uses_actual_leans_native_multi_symbol_events():
     assert '"Qwct Research", "Signal intents"' in src
     assert "self.set_runtime_statistic(" in src
     assert "self._gate_failures[name] += 1" in src
+    assert "self._m5_bars_seen += 1" in src
+    assert "Qwct M5 bars" in src
     assert "ObjectStore DISABLED: decision CSV/JSON NOT saved." in src
 
 

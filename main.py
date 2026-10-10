@@ -16,6 +16,8 @@ from strategy.config import StrategyConfig
 from strategy.data import MarketData
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
+from strategy.bsu_bridge import create_bsu_research_observer
+from strategy.patterns_bsu import Bar as ResearchBpuBar
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
@@ -77,6 +79,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()
+        self._bsu_proxy_armed_count = 0
+        self._bsu_proxy_bpu2_count = 0
 
         # Native Fundamental Universe owns stock membership and data feeds.
         # Minute resolution is required for real M5 consolidators on *each*
@@ -174,6 +178,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "last_date": None, "last_price": None,
             "decision": None, "qualified_today": False,
             "session_levels": None,
+            "bsu_link": None,
         }
         self._symbols[symbol] = state
         # Native LEAN consolidators must be removed on universe removal.
@@ -218,6 +223,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "open": float(bar.open), "high": float(bar.high),
             "low": float(bar.low), "close": float(bar.close),
             "volume": float(bar.volume),
+            # Store the native LEAN end timestamp, not an invented 16:00
+            # close, so the D1 origin can be traced in BPU research.
+            "bar_end": _time_index(bar.end_time).to_pydatetime(),
             f"atr{self.cfg.atr_period}": (
                 float(state["atr"].current.value)
                 if state["atr"].is_ready else float("nan")),
@@ -275,6 +283,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             state["qualified_today"] = False
             state["decision"] = None
             state["session_levels"] = None
+            state["bsu_link"] = None
             state["m5_rows"] = []
 
         for symbol in self.screen_watchlist:
@@ -295,6 +304,19 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     symbol.value, self._session_date,
                     _time_index(self.time).to_pydatetime(), d1, None, levels)
                 state["decision"] = decision
+                if decision.accepted and decision.model == "bounce":
+                    # Native symbol properties (never a guessed USD 0.01)
+                    # and actual as-of D1 origin are mandatory. A confirmed
+                    # D1 swing is only a BSU PROXY, not a discretionary BSU.
+                    native_tick_size = float(
+                        self.securities[symbol].symbol_properties.minimum_price_variation)
+                    link, why = create_bsu_research_observer(
+                        decision, d1, native_tick_size, self.cfg)
+                    state["bsu_link"] = link
+                    if link is not None:
+                        self._bsu_proxy_armed_count += 1
+                    else:
+                        self._record(symbol, "BSU_PROXY_BLOCKED", reason=why)
                 if decision.accepted:
                     self._record(
                         symbol, "SCENARIO", decision.model, decision.side,
@@ -334,6 +356,35 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "low": float(bar.low), "close": float(bar.close),
             "volume": float(bar.volume)})
         state["m5_rows"] = state["m5_rows"][-80:]
+        # Observe closed native M5 BPU1/BPU2 for D1 swing proxies
+        # independently of M5 gate scoring. This is NO TVX signal:
+        # the original method requires 30 seconds BEFORE BPU2 close.
+        link = state["bsu_link"]
+        if link is not None:
+            try:
+                if link.detector.state.phase == "invalidated":
+                    link.detector.reset()
+                before_phase = link.detector.state.phase
+                observed = link.detector.on_bar(ResearchBpuBar(
+                    ts=_time_index(bar.end_time).to_pydatetime(),
+                    open=float(bar.open), high=float(bar.high),
+                    low=float(bar.low), close=float(bar.close),
+                    timeframe="M5", volume=float(bar.volume)))
+                if observed.phase == "bpu2_confirmed" and before_phase != observed.phase:
+                    self._bsu_proxy_bpu2_count += 1
+                    self._record(
+                        symbol, "BSU_PROXY_BPU2_CLOSED",
+                        model="bounce", side=observed.side,
+                        level=observed.level_price,
+                        reason=(
+                            f"{link.provenance}; D1 origin={link.origin_time}; "
+                            "BPU2 completed on native closed M5; "
+                            "NO 30s TVX observation, NO ORDERS OR FILLS"))
+            except Exception as exc:
+                # Do not hide broken native D1/M5 integration as a signal.
+                state["bsu_link"] = None
+                self._record(symbol, "ERROR", reason=f"BPU bridge: {exc}")
+                self.error(f"BPU research error {symbol}: {exc}")
         decision = state["decision"]
         if state["qualified_today"] or decision is None or not decision.accepted:
             return
@@ -354,7 +405,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 # missing native portfolio/Schwab risk approval is NEVER
                 # sufficient to issue an INTENT or any broker order.
                 research_ready = (
-                    intent.gates["risk_approved"].passed is None
+                    # An approximate 2-bar bounce cannot stand in for
+                    # Gerchik's explicit BPU/TVX pattern. A CLOSED BPU2
+                    # observation still cannot prove the 30s entry.
+                    intent.model != "bounce"
+                    and intent.gates["risk_approved"].passed is None
                     and intent.shares > 0
                     and intent.limit_price > 0
                     and intent.shares * intent.limit_price <=
@@ -432,6 +487,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.plot("Qwct Research", "Research candidates",
                       sum(row["type"] == "RESEARCH_CANDIDATE"
                           for row in self._signal_rows))
+            self.plot("Qwct Research", "Closed BPU2 proxies",
+                      self._bsu_proxy_bpu2_count)
             return
         # Fail closed on unresolved cancellations; do not invent an
         # OCO/OMS cancellation workaround. Alert that FLAT is NOT proven.
@@ -482,6 +539,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.set_runtime_statistic(stat, counts[kind])
         self.set_runtime_statistic(
             "Qwct research candidates", counts["RESEARCH_CANDIDATE"])
+        self.set_runtime_statistic(
+            "Qwct BSU swing proxies armed", self._bsu_proxy_armed_count)
+        self.set_runtime_statistic(
+            "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
         self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
         self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
         if not self._object_store_export_enabled:

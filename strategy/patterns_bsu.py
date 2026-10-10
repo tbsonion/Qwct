@@ -221,6 +221,9 @@ class BsuDetector:
             raise ValueError("SEC/TICK preclose observations required")
         if end != expected_end or end - at != timedelta(seconds=30):
             raise ValueError("preclose must be exactly 30s before next BPU2 end")
+        if at <= _aware("bpu1_ts", st.bpu1_ts):
+            raise ValueError(
+                "30s TVX must occur after BPU1 and before BPU2 close")
         low = _positive("observed_low", observed_low)
         high = _positive("observed_high", observed_high)
         price = _positive("last_price", last_price)
@@ -253,8 +256,10 @@ class BsuDetector:
         st.history.append(bar.ts)
 
         if st.phase == "watch_bpu1":
-            if now <= _aware("bsu_ts", self._bsu_ts):
-                return self._invalidate("BPU1 must follow historical BSU bar")
+            bpu1_start = now - _BAR_PERIODS[bar.timeframe]
+            if bpu1_start < _aware("bsu_ts", self._bsu_ts):
+                return self._invalidate(
+                    "historical BSU bar overlaps the BPU1 candle")
             if self._touch_exact(bar):
                 st.phase = "bpu1"
                 st.bpu1_ts = bar.ts

@@ -17,8 +17,13 @@ ET = ZoneInfo("America/New_York")
 
 
 def _et(ts: datetime) -> pd.Timestamp:
+    # A wrong timezone can shift the D1 cutoff by an entire day around
+    # midnight or DST. Fail closed instead of interpreting naive data
+    # as if its native source were known to be US/Eastern.
     value = pd.Timestamp(ts)
-    return value.tz_localize(ET) if value.tzinfo is None else value.tz_convert(ET)
+    if value.tzinfo is None:
+        raise ValueError("as-of timestamp must include a real timezone")
+    return value.tz_convert(ET)
 
 
 @dataclass

@@ -1,5 +1,6 @@
 """Pure deterministic rule tests. NOT a profitability backtest or broker simulation."""
 from datetime import datetime, date
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -39,7 +40,11 @@ def test_native_atr_only():
 
 def test_levels_fail_closed_without_native_atr():
     cfg = StrategyConfig()
-    assert detect_levels(daily(native_atr=False), cfg) == []
+    # A missing LEAN indicator snapshot must reject cleanly, without
+    # a NumPy nanmedian/empty-slice warning masquerading as research output.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        assert detect_levels(daily(native_atr=False), cfg) == []
 
 
 def test_levels_have_no_lookahead():

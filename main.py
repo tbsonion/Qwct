@@ -343,6 +343,32 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self._intent_missing_atr += 1
                 return
             if not intent.all_gates_passed:
+                # Distinguish a research-worthy setup from an approved trade:
+                # missing native portfolio/Schwab risk approval is NEVER
+                # sufficient to issue an INTENT or any broker order.
+                research_ready = (
+                    intent.gates["risk_approved"].passed is None
+                    and intent.shares > 0
+                    and intent.limit_price > 0
+                    and intent.shares * intent.limit_price <=
+                        float(self.portfolio.total_portfolio_value)
+                    and all(gate.passed is True for name, gate in intent.gates.items()
+                            if name != "risk_approved")
+                )
+                if research_ready:
+                    window_ok, _ = self._session_policy.is_entry_allowed(
+                        intent.model, _time_index(bar.end_time).to_pydatetime())
+                    if window_ok:
+                        state["qualified_today"] = True
+                        gates = ",".join(
+                            f"{name}:{gate.passed}" for name, gate in intent.gates.items())
+                        self._record(
+                            symbol, "RESEARCH_CANDIDATE", intent.model, intent.side,
+                            intent.level_price, decision.score,
+                            intent.limit_price, intent.stop_price,
+                            intent.risk_per_share, gates,
+                            "PRELIMINARY ONLY: native risk/buying-power and "
+                            "protected brokerage entry NOT approved; NO ORDERS")
                 # Counts are per evaluated M5 bar (not distinct trades).
                 for name, gate in intent.gates.items():
                     if gate.passed is not True:
@@ -395,7 +421,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             # Plot only one point per market day, not one per M5 bar.
             # This diagnostic cannot create orders or change gates.
             self.plot("Qwct Research", "Signal intents",
-                      sum(row["type"] == "INTENT" for row in self._signal_rows))
+                      sum(row["type"] in ("INTENT", "RESEARCH_CANDIDATE")
+                  for row in self._signal_rows))
             return
         # Fail closed on unresolved cancellations; do not invent an
         # OCO/OMS cancellation workaround. Alert that FLAT is NOT proven.
@@ -444,6 +471,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                            ("Qwct rejects", "REJECT"),
                            ("Qwct errors", "ERROR")):
             self.set_runtime_statistic(stat, counts[kind])
+        self.set_runtime_statistic(
+            "Qwct research candidates", counts["RESEARCH_CANDIDATE"])
         self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
         self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
         if not self._object_store_export_enabled:
@@ -459,7 +488,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.log(
                 "Qwct research summary: "
                 + ", ".join(f"{key}={counts[key]}" for key in
-                            ("SCENARIO", "INTENT", "REJECT", "ERROR"))
+                            ("SCENARIO", "RESEARCH_CANDIDATE", "INTENT",
+                             "REJECT", "ERROR"))
                 + f"; M5 bars={self._m5_bars_seen}, "
                   f"M5 bar checks={self._m5_checks}, "
                   f"unready={self._intent_missing_atr}"

@@ -61,7 +61,10 @@ class TradeIntent:
 
     @property
     def all_gates_passed(self) -> bool:
-        return all(g.passed is True for g in self.gates.values())
+        # Python all([]) is True; an incomplete/empty map must NEVER
+        # represent an eight-gate trading approval.
+        return (set(self.gates) == set(GATE_IDS)
+                and all(self.gates[key].passed is True for key in GATE_IDS))
 
     def gate_map(self) -> dict[str, bool | None]:
         return {gid: self.gates[gid].passed for gid in GATE_IDS}
@@ -126,6 +129,17 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
 
     # 3. m5_confirmed — FAIL CLOSED
     gates["m5_confirmed"] = _check_m5(m5, lvl, side, model, cfg, ts)
+    # A confirmed close far beyond its D1 level is a chase, not an
+    # acceptable nearby-level entry. Use native D1 ATR only.
+    if gates["m5_confirmed"].passed is True and lvl is not None:
+        native_a = _atr(d1, cfg)
+        if native_a is None:
+            gates["m5_confirmed"] = _gate(
+                "m5_confirmed", None, "native D1 ATR missing")
+        elif abs(float(m5["close"].iloc[-1]) - lvl.price) > (
+                cfg.max_entry_distance_atr * native_a):
+            gates["m5_confirmed"] = _gate(
+                "m5_confirmed", False, "M5 level proximity exceeded no-chase ATR limit")
 
     # 4/5/6 зависят от цен — считаем стоп и лимит
     stop, limit = None, None
@@ -308,7 +322,7 @@ def build_intent(decision: ScenarioDecision, market: MarketData,
     stop = lvl.price - dirn * buf
     m5 = market.m5_asof(ts)
     limit = _limit_price(decision.model, decision.side, lvl, m5)
-    risk_ps = abs(limit - stop)
+    risk_ps = max(0.0, dirn * (limit - stop))
     risk_money = equity * cfg.risk_per_trade_pct / 100
     shares = int(risk_money // risk_ps) if risk_ps > 0 else 0
     intent = TradeIntent(

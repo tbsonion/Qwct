@@ -65,6 +65,27 @@ def test_missing_timezone_cannot_approve_entry():
     assert p.is_entry_allowed("breakout", datetime(2024, 2, 5, 11, 0))[0] is False
 
 
+def test_marketdata_refuses_naive_asof_timestamps():
+    # Naive timestamps are ambiguous at DST transitions. Do not silently
+    # assume UTC or exchange time when evaluating a past-bar decision.
+    from pytest import raises
+    frame = d1()
+    market = MarketData("AAPL", frame, pd.DataFrame())
+    at = datetime(2024, 4, 1, 11, 0)
+    with raises(ValueError):
+        market.d1_asof(at)
+    with raises(ValueError):
+        market.m5_asof(at)
+
+
+def test_marketdata_et_and_utc_asof_same_closed_d1():
+    frame = d1()
+    market = MarketData("AAPL", frame)
+    at = datetime(2024, 4, 1, 11, 0, tzinfo=ET)
+    pd.testing.assert_frame_equal(market.d1_asof(at),
+                                  market.d1_asof(at.astimezone(timezone.utc)))
+
+
 def test_daylight_saving_window_uses_new_york_clock():
     p = SessionPolicy(StrategyConfig())
     et_summer = datetime(2024, 7, 1, 10, 45, tzinfo=ET)

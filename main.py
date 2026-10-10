@@ -18,6 +18,7 @@ from strategy.scenarios import ScenarioEvaluator
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
+from strategy.protected_entry import review_schwab_protected_entry
 from strategy.reporting import (
     SIGNAL_FIELDS, ORDER_FIELDS, TRADE_FIELDS, csv_rows,
     native_order_event_row, native_closed_trade_rows, summary_json
@@ -315,14 +316,25 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             if not window_ok:
                 return
             state["qualified_today"] = True
-            # Portfolio/order limits remain research-only until entry
-            # execution is approved; no broker orders are generated here.
+            # The risk estimate alone is NOT proof of a working broker stop.
+            # Native Bracket/OTO waits for complete entry fill; Schwab has
+            # no OUO for partial exit protection. Review only, no orders.
+            protection = review_schwab_protected_entry(
+                side=intent.side, shares=intent.shares,
+                limit_price=intent.limit_price, stop_price=intent.stop_price,
+                target_r=self.cfg.tp_r,
+                max_risk_usd=(
+                    float(self.portfolio.total_portfolio_value)
+                    * self.cfg.risk_per_trade_pct / 100.0))
             gates = ",".join(
                 f"{name}:{gate.passed}" for name, gate in intent.gates.items())
-            self._record(symbol, "INTENT", intent.model, intent.side,
-                         intent.level_price, decision.score,
-                         intent.limit_price, intent.stop_price,
-                         intent.risk_per_share, gates, "NO ORDERS SENT")
+            self._record(
+                symbol, "INTENT", intent.model, intent.side,
+                intent.level_price, decision.score,
+                intent.limit_price, intent.stop_price,
+                intent.risk_per_share, gates,
+                "NO ORDERS SENT; NATIVE PROTECTION BLOCKED: "
+                + "; ".join(protection.blockers))
             self.debug(
                 f"SIGNAL {symbol.value} {intent.model}/{intent.side}"
                 f" entry={intent.limit_price:.2f}"

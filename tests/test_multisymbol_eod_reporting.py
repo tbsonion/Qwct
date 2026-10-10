@@ -71,6 +71,14 @@ def test_source_uses_actual_leans_native_multi_symbol_events():
     assert "self._scenario_evaluator.evaluate(" in src
     assert "self._session_policy.is_entry_allowed(" in src
     assert "self._native_exit_enabled = False" in src
+    # Real-cloud diagnostics require native runtime statistics and charts,
+    # not synthetic signal outcomes or an unavailable ObjectStore.
+    assert 'self.plot("Qwct Research", "Screener"' in src
+    assert '"Qwct Research", "D1 scenarios"' in src
+    assert '"Qwct Research", "Signal intents"' in src
+    assert "self.set_runtime_statistic(" in src
+    assert "self._gate_failures[name] += 1" in src
+    assert "ObjectStore DISABLED: decision CSV/JSON NOT saved." in src
 
 
 def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():

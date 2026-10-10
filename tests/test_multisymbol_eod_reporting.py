@@ -96,6 +96,9 @@ def test_native_reporting_object_store_and_trade_builder():
     assert "native_order_event_row(event, tag)" in src
     assert "self.trade_builder.closed_trades" in src
     assert "self.object_store.save(" in src
+    assert "self._object_store_export_enabled = False" in src
+    assert "if not self._object_store_export_enabled:" in src
+    assert "Full decision CSV/JSON NOT saved." in src
     assert "on_end_of_algorithm" in src
     assert "self.set_trade_builder(TradeBuilder(" in src
     assert "FillGroupingMethod.FLAT_TO_FLAT" in src

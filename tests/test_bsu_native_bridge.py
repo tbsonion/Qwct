@@ -142,7 +142,8 @@ def test_source_contract_main_connects_observer_without_imaginary_30s_data():
     assert "from strategy.bsu_bridge import create_bsu_research_observer" in src
     assert "self.securities[symbol].symbol_properties.minimum_price_variation" in src
     assert "create_bsu_research_observer(" in src
-    assert "state[\"bsu_link\"].detector.on_bar(" in src
+    assert 'state["bsu_link"] = link' in src
+    assert "link.detector.on_bar(ResearchBpuBar(" in src
     assert '"BSU_PROXY_BPU2_CLOSED"' in src
     assert '"bar_end": _time_index(bar.end_time)' in src
     assert "observe_preclose(" not in src

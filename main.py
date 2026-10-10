@@ -171,11 +171,15 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         if not symbols:
             return
         try:
-            for bar in self.history[TradeBar](
+            # Official LEAN multi-symbol typed History returns one
+            # TradeBars (Symbol -> TradeBar) collection per time slice,
+            # NOT one TradeBar per outer iteration.
+            for bars in self.history[TradeBar](
                     symbols, 180, Resolution.DAILY,
                     data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
-                if _time_index(bar.time).date() < self.time.date():
-                    self._append_daily(bar)
+                for symbol, bar in bars.items():
+                    if _time_index(bar.end_time).date() < self.time.date():
+                        self._append_daily(bar)
         except Exception as exc:
             # No synthetic fallback. Without D1 warmup signal rejects.
             self.error(f"Native typed history failed for {len(symbols)} "

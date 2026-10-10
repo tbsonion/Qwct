@@ -79,8 +79,24 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()
+        self._d1_models = Counter()
+        self._bsu_block_reasons = Counter()
         self._bsu_proxy_armed_count = 0
+        self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
+
+        # A single fixed selected symbol, NOT mixed-ticker data on one
+        # price axis. One LEAN Focus chart = 4 series; Qwct Research = 5.
+        # Free Cloud quota: 10 series, 4,000 points/series. Only draw
+        # up to 3,500 M5 bars to avoid silently exceeding that limit.
+        self._chart_symbol = None
+        self._focus_m5_plotted = 0
+        focus_chart = Chart("Qwct Focus")
+        focus_chart.add_series(CandlestickSeries("M5", "$"))
+        focus_chart.add_series(Series("D1 Level", SeriesType.LINE, 0))
+        focus_chart.add_series(Series("BPU1", SeriesType.SCATTER, 0))
+        focus_chart.add_series(Series("BPU2", SeriesType.SCATTER, 0))
+        self.add_chart(focus_chart)
 
         # Native Fundamental Universe owns stock membership and data feeds.
         # Minute resolution is required for real M5 consolidators on *each*
@@ -179,6 +195,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "decision": None, "qualified_today": False,
             "session_levels": None,
             "bsu_link": None,
+            "focus_level": None,
         }
         self._symbols[symbol] = state
         # Native LEAN consolidators must be removed on universe removal.
@@ -279,11 +296,18 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             if self._register_symbol(self.symbol):
                 self._warm_symbols([self.symbol])
         self._refresh_screen_watchlist()
+        # Freeze the focus Symbol on the FIRST qualifying trading day.
+        # Do not dynamically switch prices between TSLA/NVDA/etc. on
+        # a single chart with a deceptive shared dollar-price axis.
+        if self._chart_symbol is None and self.screen_watchlist:
+            self._chart_symbol = self.screen_watchlist[0]
+            self.debug(f"Qwct Focus chart fixed symbol: {self._chart_symbol.value}")
         for state in self._symbols.values():
             state["qualified_today"] = False
             state["decision"] = None
             state["session_levels"] = None
             state["bsu_link"] = None
+            state["focus_level"] = None
             state["m5_rows"] = []
 
         for symbol in self.screen_watchlist:
@@ -300,10 +324,22 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 # scenarios. Recalculate neither their kind nor their
                 # next-level distances while a live M5 is arriving.
                 state["session_levels"] = levels
+                if symbol == self._chart_symbol and levels:
+                    # Draw the closest D1 level only when in the same
+                    # neighbourhood as the previous closed D1 price.
+                    # The chart line is context, NOT an entry decision.
+                    chart_price = float(d1["close"].iloc[-1])
+                    chart_atr = float(state["atr"].current.value)
+                    closest = min(levels, key=lambda l: abs(l.price - chart_price))
+                    if (chart_atr > 0 and
+                            abs(closest.price - chart_price) <= 2 * chart_atr):
+                        state["focus_level"] = float(closest.price)
                 decision = self._scenario_evaluator.evaluate(
                     symbol.value, self._session_date,
                     _time_index(self.time).to_pydatetime(), d1, None, levels)
                 state["decision"] = decision
+                if decision.accepted:
+                    self._d1_models[decision.model] += 1
                 if decision.accepted and decision.model == "bounce":
                     # Native symbol properties (never a guessed USD 0.01)
                     # and actual as-of D1 origin are mandatory. A confirmed
@@ -316,6 +352,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     if link is not None:
                         self._bsu_proxy_armed_count += 1
                     else:
+                        self._bsu_block_reasons[why] += 1
                         self._record(symbol, "BSU_PROXY_BLOCKED", reason=why)
                 if decision.accepted:
                     self._record(
@@ -356,6 +393,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "low": float(bar.low), "close": float(bar.close),
             "volume": float(bar.volume)})
         state["m5_rows"] = state["m5_rows"][-80:]
+        if symbol == self._chart_symbol and self._focus_m5_plotted < 3500:
+            # QuantConnect official CandlestickSeries accepts the native
+            # completed TradeBar directly; no synthetic OHLC data.
+            self.plot("Qwct Focus", "M5", bar)
+            if state["focus_level"] is not None:
+                self.plot("Qwct Focus", "D1 Level", state["focus_level"])
+            self._focus_m5_plotted += 1
         # Observe closed native M5 BPU1/BPU2 for D1 swing proxies
         # independently of M5 gate scoring. This is NO TVX signal:
         # the original method requires 30 seconds BEFORE BPU2 close.
@@ -370,7 +414,17 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     open=float(bar.open), high=float(bar.high),
                     low=float(bar.low), close=float(bar.close),
                     timeframe="M5", volume=float(bar.volume)))
+                if observed.phase == "bpu1" and before_phase != observed.phase:
+                    self._bsu_bpu1_count += 1
+                    if symbol == self._chart_symbol:
+                        self.plot("Qwct Focus", "BPU1", observed.level_price)
+                    self._record(
+                        symbol, "BSU_PROXY_BPU1", model="bounce",
+                        side=observed.side, level=observed.level_price,
+                        reason=f"{link.provenance}; native closed M5 BPU1; NO ORDERS")
                 if observed.phase == "bpu2_confirmed" and before_phase != observed.phase:
+                    if symbol == self._chart_symbol:
+                        self.plot("Qwct Focus", "BPU2", observed.level_price)
                     self._bsu_proxy_bpu2_count += 1
                     self._record(
                         symbol, "BSU_PROXY_BPU2_CLOSED",
@@ -539,6 +593,16 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.set_runtime_statistic(stat, counts[kind])
         self.set_runtime_statistic(
             "Qwct research candidates", counts["RESEARCH_CANDIDATE"])
+        self.set_runtime_statistic("Qwct D1 bounce", self._d1_models["bounce"])
+        self.set_runtime_statistic("Qwct D1 breakout", self._d1_models["breakout"])
+        self.set_runtime_statistic("Qwct D1 false",
+                                   self._d1_models["false_breakout"])
+        self.set_runtime_statistic("Qwct BSU proxy blocked",
+                                   sum(self._bsu_block_reasons.values()))
+        self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
+        self.set_runtime_statistic(
+            "Qwct chart focus", self._chart_symbol.value
+            if self._chart_symbol is not None else "none")
         self.set_runtime_statistic(
             "Qwct BSU swing proxies armed", self._bsu_proxy_armed_count)
         self.set_runtime_statistic(
@@ -563,8 +627,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 + f"; M5 bars={self._m5_bars_seen}, "
                   f"M5 bar checks={self._m5_checks}, "
                   f"unready={self._intent_missing_atr}"
+                + "; D1 models=" + str(dict(self._d1_models))
+                + "; BSU block reasons=" +
+                  str(dict(self._bsu_block_reasons.most_common(7)))
+                + f"; native BPU1={self._bsu_bpu1_count}"
                 + "; daily rejects=" + str(dict(reject_reasons))
-                + "; failed M5 gates=" + str(dict(self._gate_failures))
+                + "; failed M5 gates=" +
+                  str(dict(self._gate_failures.most_common(8)))
                 + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."
             )
             return

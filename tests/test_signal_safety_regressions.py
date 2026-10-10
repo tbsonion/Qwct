@@ -143,3 +143,33 @@ def test_target_gate_validates_actual_target_price_not_only_config_ratio():
     intent = build_intent(decision, MarketData("AAPL", d), at, StrategyConfig())
     assert intent is not None
     assert intent.gates["target_at_least_3r"].passed is False
+
+
+def test_trade_intent_empty_gate_map_can_never_claim_all_gates_passed():
+    from strategy.signals import TradeIntent, GateResult, GATE_IDS
+    now = datetime(2024, 2, 5, 10, 0, tzinfo=ET)
+    intent = TradeIntent("MSFT", now.date(), now, "long", "bounce",
+                         100., 100., 99., 1., 5, 3., None)
+    assert intent.all_gates_passed is False
+    intent.gates = {"trend_aligned": GateResult("trend_aligned", True)}
+    assert intent.all_gates_passed is False
+    intent.gates = {name: GateResult(name, True) for name in GATE_IDS}
+    assert intent.all_gates_passed is True
+
+
+def test_m5_far_from_d1_level_rejects_no_chase_threshold():
+    d = daily()
+    at = (d.index[-1] + pd.Timedelta(days=1)).replace(hour=9, minute=40)
+    m = pd.DataFrame([[99.7, 99.9, 99.2, 99.8],
+                      [99.8, 102.0, 99.7, 101.9]],
+                     index=[at - pd.Timedelta(minutes=5), at],
+                     columns=["open", "high", "low", "close"])
+    lvl = Level(price=100, kind="resistance", touches=2, strength=3,
+                valid_from=date(2023, 8, 1))
+    decision = ScenarioDecision("AAPL", at.date(), at.to_pydatetime(),
+                                lvl, "breakout", "long")
+    intent = build_intent(decision, MarketData("AAPL", d, m),
+                          at.to_pydatetime(), StrategyConfig())
+    assert intent is not None
+    # 1.9 USD chase / ATR 4 = 0.475 ATR; cfg allows <=0.3 ATR.
+    assert intent.gates["m5_confirmed"].passed is False

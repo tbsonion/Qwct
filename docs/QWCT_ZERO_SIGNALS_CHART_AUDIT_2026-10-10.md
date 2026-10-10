@@ -108,9 +108,11 @@ throttled or omitted from the terminal screenshot.
    source chart declaration and absent diagnostics.
 2. A second red-first test failed with a historical ATR-median
    cluster and anomalously low latest ATR.
-3. After repairs and chart API cross-check, GitHub pure Python
-   CI and `compileall` are expected to validate the new code;
-   check their real completion status and count.
+3. After repairs and chart API cross-check, the actual GitHub
+   run https://github.com/tbsonion/Qwct/actions/runs/38090158954
+   completed **SUCCESS: 105 pytest tests passed in 0.51 s**.
+   That workflow separately runs `compileall -q main.py strategy tests`.
+   These are source/pure checks, NOT a QuantConnect LEAN integration.
 4. GitHub CI cannot run the user's QuantConnect Cloud LEAN
    subscribed US-equity market-data backtest or confirm that
    candlesticks render on the UI. That requires ONE scoped
@@ -129,3 +131,17 @@ throttled or omitted from the terminal screenshot.
 - `Qwct Focus` is only ONE stock; a full multi-stock graphical
   gallery would require a separate research notebook or export
   system and may violate the Free chart-series quota.
+
+## Release and testing recommendation
+
+Leave this change in draft PR #6 until there is evidence of a native
+LEAN chart rendering. The user already ran a January/February 2024
+Cloud smoke on the preceding main branch; repeating blindly without
+new visibility would not have isolated any issue. For the NEXT
+single integration check, use the same short date window and select
+`Qwct Focus` in the QuantConnect backtest chart picker.
+Verify `Qwct focus M5 plotted > 0`, the ticker name,
+the per-model D1 breakdown, and the predominant BSU blocker/M5 gate
+statistics. Candles being visible proves charting; a nonzero proxy
+is NOT required for a correct no-evidence rejection. Zero orders
+remain the required safety invariant.

@@ -99,6 +99,20 @@ def test_short_cluster_median_uses_resistance_pivot():
     assert link.detector.state.level_price == 100.
 
 
+def test_bsu_cluster_tolerance_matches_level_detector_history_median_atr():
+    # levels.detect_levels clusters using MEDIAN of all ready daily ATR
+    # values, not the final day's ATR. A temporary low ATR on the last
+    # day must not invalidate a cluster that the real level detector
+    # formed using a historical 1.0 dollar tolerance.
+    decision, daily = evidence(level_price=100.75)
+    daily.loc[daily.index[-1], "atr14"] = 0.4
+    link, reason = create_bsu_research_observer(
+        decision, daily, native_tick_size=.01, cfg=StrategyConfig())
+    assert link is not None, reason
+    assert link.origin_price == 100.
+    assert link.cluster_price == 100.75
+
+
 def test_no_native_bar_end_means_no_bsu_origin():
     decision, daily = evidence()
     link, reason = create_bsu_research_observer(

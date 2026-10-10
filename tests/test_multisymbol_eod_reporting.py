@@ -119,6 +119,12 @@ def test_native_batched_history_warmup_and_no_synthetic_indicators():
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
     assert "def _warm_symbols(self, symbols)" in src
     assert "symbols, 180, Resolution.DAILY" in src
+    # Real LEAN 2.5 returns a TradeBars collection for each historical
+    # time slice; treating that outer item as TradeBar caused the real
+    # cloud error: 'TradeBars' object has no attribute 'symbol'.
+    assert "for bars in self.history[TradeBar](" in src
+    assert "for symbol, bar in bars.items():" in src
+    assert "for bar in self.history[TradeBar](" not in src
     assert "self._warm_symbols(new_symbols)" in src
     assert "if self._register_symbol(self.symbol):" in src
     assert "FillGroupingMethod.FLAT_TO_FLAT" in src

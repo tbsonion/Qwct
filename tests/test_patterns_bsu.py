@@ -100,6 +100,7 @@ def test_one_second_bpu_cannot_have_30s_preclose_after_bpu1():
         d.observe_preclose(
             observed_at=at + timedelta(seconds=1) - timedelta(seconds=30),
             bpu2_end=at + timedelta(seconds=1),
+            observed_since=at,
             observed_low=100.1, observed_high=100.4,
             last_price=100.2, source="TICK")
 
@@ -153,6 +154,7 @@ def test_subminute_preclose_observation_is_only_unconfirmed_research():
     at = BPU2_END - timedelta(seconds=30)
     st = d.observe_preclose(
         observed_at=at, bpu2_end=BPU2_END,
+        observed_since=BPU1_END,
         observed_low=100.10, observed_high=100.45,
         last_price=100.2, source="SEC")
     assert st.phase == "preclose_candidate"
@@ -172,15 +174,33 @@ def test_preclose_fails_closed_without_precise_timing(source, at_delta):
     with pytest.raises(ValueError):
         d.observe_preclose(
             observed_at=at, bpu2_end=BPU2_END,
+            observed_since=BPU1_END,
+        observed_since=BPU1_END,
             observed_low=100.10, observed_high=100.45,
             last_price=100.2, source=source)
+
+
+def test_preclose_requires_entire_bpu2_interval_provenance():
+    d = initiate()
+    at = BPU2_END - timedelta(seconds=30)
+    with pytest.raises(ValueError):
+        d.observe_preclose(
+            observed_at=at, bpu2_end=BPU2_END,
+            observed_since=BPU1_END + timedelta(minutes=4),
+            observed_low=100.1, observed_high=100.45,
+            last_price=100.2, source="SEC")
+    with pytest.raises(ValueError):
+        d.observe_preclose(
+            observed_at=at, bpu2_end=BPU2_END,
+            observed_low=100.1, observed_high=100.45,
+            last_price=100.2, source="SEC")
 
 
 def test_observed_preclose_cannot_be_called_without_bpu1():
     with pytest.raises(ValueError):
         detector().observe_preclose(
             observed_at=BPU2_END - timedelta(seconds=30),
-            bpu2_end=BPU2_END,
+            bpu2_end=BPU2_END, observed_since=BPU1_END,
             observed_low=100.1, observed_high=100.45,
             last_price=100.2, source="SEC")
 
@@ -189,7 +209,8 @@ def test_valid_bpu2_with_precise_preclose_observation_is_research_only():
     d = initiate()
     d.observe_preclose(
         observed_at=BPU2_END - timedelta(seconds=30),
-        bpu2_end=BPU2_END, observed_low=100.1, observed_high=100.4,
+        bpu2_end=BPU2_END, observed_since=BPU1_END,
+        observed_low=100.1, observed_high=100.4,
         last_price=100.2, source="TICK")
     st = d.on_bar(m5(BPU2_END, 100.1, 100.45))
     assert st.phase == "bpu2_confirmed"

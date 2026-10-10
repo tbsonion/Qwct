@@ -149,14 +149,40 @@ def _native_atr(a: pd.Series, idx: int) -> float | None:
     return float(v) if pd.notna(v) and np.isfinite(v) and v > 0 else None
 
 
-def _mark_mirror(levels: list[Level], d1: pd.DataFrame, cfg: StrategyConfig) -> None:
+def _mark_mirror(levels: list[Level], d1: pd.DataFrame,
+                 cfg: StrategyConfig) -> None:
+    """Label only an observed AFTER-FORMATION role reversal on closed D1.
+
+    Two candle wicks crossing a level is not evidence of a mirror. A prior
+    support must CLOSE below, then be retested/rejected as resistance;
+    resistance requires the opposite. This is a conservative approximation
+    of the manual Gerchik mirror, not a certified BPU detector.
+    """
     for lvl in levels:
-        seg = d1.iloc[max(0, lvl.first_idx - cfg.mirror_lookback):lvl.last_idx + 1]
-        if len(seg) < 10:
+        if lvl.kind not in ("support", "resistance"):
             continue
-        crossed = ((seg["high"] > lvl.price) & (seg["low"] < lvl.price)).sum() >= 2
-        if crossed:
-            lvl.kind = "mirror"
+        # Begin only AFTER the last originating swing, never reinterpret
+        # candles that created the original support/resistance as a retest.
+        start = max(lvl.last_idx + 1, len(d1) - cfg.mirror_lookback, 1)
+        if start >= len(d1) - 1:
+            continue
+        breached = False
+        for i in range(start, len(d1)):
+            b = d1.iloc[i]
+            if lvl.kind == "support":
+                # Breach down, then separate later candle retests underside
+                # of the support level and closes underneath it.
+                if breached and b["high"] >= lvl.price and b["close"] < lvl.price:
+                    lvl.kind = "mirror"
+                    break
+                if b["close"] < lvl.price:
+                    breached = True
+            else:
+                if breached and b["low"] <= lvl.price and b["close"] > lvl.price:
+                    lvl.kind = "mirror"
+                    break
+                if b["close"] > lvl.price:
+                    breached = True
 
 
 def levels_for_session(d1_asof: pd.DataFrame, day: date,

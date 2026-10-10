@@ -106,6 +106,26 @@ D1 session levels during M5 checks. The official per-symbol
 RollingWindow example is an efficiency and provenance reference;
 an optimized version must preserve the original as-of semantics.
 
+## Additional source-only gap: two nominal mandatory gates are tautologies
+
+**P0-K: stop_behind_d1_level and target_at_least_3r do not
+independently validate trade geometry.**
+In strategy/signals.py evaluate_gates, the stop is always generated
+as level minus directional positive native-ATR buffer. Its
+stop_behind_d1_level gate then merely tests that the generated
+stop is behind that same level. With positive ATR, this is a
+constructed tautology, not independent proof that the stop is on
+the LOSS side of the actual entry. The target_at_least_3r gate
+simply tests fixed config.tp_r >= config.min_rr, both 3.0 by
+default, and does not check an actual achievable target price.
+The separate room_at_least_4r gate tries to enforce a known
+next-level distance, but does not prove stop direction, quote
+spreads, tick alignment, or execution viability. This is
+material because user-facing text calls all eight gates passed
+an "ideal trade". Require explicit side-relative
+(entry,stop,target) geometry and cost-aware feasibility evidence
+before upgrading the signal classification; keep all orders off.
+
 ## Existing correct Qwct choices to preserve
 
 - native per-symbol ATR(14)/SMA(50)/SMA(volume,20);

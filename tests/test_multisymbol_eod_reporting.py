@@ -77,6 +77,9 @@ def test_source_uses_actual_leans_native_multi_symbol_events():
     assert 'self.plot("Qwct Research", "Screener"' in src
     assert '"Qwct Research", "D1 scenarios"' in src
     assert '"Qwct Research", "Signal intents"' in src
+    assert '"Qwct Research", "Research candidates"' in src
+    assert '"RESEARCH_CANDIDATE"' in src
+    assert "PRELIMINARY ONLY: native risk/buying-power" in src
     assert "self.set_runtime_statistic(" in src
     assert "self._gate_failures[name] += 1" in src
     assert "self._m5_bars_seen += 1" in src

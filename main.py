@@ -416,14 +416,16 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     timeframe="M5", volume=float(bar.volume)))
                 if observed.phase == "bpu1" and before_phase != observed.phase:
                     self._bsu_bpu1_count += 1
-                    if symbol == self._chart_symbol:
+                    if (symbol == self._chart_symbol
+                            and self._focus_m5_plotted < 3500):
                         self.plot("Qwct Focus", "BPU1", observed.level_price)
                     self._record(
                         symbol, "BSU_PROXY_BPU1", model="bounce",
                         side=observed.side, level=observed.level_price,
                         reason=f"{link.provenance}; native closed M5 BPU1; NO ORDERS")
                 if observed.phase == "bpu2_confirmed" and before_phase != observed.phase:
-                    if symbol == self._chart_symbol:
+                    if (symbol == self._chart_symbol
+                            and self._focus_m5_plotted < 3500):
                         self.plot("Qwct Focus", "BPU2", observed.level_price)
                     self._bsu_proxy_bpu2_count += 1
                     self._record(
@@ -604,6 +606,22 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "Qwct chart focus", self._chart_symbol.value
             if self._chart_symbol is not None else "none")
         self.set_runtime_statistic(
+            "Qwct focus M5 plotted", self._focus_m5_plotted)
+        top_bsu = (
+            self._bsu_block_reasons.most_common(1)[0]
+            if self._bsu_block_reasons else None)
+        top_gate = (
+            self._gate_failures.most_common(1)[0]
+            if self._gate_failures else None)
+        self.set_runtime_statistic(
+            "Qwct top BSU blocker",
+            (f"{top_bsu[0][:60]} ({top_bsu[1]})" if top_bsu
+             else ("no D1 bounce" if self._d1_models["bounce"] == 0
+                   else "none")))
+        self.set_runtime_statistic(
+            "Qwct top M5 gate",
+            f"{top_gate[0]}:{top_gate[1]}" if top_gate else "none")
+        self.set_runtime_statistic(
             "Qwct BSU swing proxies armed", self._bsu_proxy_armed_count)
         self.set_runtime_statistic(
             "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
@@ -631,6 +649,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 + "; BSU block reasons=" +
                   str(dict(self._bsu_block_reasons.most_common(7)))
                 + f"; native BPU1={self._bsu_bpu1_count}"
+                + f"; chart focus={self._chart_symbol.value if self._chart_symbol else 'none'}"
+                + f"; chart M5 drawn={self._focus_m5_plotted}"
                 + "; daily rejects=" + str(dict(reject_reasons))
                 + "; failed M5 gates=" +
                   str(dict(self._gate_failures.most_common(8)))

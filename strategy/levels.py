@@ -120,16 +120,16 @@ def _score_level(lvl: Level, d1: pd.DataFrame, cfg: StrategyConfig, a: pd.Series
     window = d1.iloc[start:lvl.first_idx]
     if len(window) >= cfg.accumulation_bars // 2:
         rng = window["high"].max() - window["low"].min()
-        av = _aval(a, lvl.first_idx, rng)
-        if rng <= cfg.accumulation_range_atr * av:
+        av = _native_atr(a, lvl.first_idx)
+        if av is not None and rng <= cfg.accumulation_range_atr * av:
             score += 2.0
             lvl.formed_by_consolidation = True
             notes.append("сформирован проторговкой")
     for idx in (lvl.first_idx, lvl.last_idx):
         if idx + 1 < len(d1):
             nxt = d1.iloc[idx + 1]
-            av = _aval(a, idx + 1, nxt["high"] - nxt["low"])
-            if (nxt["high"] - nxt["low"]) >= cfg.big_bar_atr * av:
+            av = _native_atr(a, idx + 1)
+            if av is not None and (nxt["high"] - nxt["low"]) >= cfg.big_bar_atr * av:
                 score += 1.0
                 notes.append("резкий разворот")
                 break
@@ -137,9 +137,16 @@ def _score_level(lvl: Level, d1: pd.DataFrame, cfg: StrategyConfig, a: pd.Series
     lvl.notes = notes
 
 
-def _aval(a: pd.Series, idx: int, fallback: float) -> float:
+def _native_atr(a: pd.Series, idx: int) -> float | None:
+    """Only native LEAN ATR snapshots can validate a level strength bonus.
+
+    An OHLC bar range is not interchangeable with ATR(14). If the native
+    indicator was still warming, the bonus stays UNKNOWN, not approved.
+    """
+    if idx < 0 or idx >= len(a):
+        return None
     v = a.iloc[idx]
-    return float(v) if pd.notna(v) and v > 0 else max(float(fallback), 1e-9)
+    return float(v) if pd.notna(v) and np.isfinite(v) and v > 0 else None
 
 
 def _mark_mirror(levels: list[Level], d1: pd.DataFrame, cfg: StrategyConfig) -> None:

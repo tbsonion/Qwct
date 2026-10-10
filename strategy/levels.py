@@ -81,9 +81,14 @@ def detect_levels(d1_asof: pd.DataFrame, cfg: StrategyConfig) -> list[Level]:
     if n < 2 * cfg.swing_k + 5:
         return []
     a = atr(d1_asof, cfg.atr_period)
-    tol = float((a * cfg.level_tolerance_atr).median())
+    # Missing native ATR is a normal fail-closed case, not a NumPy
+    # "mean of empty slice" warning. Do not invent a tolerance.
+    ready_atr = a.loc[np.isfinite(a) & (a > 0)]
+    if ready_atr.empty:
+        return []
+    tol = float(ready_atr.median() * cfg.level_tolerance_atr)
     if not np.isfinite(tol) or tol <= 0:
-        return []  # No native ATR -> no guessed cluster tolerance
+        return []
 
     highs, lows = _confirmed_swings(d1_asof, cfg.swing_k)
     levels: list[Level] = []

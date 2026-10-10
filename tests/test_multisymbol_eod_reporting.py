@@ -63,6 +63,7 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
 def test_source_uses_actual_leans_native_multi_symbol_events():
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
     assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self.universe_settings.fill_forward = False" in src
     assert "self._symbols[symbol] = state" in src
     assert "self.consolidate(" in src
     assert "self.subscription_manager.remove_consolidator(" in src
@@ -71,6 +72,16 @@ def test_source_uses_actual_leans_native_multi_symbol_events():
     assert "self._scenario_evaluator.evaluate(" in src
     assert "self._session_policy.is_entry_allowed(" in src
     assert "self._native_exit_enabled = False" in src
+    # Real-cloud diagnostics require native runtime statistics and charts,
+    # not synthetic signal outcomes or an unavailable ObjectStore.
+    assert 'self.plot("Qwct Research", "Screener"' in src
+    assert '"Qwct Research", "D1 scenarios"' in src
+    assert '"Qwct Research", "Signal intents"' in src
+    assert "self.set_runtime_statistic(" in src
+    assert "self._gate_failures[name] += 1" in src
+    assert "self._m5_bars_seen += 1" in src
+    assert "Qwct M5 bars" in src
+    assert "ObjectStore DISABLED: decision CSV/JSON NOT saved." in src
 
 
 def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
@@ -96,6 +107,9 @@ def test_native_reporting_object_store_and_trade_builder():
     assert "native_order_event_row(event, tag)" in src
     assert "self.trade_builder.closed_trades" in src
     assert "self.object_store.save(" in src
+    assert "self._object_store_export_enabled = False" in src
+    assert "if not self._object_store_export_enabled:" in src
+    assert "ObjectStore DISABLED: decision CSV/JSON NOT saved." in src
     assert "on_end_of_algorithm" in src
     assert "self.set_trade_builder(TradeBuilder(" in src
     assert "FillGroupingMethod.FLAT_TO_FLAT" in src
@@ -119,6 +133,12 @@ def test_native_batched_history_warmup_and_no_synthetic_indicators():
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
     assert "def _warm_symbols(self, symbols)" in src
     assert "symbols, 180, Resolution.DAILY" in src
+    # Real LEAN 2.5 returns a TradeBars collection for each historical
+    # time slice; treating that outer item as TradeBar caused the real
+    # cloud error: 'TradeBars' object has no attribute 'symbol'.
+    assert "for bars in self.history[TradeBar](" in src
+    assert "for symbol, bar in bars.items():" in src
+    assert "for bar in self.history[TradeBar](" not in src
     assert "self._warm_symbols(new_symbols)" in src
     assert "if self._register_symbol(self.symbol):" in src
     assert "FillGroupingMethod.FLAT_TO_FLAT" in src

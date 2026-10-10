@@ -7,6 +7,7 @@ exists. Schwab requires order cancel confirmations BEFORE market liquidation.
 """
 from AlgorithmImports import *
 from datetime import datetime, timedelta
+from collections import Counter
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -18,6 +19,7 @@ from strategy.scenarios import ScenarioEvaluator
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
+from strategy.protected_entry import review_schwab_protected_entry
 from strategy.reporting import (
     SIGNAL_FIELDS, ORDER_FIELDS, TRADE_FIELDS, csv_rows,
     native_order_event_row, native_closed_trade_rows, summary_json
@@ -59,17 +61,31 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # source-level kill switch until protective entries are independently
         # verified with the LEAN/Schwab brokerage integration.
         self._native_exit_enabled = False
+        # QuantConnect Cloud Free organizations cannot write ObjectStore.
+        # Keep signal research usable without misleading export errors.
+        # This is a SOURCE-LEVEL research setting, not a trading toggle.
+        self._object_store_export_enabled = False
         # LEAN defaults to FILL_TO_FILL, which is not a full position
         # round-trip. Use its official FLAT_TO_FLAT TradeBuilder grouping.
         self.set_trade_builder(TradeBuilder(
             FillGroupingMethod.FLAT_TO_FLAT, FillMatchingMethod.FIFO))
         self._signal_rows = []
         self._order_event_rows = []
+        # Research-only diagnostics: count actual M5 evaluations and failed
+        # gates; no virtual orders, fills or portfolio are inferred.
+        self._m5_bars_seen = 0
+        self._m5_checks = 0
+        self._intent_missing_atr = 0
+        self._gate_failures = Counter()
 
         # Native Fundamental Universe owns stock membership and data feeds.
         # Minute resolution is required for real M5 consolidators on *each*
         # selected stock, not only on the anchor or first watchlist stock.
         self.universe_settings.resolution = Resolution.MINUTE
+        # By default LEAN forward-fills bars when there are no trades.
+        # Gerchik M5 confirmation must not be inferred from those
+        # previously observed prices as if a real fresh bar arrived.
+        self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
         self.universe_settings.data_normalization_mode = (
             DataNormalizationMode.SPLIT_ADJUSTED)
@@ -170,11 +186,15 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         if not symbols:
             return
         try:
-            for bar in self.history[TradeBar](
+            # Official LEAN multi-symbol typed History returns one
+            # TradeBars (Symbol -> TradeBar) collection per time slice,
+            # NOT one TradeBar per outer iteration.
+            for bars in self.history[TradeBar](
                     symbols, 180, Resolution.DAILY,
                     data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
-                if _time_index(bar.time).date() < self.time.date():
-                    self._append_daily(bar)
+                for symbol, bar in bars.items():
+                    if _time_index(bar.end_time).date() < self.time.date():
+                        self._append_daily(bar)
         except Exception as exc:
             # No synthetic fallback. Without D1 warmup signal rejects.
             self.error(f"Native typed history failed for {len(symbols)} "
@@ -283,6 +303,15 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self._record(symbol, "ERROR", reason=str(exc))
                 self.error(f"Scenario error {symbol}: {exc}")
 
+        # One D1 snapshot per trading day. Makes accepted setups visible
+        # even when free-plan logs are throttled.
+        self.plot("Qwct Research", "Screener", len(self.screen_watchlist))
+        self.plot(
+            "Qwct Research", "D1 scenarios",
+            sum(1 for symbol in self.screen_watchlist
+                if self._symbols[symbol]["decision"] is not None
+                and self._symbols[symbol]["decision"].accepted))
+
     def _on_m5(self, bar: TradeBar) -> None:
         symbol = bar.symbol
         if (not self._signals_open or
@@ -292,6 +321,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         state = self._symbols.get(symbol)
         if state is None:
             return
+        self._m5_bars_seen += 1
         state["m5_rows"].append({
             "date": _time_index(bar.end_time),
             "open": float(bar.open), "high": float(bar.high),
@@ -305,24 +335,43 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             symbol.value, self._frame(state["daily_rows"]),
             self._frame(state["m5_rows"]))
         try:
+            self._m5_checks += 1
             intent = build_intent(
                 decision, market, _time_index(bar.end_time).to_pydatetime(),
                 self.cfg, equity=float(self.portfolio.total_portfolio_value))
-            if intent is None or not intent.all_gates_passed:
+            if intent is None:
+                self._intent_missing_atr += 1
+                return
+            if not intent.all_gates_passed:
+                # Counts are per evaluated M5 bar (not distinct trades).
+                for name, gate in intent.gates.items():
+                    if gate.passed is not True:
+                        self._gate_failures[name] += 1
                 return
             window_ok, _ = self._session_policy.is_entry_allowed(
                 intent.model, _time_index(bar.end_time).to_pydatetime())
             if not window_ok:
                 return
             state["qualified_today"] = True
-            # Portfolio/order limits remain research-only until entry
-            # execution is approved; no broker orders are generated here.
+            # The risk estimate alone is NOT proof of a working broker stop.
+            # Native Bracket/OTO waits for complete entry fill; Schwab has
+            # no OUO for partial exit protection. Review only, no orders.
+            protection = review_schwab_protected_entry(
+                side=intent.side, shares=intent.shares,
+                limit_price=intent.limit_price, stop_price=intent.stop_price,
+                target_r=self.cfg.tp_r,
+                max_risk_usd=(
+                    float(self.portfolio.total_portfolio_value)
+                    * self.cfg.risk_per_trade_pct / 100.0))
             gates = ",".join(
                 f"{name}:{gate.passed}" for name, gate in intent.gates.items())
-            self._record(symbol, "INTENT", intent.model, intent.side,
-                         intent.level_price, decision.score,
-                         intent.limit_price, intent.stop_price,
-                         intent.risk_per_share, gates, "NO ORDERS SENT")
+            self._record(
+                symbol, "INTENT", intent.model, intent.side,
+                intent.level_price, decision.score,
+                intent.limit_price, intent.stop_price,
+                intent.risk_per_share, gates,
+                "NO ORDERS SENT; NATIVE PROTECTION BLOCKED: "
+                + "; ".join(protection.blockers))
             self.debug(
                 f"SIGNAL {symbol.value} {intent.model}/{intent.side}"
                 f" entry={intent.limit_price:.2f}"
@@ -343,7 +392,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def _end_session(self) -> None:
         self._signals_open = False
         if not self._native_exit_enabled:
-            self.debug("EOD SIGNAL-ONLY: no orders/positions submitted")
+            # Plot only one point per market day, not one per M5 bar.
+            # This diagnostic cannot create orders or change gates.
+            self.plot("Qwct Research", "Signal intents",
+                      sum(row["type"] == "INTENT" for row in self._signal_rows))
             return
         # Fail closed on unresolved cancellations; do not invent an
         # OCO/OMS cancellation workaround. Alert that FLAT is NOT proven.
@@ -384,6 +436,38 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._write_reports()
 
     def _write_reports(self) -> None:
+        # Official native LEAN runtime statistics survive backtest logging
+        # throttling and are available in the result view on Cloud Free.
+        counts = Counter(row["type"] for row in self._signal_rows)
+        for stat, kind in (("Qwct D1 setups", "SCENARIO"),
+                           ("Qwct intents", "INTENT"),
+                           ("Qwct rejects", "REJECT"),
+                           ("Qwct errors", "ERROR")):
+            self.set_runtime_statistic(stat, counts[kind])
+        self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
+        self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
+        if not self._object_store_export_enabled:
+            # The Free cloud plan has no ObjectStore write permission.
+            # Emit only a short end-of-run count; DO NOT claim the complete
+            # decision journal was saved (it remains in-memory only).
+            reject_reasons = Counter(
+                "insufficient D1" if row["reason"] == "insufficient closed D1"
+                else "no nearby levels" if "нет уровней рядом" in row["reason"]
+                else "model score below threshold" if "скор " in row["reason"]
+                else "other" for row in self._signal_rows
+                if row["type"] == "REJECT")
+            self.log(
+                "Qwct research summary: "
+                + ", ".join(f"{key}={counts[key]}" for key in
+                            ("SCENARIO", "INTENT", "REJECT", "ERROR"))
+                + f"; M5 bars={self._m5_bars_seen}, "
+                  f"M5 bar checks={self._m5_checks}, "
+                  f"unready={self._intent_missing_atr}"
+                + "; daily rejects=" + str(dict(reject_reasons))
+                + "; failed M5 gates=" + str(dict(self._gate_failures))
+                + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."
+            )
+            return
         # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
         trades = native_closed_trade_rows(self.trade_builder.closed_trades)
         outputs = {

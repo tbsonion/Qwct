@@ -9,7 +9,8 @@ import pytest
 
 from strategy.config import StrategyConfig
 from strategy.data import MarketData
-from strategy.features import evaluate_all
+from strategy.features import FeatureResult, evaluate_all
+import strategy.scenarios as scenario_module
 from strategy.indicators import atr, global_trend, trend_direction
 from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
 from strategy.scenarios import ScenarioDecision, ScenarioEvaluator
@@ -103,6 +104,31 @@ def test_market_data_is_asof_not_future():
     market = MarketData("AAPL", d1, m5)
     assert len(market.d1_asof(now.to_pydatetime())) == len(d1)-1
     assert len(market.m5_asof(now.to_pydatetime())) == 1
+
+
+def test_scenario_rejects_even_one_feature_exception(monkeypatch):
+    """A 4+ point score cannot hide broken feature calculation."""
+    cfg = StrategyConfig()
+    d1 = daily()
+    level = Level(price=float(d1["close"].iloc[-1]), kind="support",
+                  touches=3, strength=4.0,
+                  valid_from=date(2025, 1, 2))
+
+    def partly_broken_features(*_args, **_kwargs):
+        return {
+            "g01": FeatureResult("g01", None, reason="ошибка: bad native value"),
+            "g02": FeatureResult("g02", True),
+            "g03": FeatureResult("g03", True),
+            "g04": FeatureResult("g04", True),
+        }
+
+    monkeypatch.setattr(scenario_module, "evaluate_all", partly_broken_features)
+    now = d1.index[-1].to_pydatetime()
+    decision = ScenarioEvaluator(cfg).evaluate(
+        "MSFT", now.date(), now, d1, None, [level])
+    assert not decision.accepted
+    assert any("feature calculation failed" in s
+               for s in decision.rejected_reasons)
 
 
 def test_eight_original_signal_gates_exist():

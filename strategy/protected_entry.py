@@ -78,7 +78,7 @@ def review_schwab_protected_entry(
         "stop-market fill price and absolute maximum loss cannot be guaranteed"
     )
     return ProtectedEntryReview(
-        native_candidate=(shares == 1),
+        native_candidate=(shares == 1 and exposure <= risk_cap),
         can_submit=False,  # NEVER promote from documentation alone
         risk_usd=float(exposure),
         target_price=float(target),

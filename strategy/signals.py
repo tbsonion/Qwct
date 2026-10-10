@@ -305,7 +305,11 @@ def _session_levels(market: MarketData, ts: datetime, cfg: StrategyConfig,
     # snapshot is significant: never silently add/recalculate levels
     # from data that may have changed since the 09:29 decision.
     if market.session_levels is not None:
-        return market.session_levels
+        # Even frozen snapshots cannot authorize a level confirmed AFTER
+        # the session. This guards accidental cross-day reuse/contamination.
+        return tuple(level for level in market.session_levels
+                     if level.valid_from is not None
+                     and level.valid_from <= session)
     # Backwards-compatible only for pure callers without a frozen snapshot.
     from .levels import levels_for_session
     return tuple(levels_for_session(market.d1_asof(ts), session, cfg))

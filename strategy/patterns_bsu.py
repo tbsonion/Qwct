@@ -202,7 +202,8 @@ class BsuDetector:
     def observe_preclose(
         self, *, observed_at: datetime, bpu2_end: datetime,
         observed_low: float, observed_high: float,
-        last_price: float, source: str
+        last_price: float, source: str,
+        observed_since: datetime | None = None
     ) -> BsuState:
         """Read-only preclose sample from *actual* native SEC/TICK evidence.
 
@@ -216,7 +217,12 @@ class BsuDetector:
             raise ValueError("BPU1 evidence required before preclose sample")
         at = _aware("observed_at", observed_at)
         end = _aware("bpu2_end", bpu2_end)
-        expected_end = _aware("bpu1_ts", st.bpu1_ts) + self._period
+        bpu1_end = _aware("bpu1_ts", st.bpu1_ts)
+        expected_end = bpu1_end + self._period
+        if observed_since is None or _aware("observed_since", observed_since) != bpu1_end:
+            raise ValueError(
+                "preclose OHLC must cover the full BPU2 interval "
+                "starting at BPU1 close")
         if source not in _PRE_CLOSE_SOURCES:
             raise ValueError("SEC/TICK preclose observations required")
         if end != expected_end or end - at != timedelta(seconds=30):

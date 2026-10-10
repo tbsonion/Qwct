@@ -76,6 +76,9 @@ def test_marketdata_refuses_naive_asof_timestamps():
         market.d1_asof(at)
     with raises(ValueError):
         market.m5_asof(at)
+    # Absence of M5 data must not silently bypass timestamp validation.
+    with raises(ValueError):
+        MarketData("AAPL", frame).m5_asof(at)
 
 
 def test_marketdata_et_and_utc_asof_same_closed_d1():

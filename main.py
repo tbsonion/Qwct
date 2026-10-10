@@ -421,8 +421,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             # Plot only one point per market day, not one per M5 bar.
             # This diagnostic cannot create orders or change gates.
             self.plot("Qwct Research", "Signal intents",
-                      sum(row["type"] in ("INTENT", "RESEARCH_CANDIDATE")
-                  for row in self._signal_rows))
+                      sum(row["type"] == "INTENT" for row in self._signal_rows))
+            self.plot("Qwct Research", "Research candidates",
+                      sum(row["type"] == "RESEARCH_CANDIDATE"
+                          for row in self._signal_rows))
             return
         # Fail closed on unresolved cancellations; do not invent an
         # OCO/OMS cancellation workaround. Alert that FLAT is NOT proven.

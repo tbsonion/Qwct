@@ -364,23 +364,31 @@ def g14_liquidity_sweep(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     v = False
     detail: dict = {"poke_detected": False, "returned": False,
                     "poke_atr": None, "big_bar_against": None}
-    for j in range(len(d1) - 2, len(d1)):
+    # D1 false breakout requires prior-day position on the opposite
+    # side, an actual breach of the level, then a confirmed next-day
+    # close BACK on the original side. The previous max() calculation
+    # could mark an entirely non-crossing bar as a liquidity sweep.
+    for j in range(max(1, len(d1) - 2), len(d1) - 1):
+        prev_close = float(d1["close"].iloc[j - 1])
         b = d1.iloc[j]
-        poke = max(b["high"] - level.price, level.price - b["low"])
-        if 0 < poke <= 0.5 * a:
+        nb = d1.iloc[j + 1]
+        up_poke = float(b["high"] - level.price)
+        down_poke = float(level.price - b["low"])
+        up_sweep = (prev_close <= level.price
+                    and 0 < up_poke <= 0.5 * a
+                    and float(nb["close"]) < level.price)
+        down_sweep = (prev_close >= level.price
+                      and 0 < down_poke <= 0.5 * a
+                      and float(nb["close"]) > level.price)
+        if up_sweep or down_sweep:
+            poke = up_poke if up_sweep else down_poke
             detail["poke_detected"] = True
             detail["poke_atr"] = round(poke / a, 2)
-            # возврат: следующее закрытие обратно за уровень
-            if j + 1 < len(d1):
-                nb = d1.iloc[j + 1]
-                back = (nb["close"] <= level.price <= b["high"]) or \
-                       (nb["close"] >= level.price >= b["low"])
-                big_against = (b["high"] - b["low"]) >= cfg.big_bar_atr * a
-                detail["returned"] = bool(back)
-                detail["big_bar_against"] = bool(big_against)
-                if back:
-                    v = True
-                    break
+            detail["returned"] = True
+            detail["big_bar_against"] = bool(
+                (b["high"] - b["low"]) >= cfg.big_bar_atr * a)
+            v = True
+            break
     return FeatureResult("g14_liquidity_sweep", v, detail)
 
 

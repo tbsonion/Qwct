@@ -340,6 +340,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 state["decision"] = decision
                 if decision.accepted:
                     self._d1_models[decision.model] += 1
+                    # On the single-ticker plot, show the accepted
+                    # morning scenario level rather than an unrelated
+                    # nearby context level. No intraday recalculation.
+                    if symbol == self._chart_symbol:
+                        state["focus_level"] = float(decision.level.price)
                 if decision.accepted and decision.model == "bounce":
                     # Native symbol properties (never a guessed USD 0.01)
                     # and actual as-of D1 origin are mandatory. A confirmed

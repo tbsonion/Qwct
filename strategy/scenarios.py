@@ -129,6 +129,18 @@ class ScenarioEvaluator:
 
         for lvl in cands:
             feats = evaluate_all(d1_asof, m5_asof, decided_at, lvl, levels, cfg)
+            # A computation exception in any Gerchik feature must never
+            # promote a partially evaluated model into an accepted setup.
+            # Ordinary unknown features (value=None) are NOT exceptions.
+            feature_errors = [
+                f"{gid}: {fr.reason}" for gid, fr in feats.items()
+                if fr.reason.startswith("ошибка:")
+            ]
+            if feature_errors:
+                rejected.append(
+                    f"feature calculation failed @{lvl.price:.2f}: "
+                    + "; ".join(feature_errors)[:500])
+                continue
             # breakout
             s_br, p_br = _score_breakout(feats, cfg)
             side_br = "long" if lvl.price >= price else "short"

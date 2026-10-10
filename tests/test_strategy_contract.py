@@ -9,7 +9,7 @@ import pytest
 
 from strategy.config import StrategyConfig
 from strategy.data import MarketData
-from strategy.features import FeatureResult, evaluate_all
+from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep
 import strategy.scenarios as scenario_module
 from strategy.indicators import atr, global_trend, trend_direction
 from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
@@ -104,6 +104,28 @@ def test_market_data_is_asof_not_future():
     market = MarketData("AAPL", d1, m5)
     assert len(market.d1_asof(now.to_pydatetime())) == len(d1)-1
     assert len(market.m5_asof(now.to_pydatetime())) == 1
+
+
+def test_false_breakout_needs_real_level_breach_and_return():
+    cfg = StrategyConfig()
+    d1 = daily()
+    level = Level(price=100.0, kind="resistance",
+                  touches=3, strength=3.0)
+    d1.loc[d1.index[-3], "close"] = 99.4
+    # Previous day and crossing-day high are BELOW 100; a next-day
+    # close ABOVE 100 is *not* a failed upward breakout.
+    d1.loc[d1.index[-2], ["open", "high", "low", "close"]] = [
+        99.2, 99.5, 99.1, 99.3]
+    d1.loc[d1.index[-1], "close"] = 100.1
+    at = d1.index[-1].to_pydatetime()
+    assert g14_liquidity_sweep(d1, None, at, level, [level], cfg).value is False
+
+    # An actual 0.4 USD poke above resistance, followed by a daily
+    # close back below it, is a valid SIMPLE failed-breakout feature.
+    d1.loc[d1.index[-2], ["open", "high", "low", "close"]] = [
+        99.2, 100.4, 99.1, 99.3]
+    d1.loc[d1.index[-1], "close"] = 99.5
+    assert g14_liquidity_sweep(d1, None, at, level, [level], cfg).value is True
 
 
 def test_scenario_rejects_even_one_feature_exception(monkeypatch):

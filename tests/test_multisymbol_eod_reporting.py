@@ -63,6 +63,7 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
 def test_source_uses_actual_leans_native_multi_symbol_events():
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
     assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self.universe_settings.fill_forward = False" in src
     assert "self._symbols[symbol] = state" in src
     assert "self.consolidate(" in src
     assert "self.subscription_manager.remove_consolidator(" in src

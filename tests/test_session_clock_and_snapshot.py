@@ -52,6 +52,20 @@ def test_known_empty_morning_levels_do_not_reconstruct_unverified_levels():
     assert _session_levels(market, at, StrategyConfig(), at.date()) == ()
 
 
+def test_frozen_d1_snapshot_excludes_future_confirmations():
+    at = datetime(2024, 4, 1, 11, 0, tzinfo=ET)
+    confirmed = Level(price=100., kind="support", touches=2, strength=3,
+                      valid_from=date(2024, 3, 15))
+    not_confirmed = Level(price=105., kind="resistance", touches=2,
+                          strength=3, valid_from=date(2024, 4, 5))
+    unknown_origin = Level(price=108., kind="resistance", touches=2,
+                           strength=3, valid_from=None)
+    market = MarketData(
+        "AAPL", d1(),
+        session_levels=(confirmed, not_confirmed, unknown_origin))
+    assert _session_levels(market, at, StrategyConfig(), at.date()) == (confirmed,)
+
+
 def test_entry_windows_consistently_normalize_utc_to_new_york():
     p = SessionPolicy(StrategyConfig())
     ny = datetime(2024, 2, 5, 11, 0, tzinfo=ET)

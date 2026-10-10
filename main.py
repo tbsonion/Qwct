@@ -73,6 +73,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._order_event_rows = []
         # Research-only diagnostics: count actual M5 evaluations and failed
         # gates; no virtual orders, fills or portfolio are inferred.
+        self._m5_bars_seen = 0
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()
@@ -316,6 +317,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         state = self._symbols.get(symbol)
         if state is None:
             return
+        self._m5_bars_seen += 1
         state["m5_rows"].append({
             "date": _time_index(bar.end_time),
             "open": float(bar.open), "high": float(bar.high),
@@ -438,6 +440,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                            ("Qwct rejects", "REJECT"),
                            ("Qwct errors", "ERROR")):
             self.set_runtime_statistic(stat, counts[kind])
+        self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
         self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
         if not self._object_store_export_enabled:
             # The Free cloud plan has no ObjectStore write permission.
@@ -453,7 +456,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 "Qwct research summary: "
                 + ", ".join(f"{key}={counts[key]}" for key in
                             ("SCENARIO", "INTENT", "REJECT", "ERROR"))
-                + f"; M5 bar checks={self._m5_checks}, "
+                + f"; M5 bars={self._m5_bars_seen}, "
+                  f"M5 bar checks={self._m5_checks}, "
                   f"unready={self._intent_missing_atr}"
                 + "; daily rejects=" + str(dict(reject_reasons))
                 + "; failed M5 gates=" + str(dict(self._gate_failures))

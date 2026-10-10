@@ -10,6 +10,7 @@ ID гейтов — строго по контракту hybrid (orb_stocks_in_p
 """
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from math import isfinite
 
 import pandas as pd
 
@@ -67,7 +68,7 @@ class TradeIntent:
 
 
 def _direction(side: str) -> int:
-    return 1 if side == "long" else -1
+    return 1 if side == "long" else -1 if side == "short" else 0
 
 
 def _gate(id: str, passed, reason: str = "") -> GateResult:
@@ -138,19 +139,23 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             stop = lvl.price - dirn * buf
             limit = _limit_price(model, side, lvl, m5)
 
-    # 4. stop_behind_d1_level
-    if stop is None or lvl is None:
+    # 4. Check D1 placement AND that the stop loses relative to entry.
+    if stop is None or limit is None or lvl is None or dirn == 0:
         gates["stop_behind_d1_level"] = _gate("stop_behind_d1_level", None, "нет цен")
     else:
-        behind = (stop < lvl.price) if dirn > 0 else (stop > lvl.price)
+        level_ok = dirn * (lvl.price - stop) > 0
+        entry_ok = dirn * (limit - stop) > 0
+        valid = (level_ok and entry_ok and
+                 all(isfinite(v) and v > 0 for v in (limit, stop)))
         gates["stop_behind_d1_level"] = _gate(
-            "stop_behind_d1_level", bool(behind),
-            f"stop={stop:.2f} level={lvl.price:.2f}")
+            "stop_behind_d1_level", valid,
+            f"stop={stop:.2f} level={lvl.price:.2f} entry={limit:.2f} "
+            f"loss_side={entry_ok}")
 
     # 5/6. room и target
     risk_ps, room_r = None, None
     if stop is not None and limit is not None and lvl is not None:
-        risk_ps = abs(limit - stop)
+        risk_ps = dirn * (limit - stop)
         if risk_ps > 0:
             nl = next_level(_session_levels(market, ts, cfg, decision.session),
                             limit, dirn)
@@ -167,8 +172,19 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             gates["room_at_least_4r"] = _gate("room_at_least_4r", False, "риск=0")
     else:
         gates["room_at_least_4r"] = _gate("room_at_least_4r", None, "нет цен")
-    gates["target_at_least_3r"] = _gate(
-        "target_at_least_3r", cfg.tp_r >= cfg.min_rr, f"TP={cfg.tp_r}R")
+    if (limit is None or stop is None or dirn == 0 or
+            risk_ps is None or risk_ps <= 0):
+        gates["target_at_least_3r"] = _gate(
+            "target_at_least_3r", False, "нет допустимого входа/стопа")
+    else:
+        target = limit + dirn * cfg.tp_r * risk_ps
+        valid_target = (isfinite(target) and target > 0 and
+                        isfinite(cfg.tp_r) and cfg.tp_r >= cfg.min_rr and
+                        dirn * (target - limit) >= cfg.min_rr * risk_ps)
+        gates["target_at_least_3r"] = _gate(
+            "target_at_least_3r", valid_target,
+            f"entry={limit:.2f} stop={stop:.2f} target={target:.2f} "
+            f"TP={cfg.tp_r}R")
 
     # 7. risk_approved — через RiskManager, если передан
     if risk_mgr is not None:
@@ -183,11 +199,14 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
     elif risk_ps and risk_ps > 0 and limit:
         risk_money = equity * cfg.risk_per_trade_pct / 100
         shares = int(risk_money // risk_ps)
-        affordable = shares * limit <= equity
-        ok = shares > 0 and affordable
-        reason = (f"риск ${risk_money:.0f} -> {shares} акций"
-                  + ("" if affordable else " — превышает кэш (предварительно)"))
-        gates["risk_approved"] = _gate("risk_approved", ok, reason + " [предварительно]")
+        affordable = shares > 0 and shares * limit <= equity
+        # Preliminary count never proves native buying power, total
+        # open exposure, daily/weekly loss limits or protected entry.
+        gates["risk_approved"] = _gate(
+            "risk_approved", None,
+            f"UNVERIFIED PRELIMINARY shares={shares}, "
+            f"planned risk USD={risk_money:.2f}, cash-fit={affordable}; "
+            "no native risk approval")
     else:
         gates["risk_approved"] = _gate("risk_approved", None, "нет данных")
 
@@ -201,33 +220,46 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
 
 def _check_m5(m5: pd.DataFrame, lvl: Level | None, side: str | None,
               model: str | None, cfg: StrategyConfig, ts: datetime) -> GateResult:
-    """Подтверждение на M5. Нет данных — гейт НЕ пройден (fail-closed)."""
-    if m5 is None or m5.empty or lvl is None or side is None:
-        return _gate("m5_confirmed", False, "нет M5-данных — вход запрещён")
-    last = m5.iloc[-1]
+    """Minimal two-bar closed M5 evidence. NOT full Gerchik BSU/TVX."""
+    if m5 is None or len(m5) < 2 or lvl is None or side not in ("long", "short"):
+        return _gate("m5_confirmed", False, "нужны две закрытые M5 свечи")
+    if not isinstance(m5.index, pd.DatetimeIndex) or m5.index.tz is None:
+        return _gate("m5_confirmed", False, "время M5 не подтверждено")
+    if m5.index[-1] - m5.index[-2] != pd.Timedelta(minutes=5):
+        return _gate("m5_confirmed", False, "пропущенный M5 бар")
+    if pd.Timestamp(m5.index[-1]) != pd.Timestamp(ts):
+        return _gate("m5_confirmed", False, "несовпадение времени M5")
+    prev, last = m5.iloc[-2], m5.iloc[-1]
+    try:
+        for bar in (prev, last):
+            o, h, l, cl = (float(bar[k]) for k in ("open", "high", "low", "close"))
+            if (not all(isfinite(v) and v > 0 for v in (o, h, l, cl))
+                    or h < max(o, cl, l) or l > min(o, cl, h)):
+                return _gate("m5_confirmed", False, "некорректный OHLC M5")
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return _gate("m5_confirmed", False, "нет OHLC M5")
+    price = lvl.price
     if model == "breakout":
-        if side == "long":
-            ok = last["close"] > lvl.price
-        else:
-            ok = last["close"] < lvl.price
-        return _gate("m5_confirmed", bool(ok),
-                          f"M5 close {last['close']:.2f} vs level {lvl.price:.2f}")
+        ok = (prev["close"] <= price < last["close"] if side == "long"
+              else prev["close"] >= price > last["close"])
+        return _gate("m5_confirmed", ok,
+                     "M5 новый переход уровня" if ok else
+                     "M5 закрытие по сторону уровня без нового пробоя")
     if model == "bounce":
-        touched = last["low"] <= lvl.price <= last["high"]
-        if side == "long":
-            rejected = last["close"] > lvl.price
-        else:
-            rejected = last["close"] < lvl.price
-        ok = touched and rejected
-        return _gate("m5_confirmed", bool(ok),
-                          f"касание={touched} возврат={rejected}")
+        touched = last["low"] <= price <= last["high"]
+        same_side = (prev["close"] > price and last["close"] > price
+                     if side == "long" else
+                     prev["close"] < price and last["close"] < price)
+        ok = touched and same_side
+        return _gate("m5_confirmed", ok,
+                     f"two-bar touch={touched} return_side={same_side}; "
+                     "полная BSU/BPU модель не подтверждена")
     if model == "false_breakout":
-        # M5-подтверждение ЛП: прокол и закрытие обратно
-        if side == "short":
-            ok = last["high"] > lvl.price >= last["close"]
-        else:
-            ok = last["low"] < lvl.price <= last["close"]
-        return _gate("m5_confirmed", bool(ok), "M5-подтверждение ЛП")
+        ok = (prev["close"] <= price and last["high"] > price >= last["close"]
+              if side == "short" else
+              prev["close"] >= price and last["low"] < price <= last["close"])
+        return _gate("m5_confirmed", ok, "M5 прокол и возврат"
+                     if ok else "M5 простой ЛП не подтверждён")
     return _gate("m5_confirmed", None, f"неизвестная модель {model}")
 
 

@@ -81,9 +81,14 @@ def detect_levels(d1_asof: pd.DataFrame, cfg: StrategyConfig) -> list[Level]:
     if n < 2 * cfg.swing_k + 5:
         return []
     a = atr(d1_asof, cfg.atr_period)
-    tol = float((a * cfg.level_tolerance_atr).median())
+    # Missing native ATR is a normal fail-closed case, not a NumPy
+    # "mean of empty slice" warning. Do not invent a tolerance.
+    ready_atr = a.loc[np.isfinite(a) & (a > 0)]
+    if ready_atr.empty:
+        return []
+    tol = float(ready_atr.median() * cfg.level_tolerance_atr)
     if not np.isfinite(tol) or tol <= 0:
-        return []  # No native ATR -> no guessed cluster tolerance
+        return []
 
     highs, lows = _confirmed_swings(d1_asof, cfg.swing_k)
     levels: list[Level] = []
@@ -115,16 +120,16 @@ def _score_level(lvl: Level, d1: pd.DataFrame, cfg: StrategyConfig, a: pd.Series
     window = d1.iloc[start:lvl.first_idx]
     if len(window) >= cfg.accumulation_bars // 2:
         rng = window["high"].max() - window["low"].min()
-        av = _aval(a, lvl.first_idx, rng)
-        if rng <= cfg.accumulation_range_atr * av:
+        av = _native_atr(a, lvl.first_idx)
+        if av is not None and rng <= cfg.accumulation_range_atr * av:
             score += 2.0
             lvl.formed_by_consolidation = True
             notes.append("сформирован проторговкой")
     for idx in (lvl.first_idx, lvl.last_idx):
         if idx + 1 < len(d1):
             nxt = d1.iloc[idx + 1]
-            av = _aval(a, idx + 1, nxt["high"] - nxt["low"])
-            if (nxt["high"] - nxt["low"]) >= cfg.big_bar_atr * av:
+            av = _native_atr(a, idx + 1)
+            if av is not None and (nxt["high"] - nxt["low"]) >= cfg.big_bar_atr * av:
                 score += 1.0
                 notes.append("резкий разворот")
                 break
@@ -132,19 +137,52 @@ def _score_level(lvl: Level, d1: pd.DataFrame, cfg: StrategyConfig, a: pd.Series
     lvl.notes = notes
 
 
-def _aval(a: pd.Series, idx: int, fallback: float) -> float:
+def _native_atr(a: pd.Series, idx: int) -> float | None:
+    """Only native LEAN ATR snapshots can validate a level strength bonus.
+
+    An OHLC bar range is not interchangeable with ATR(14). If the native
+    indicator was still warming, the bonus stays UNKNOWN, not approved.
+    """
+    if idx < 0 or idx >= len(a):
+        return None
     v = a.iloc[idx]
-    return float(v) if pd.notna(v) and v > 0 else max(float(fallback), 1e-9)
+    return float(v) if pd.notna(v) and np.isfinite(v) and v > 0 else None
 
 
-def _mark_mirror(levels: list[Level], d1: pd.DataFrame, cfg: StrategyConfig) -> None:
+def _mark_mirror(levels: list[Level], d1: pd.DataFrame,
+                 cfg: StrategyConfig) -> None:
+    """Label only an observed AFTER-FORMATION role reversal on closed D1.
+
+    Two candle wicks crossing a level is not evidence of a mirror. A prior
+    support must CLOSE below, then be retested/rejected as resistance;
+    resistance requires the opposite. This is a conservative approximation
+    of the manual Gerchik mirror, not a certified BPU detector.
+    """
     for lvl in levels:
-        seg = d1.iloc[max(0, lvl.first_idx - cfg.mirror_lookback):lvl.last_idx + 1]
-        if len(seg) < 10:
+        if lvl.kind not in ("support", "resistance"):
             continue
-        crossed = ((seg["high"] > lvl.price) & (seg["low"] < lvl.price)).sum() >= 2
-        if crossed:
-            lvl.kind = "mirror"
+        # Begin only AFTER the last originating swing, never reinterpret
+        # candles that created the original support/resistance as a retest.
+        start = max(lvl.last_idx + 1, len(d1) - cfg.mirror_lookback, 1)
+        if start >= len(d1) - 1:
+            continue
+        breached = False
+        for i in range(start, len(d1)):
+            b = d1.iloc[i]
+            if lvl.kind == "support":
+                # Breach down, then separate later candle retests underside
+                # of the support level and closes underneath it.
+                if breached and b["high"] >= lvl.price and b["close"] < lvl.price:
+                    lvl.kind = "mirror"
+                    break
+                if b["close"] < lvl.price:
+                    breached = True
+            else:
+                if breached and b["low"] <= lvl.price and b["close"] > lvl.price:
+                    lvl.kind = "mirror"
+                    break
+                if b["close"] > lvl.price:
+                    breached = True
 
 
 def levels_for_session(d1_asof: pd.DataFrame, day: date,

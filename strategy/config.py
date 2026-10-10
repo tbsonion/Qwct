@@ -35,6 +35,8 @@ class StrategyConfig:
     min_atr: float = 1.0                # USD
     min_price: float = 5.0              # USD
     volume_lookback_days: int = 20      # объём — среднее за N дней
+    screener_candidate_limit: int = 50   # native Fundamental Universe, top liquidity
+    screener_watchlist_limit: int = 10   # max D1-qualified stocks to report
     data_stale_after_min: int = 60      # данные старше — fail closed
 
     # ---- Таймфреймы и сессия ----

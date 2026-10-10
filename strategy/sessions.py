@@ -14,8 +14,11 @@ ORB + Stocks in Play живёт по своим часам (модуль orb_sto
 """
 from dataclasses import dataclass
 from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 from .config import StrategyConfig
+
+_ET = ZoneInfo("America/New_York")
 
 
 @dataclass(frozen=True)
@@ -49,7 +52,12 @@ class SessionPolicy:
     def is_entry_allowed(self, model: str,
                          ts: datetime) -> tuple[bool, str]:
         """(разрешён, причина). ts — биржевое время (ET)."""
-        t = ts.time()
+        # UTC, local exchange time and DST are all acceptable only if
+        # timestamp carries its actual offset. Never interpret naive/UTC
+        # clock values as exchange-local wall time.
+        if ts.tzinfo is None or ts.utcoffset() is None:
+            return False, "нет достоверного биржевого часового пояса"
+        t = ts.astimezone(_ET).time()
         wins = self._windows.get(model, [])
         for w in wins:
             if w.start <= t < w.end:

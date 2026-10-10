@@ -159,8 +159,9 @@ def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
     assert 'self.plot("Qwct Focus", "D1 Level",' in src
     assert 'self._chart_symbol' in src
     assert 'if self._chart_symbol is None and self.screen_watchlist:' in src
-    assert 'if symbol == self._chart_symbol and self._focus_m5_plotted < 3500:' in src
-    assert 'and self._focus_m5_plotted < 3500):' in src
+    assert 'symbol == self._chart_symbol and self._focus_m5_plotted < 3500)' in src
+    assert 'if focus_charted_this_bar:' in src
+    assert src.count('if focus_charted_this_bar:') == 3
     assert '"Qwct focus M5 plotted"' in src
     assert '"Qwct top BSU blocker"' in src
     assert '"Qwct top M5 gate"' in src

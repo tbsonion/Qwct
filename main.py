@@ -398,7 +398,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "low": float(bar.low), "close": float(bar.close),
             "volume": float(bar.volume)})
         state["m5_rows"] = state["m5_rows"][-80:]
-        if symbol == self._chart_symbol and self._focus_m5_plotted < 3500:
+        focus_charted_this_bar = (
+            symbol == self._chart_symbol and self._focus_m5_plotted < 3500)
+        if focus_charted_this_bar:
             # QuantConnect official CandlestickSeries accepts the native
             # completed TradeBar directly; no synthetic OHLC data.
             self.plot("Qwct Focus", "M5", bar)
@@ -421,16 +423,14 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     timeframe="M5", volume=float(bar.volume)))
                 if observed.phase == "bpu1" and before_phase != observed.phase:
                     self._bsu_bpu1_count += 1
-                    if (symbol == self._chart_symbol
-                            and self._focus_m5_plotted < 3500):
+                    if focus_charted_this_bar:
                         self.plot("Qwct Focus", "BPU1", observed.level_price)
                     self._record(
                         symbol, "BSU_PROXY_BPU1", model="bounce",
                         side=observed.side, level=observed.level_price,
                         reason=f"{link.provenance}; native closed M5 BPU1; NO ORDERS")
                 if observed.phase == "bpu2_confirmed" and before_phase != observed.phase:
-                    if (symbol == self._chart_symbol
-                            and self._focus_m5_plotted < 3500):
+                    if focus_charted_this_bar:
                         self.plot("Qwct Focus", "BPU2", observed.level_price)
                     self._bsu_proxy_bpu2_count += 1
                     self._record(

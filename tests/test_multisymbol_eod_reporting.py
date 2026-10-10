@@ -146,3 +146,37 @@ def test_native_batched_history_warmup_and_no_synthetic_indicators():
     assert "if self._register_symbol(self.symbol):" in src
     assert "FillGroupingMethod.FLAT_TO_FLAT" in src
     assert "self.time_rules.after_market_close(self.symbol, 1)" in src
+
+
+def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    assert 'Chart("Qwct Focus")' in src
+    assert 'CandlestickSeries("M5", "$")' in src
+    assert 'Series("D1 Level", SeriesType.LINE, 0)' in src
+    assert 'Series("BPU1", SeriesType.SCATTER, 0)' in src
+    assert 'Series("BPU2", SeriesType.SCATTER, 0)' in src
+    assert 'self.plot("Qwct Focus", "M5", bar)' in src
+    assert 'self.plot("Qwct Focus", "D1 Level",' in src
+    assert 'self._chart_symbol' in src
+    assert 'if self._chart_symbol is None and self.screen_watchlist:' in src
+    assert 'if symbol == self._chart_symbol:' in src
+    # LEAN Free has 10 allowed chart series; existing research has 5,
+    # focus chart must be <=4 rather than allocating one chart per stock.
+    assert 'self.plot("Qwct Focus", "BPU1",' in src
+    assert 'self.plot("Qwct Focus", "BPU2",' in src
+
+
+def test_zero_signal_backtest_explains_models_and_bsu_rejections():
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    assert 'self._d1_models = Counter()' in src
+    assert 'self._bsu_block_reasons = Counter()' in src
+    assert 'self._bsu_bpu1_count = 0' in src
+    assert 'self._d1_models[decision.model] += 1' in src
+    assert 'self._bsu_block_reasons[why] += 1' in src
+    assert '"Qwct D1 bounce"' in src
+    assert '"Qwct D1 breakout"' in src
+    assert '"Qwct D1 false"' in src
+    assert '"Qwct BSU proxy blocked"' in src
+    assert '"Qwct native BPU1"' in src
+    assert 'BSU block reasons=' in src
+    assert 'D1 models=' in src

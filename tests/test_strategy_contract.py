@@ -11,7 +11,7 @@ from strategy.config import StrategyConfig
 from strategy.data import MarketData
 from strategy.features import evaluate_all
 from strategy.indicators import atr, global_trend, trend_direction
-from strategy.levels import Level, detect_levels, levels_for_session
+from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
 from strategy.scenarios import ScenarioDecision, ScenarioEvaluator
 from strategy.signals import GATE_IDS, build_intent
 
@@ -45,6 +45,23 @@ def test_levels_fail_closed_without_native_atr():
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
         assert detect_levels(daily(native_atr=False), cfg) == []
+
+
+def test_level_strength_never_substitutes_bar_range_for_missing_native_atr():
+    cfg = StrategyConfig()
+    d1 = daily()
+    # Make the price range deliberately small, so the old fallback
+    # (substitute the candle range for missing ATR) awarded false strength.
+    for column, value in (("open", 100.0), ("high", 100.1),
+                          ("low", 99.9), ("close", 100.0)):
+        d1[column] = value
+    lvl = Level(price=100.0, kind="support", touches=2,
+                first_idx=12, last_idx=12)
+    assert _native_atr(d1["atr14"], 12) is None
+    _score_level(lvl, d1, cfg, d1["atr14"])
+    assert lvl.strength == 2.0
+    assert lvl.formed_by_consolidation is False
+    assert "сформирован проторговкой" not in lvl.notes
 
 
 def test_levels_have_no_lookahead():

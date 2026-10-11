@@ -196,6 +196,7 @@ def test_accepted_d1_scenarios_are_traced_through_actual_m5_gate_results():
     assert "SetupTrace.from_decision(" in src
     assert "state[\"setup_trace\"].set_bsu(" in src
     assert "state[\"setup_trace\"].observe_m5(" in src
+    assert 'closed_bars=state["m5_rows"][-2:]' in src
     assert "for name, gate in intent.gates.items()" in src
     assert "state[\"setup_trace\"].missing_intent += 1" in src
     assert "state[\"setup_trace\"].candidate = True" in src

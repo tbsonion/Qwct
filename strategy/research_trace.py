@@ -37,6 +37,12 @@ class SetupTrace:
     score: float
     feature_positives: list[str]
     level_count: int
+    level_kind: str
+    level_source: str
+    level_first_idx: int
+    level_last_idx: int
+    level_formed_at: str
+    level_valid_from: str
     d1_close: float
     d1_atr: float
     bsu: str = "not_evaluated"
@@ -76,7 +82,16 @@ class SetupTrace:
             decided_at=decided, model=str(decision.model), side=str(decision.side),
             level=price, score=score,
             feature_positives=list(decision.positives),
-            level_count=level_count, d1_close=close, d1_atr=atr)
+            level_count=level_count,
+            level_kind=str(decision.level.kind),
+            level_source=str(decision.level.source),
+            level_first_idx=int(decision.level.first_idx),
+            level_last_idx=int(decision.level.last_idx),
+            level_formed_at=(decision.level.formed_at.isoformat()
+                             if decision.level.formed_at is not None else ""),
+            level_valid_from=(decision.level.valid_from.isoformat()
+                              if decision.level.valid_from is not None else ""),
+            d1_close=close, d1_atr=atr)
 
     def set_bsu(self, armed: bool, reason: str) -> None:
         self.bsu = "armed" if armed else "blocked"
@@ -141,7 +156,14 @@ class SetupTrace:
             "model": self.model, "side": self.side,
             "level": self.level, "score": self.score,
             "feature_positives": list(self.feature_positives),
-            "level_count": self.level_count, "d1_close": self.d1_close,
+            "level_count": self.level_count,
+            "level_kind": self.level_kind,
+            "level_source": self.level_source,
+            "level_first_idx": self.level_first_idx,
+            "level_last_idx": self.level_last_idx,
+            "level_formed_at": self.level_formed_at,
+            "level_valid_from": self.level_valid_from,
+            "d1_close": self.d1_close,
             "d1_atr": self.d1_atr, "bsu": self.bsu,
             "bsu_reason": self.bsu_reason, "m5_checks": self.m5_checks,
             "missing_intent": self.missing_intent,
@@ -182,7 +204,11 @@ class SetupTrace:
             f"QWCT TRACE {self.symbol} {self.session} "
             f"{self.model}/{self.side} L={self.level:.2f} "
             f"score={self.score:.2f} D1={self.d1_close:.2f}/ATR={self.d1_atr:.2f} "
-            f"levels={self.level_count} features={','.join(self.feature_positives)[:75]} "
+            f"levels={self.level_count} "
+            f"src={self.level_source}/{self.level_kind} "
+            f"swing={self.level_first_idx}-{self.level_last_idx} "
+            f"valid={self.level_valid_from} "
+            f"features={','.join(self.feature_positives)[:75]} "
             f"BSU={self.bsu}:{_short(self.bsu_reason, 60)} "
             f"M5={self.m5_checks} first={self.first_m5[-14:]} last={self.last_m5[-14:]} "
             f"failed={problems} last_fail={latest} reasons={detail} "

@@ -50,6 +50,7 @@ class SetupTrace:
     failed_gate_counts: Counter = field(default_factory=Counter)
     bpu1_count: int = 0
     bpu2_count: int = 0
+    bpu_failure_reasons: Counter = field(default_factory=Counter)
     candidate: bool = False
 
     @classmethod
@@ -101,6 +102,9 @@ class SetupTrace:
             if status != "TRUE":
                 self.failed_gate_counts[name] += 1
 
+    def add_bpu_failure(self, reason: str) -> None:
+        self.bpu_failure_reasons[_short(reason, 120)] += 1
+
     def as_dict(self) -> dict:
         return {
             "symbol": self.symbol, "session": self.session,
@@ -117,6 +121,7 @@ class SetupTrace:
             "last_gate_reasons": dict(self.last_gate_reasons),
             "failed_gate_counts": dict(self.failed_gate_counts),
             "bpu1_count": self.bpu1_count, "bpu2_count": self.bpu2_count,
+            "bpu_failure_reasons": dict(self.bpu_failure_reasons),
             "candidate": self.candidate,
         }
 
@@ -128,6 +133,17 @@ class SetupTrace:
             f"{k}={v}" for k, v in self.last_gate_outcomes.items()
             if v != "TRUE"
         )[:180] or "none"
+        # Last native M5 per-gate explanation is more actionable than
+        # the aggregate 456-bar failures. Keep actual source text short
+        # enough that LEAN Free does not silently truncate the message.
+        detail = ";".join(
+            f"{k}:{_short(self.last_gate_reasons.get(k, ''), 48)}"
+            for k, v in self.last_gate_outcomes.items() if v != "TRUE"
+        )[:150] or "none"
+        bpu_failure = self.bpu_failure_reasons.most_common(1)
+        bpu_text = (
+            f"{_short(bpu_failure[0][0], 52)}:{bpu_failure[0][1]}"
+            if bpu_failure else "none")
         return (
             f"QWCT TRACE {self.symbol} {self.session} "
             f"{self.model}/{self.side} L={self.level:.2f} "
@@ -135,9 +151,10 @@ class SetupTrace:
             f"levels={self.level_count} features={','.join(self.feature_positives)[:75]} "
             f"BSU={self.bsu}:{_short(self.bsu_reason, 60)} "
             f"M5={self.m5_checks} first={self.first_m5[-14:]} last={self.last_m5[-14:]} "
-            f"failed={problems} last_fail={latest} "
+            f"failed={problems} last_fail={latest} reasons={detail} "
             f"no_intent={self.missing_intent} BPU1={self.bpu1_count} "
-            f"BPU2={self.bpu2_count} candidate={'YES' if self.candidate else 'NO'}"
+            f"BPU2={self.bpu2_count} BPU-invalid={bpu_text} "
+            f"candidate={'YES' if self.candidate else 'NO'}"
         )
 
 

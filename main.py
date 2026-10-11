@@ -20,7 +20,7 @@ from strategy.bsu_bridge import create_bsu_research_observer
 from strategy.patterns_bsu import Bar as ResearchBpuBar
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
-from strategy.research_trace import SetupTrace, summarize_traces
+from strategy.research_trace import SetupTrace
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.protected_entry import review_schwab_protected_entry
 from strategy.reporting import (
@@ -694,8 +694,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # One human-readable line for EACH accepted setup (capped), not
         # thousands of per-candle logs that QuantConnect throttles.
         # These are real observations, not fabricated outcomes.
-        for line in summarize_traces(self._setup_traces, limit=20):
-            self.log(line)
+        for trace in self._setup_traces[:20]:
+            for line in trace.display_lines():
+                self.log(line)
+        if len(self._setup_traces) > 20:
+            self.log(
+                f"QWCT TRACE viewer limit: omitted "
+                f"{len(self._setup_traces) - 20} retained accepted setups")
         if self._setup_traces_omitted:
             self.log(
                 f"QWCT TRACE memory cap: {self._setup_traces_omitted} "

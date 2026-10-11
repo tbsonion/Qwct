@@ -55,20 +55,6 @@ def write_reports(self):
     self.set_runtime_statistic(
         "Qwct traced setups without M5",
         sum(t.m5_checks == 0 for t in self._setup_traces))
-    # One human-readable line for EACH accepted setup (capped), not
-    # thousands of per-candle logs that QuantConnect throttles.
-    # These are real observations, not fabricated outcomes.
-    for trace in self._setup_traces[:20]:
-        for line in trace.display_lines():
-            self.log(line)
-    if len(self._setup_traces) > 20:
-        self.log(
-            f"QWCT TRACE viewer limit: omitted "
-            f"{len(self._setup_traces) - 20} retained accepted setups")
-    if self._setup_traces_omitted:
-        self.log(
-            f"QWCT TRACE memory cap: {self._setup_traces_omitted} "
-            "additional accepted D1 setups not retained")
     if not self._object_store_export_enabled:
         # The Free cloud plan has no ObjectStore write permission.
         # Emit only a short end-of-run count; DO NOT claim the complete
@@ -100,6 +86,19 @@ def write_reports(self):
               str(dict(self._gate_failures.most_common(8)))
             + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."
         )
+        # Keep the entire Free backtest below ~10 KB and make the
+        # aggregate summary visible before more expensive per-setup lines.
+        for trace in self._setup_traces[:8]:
+            for line in trace.display_lines():
+                self.log(line)
+        if len(self._setup_traces) > 8:
+            self.log(
+                f"QWCT TRACE viewer limit: omitted "
+                f"{len(self._setup_traces) - 8} retained accepted setups")
+        if self._setup_traces_omitted:
+            self.log(
+                f"QWCT TRACE memory cap: {self._setup_traces_omitted} "
+                "additional accepted D1 setups not retained")
         return
     # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
     trades = native_closed_trade_rows(self.trade_builder.closed_trades)

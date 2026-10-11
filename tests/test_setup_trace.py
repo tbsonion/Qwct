@@ -133,6 +133,37 @@ def test_invalid_timestamps_or_unaccepted_scenarios_cannot_be_traced():
                      {"m5_confirmed": (True, "unknown tz")})
 
 
+def test_real_previous_and_current_m5_ohlc_are_preserved_for_replay():
+    t = SetupTrace.from_decision(accepted(), 99.7, 2.0, 2)
+    first = datetime(2024, 1, 3, 10, 35, tzinfo=ET)
+    second = first + timedelta(minutes=5)
+    bars = [
+        {"date": pd.Timestamp(first), "open": 99.6, "high": 99.9,
+         "low": 99.2, "close": 99.7, "volume": 1200.0},
+        {"date": pd.Timestamp(second), "open": 99.7, "high": 100.3,
+         "low": 99.6, "close": 100.2, "volume": 2200.0},
+    ]
+    t.observe_m5(second, {"m5_confirmed": (True, "confirmed cross")},
+                 closed_bars=bars)
+    out = t.as_dict()
+    assert out["last_two_m5"][0]["close"] == 99.7
+    assert out["last_two_m5"][1]["close"] == 100.2
+    assert out["last_two_m5"][1]["volume"] == 2200.
+    assert out["last_two_m5"][1]["time"].startswith("2024-01-03T10:40")
+    assert "m5_ohlc=" in t.log_line()
+
+
+def test_unavailable_or_future_m5_bar_never_fabricated_in_evidence():
+    t = SetupTrace.from_decision(accepted(), 99.7, 2.0, 2)
+    now = datetime(2024, 1, 3, 10, 40, tzinfo=ET)
+    with pytest.raises(ValueError):
+        t.observe_m5(now, {}, closed_bars=[
+            {"date": pd.Timestamp(now) + pd.Timedelta(minutes=5),
+             "open": 100., "high": 101., "low": 99.,
+             "close": 100., "volume": 500}])
+    assert t.as_dict()["m5_checks"] == 0
+
+
 def test_replay_reports_are_bounded_and_no_data_is_invented():
     traces = [SetupTrace.from_decision(accepted(symbol=f"T{i}"),
               100., 2., 2) for i in range(8)]

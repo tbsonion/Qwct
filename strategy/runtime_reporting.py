@@ -1,0 +1,124 @@
+"""Native LEAN end-of-backtest statistics and research output."""
+from collections import Counter
+from .reporting import SIGNAL_FIELDS, ORDER_FIELDS, TRADE_FIELDS, csv_rows, native_closed_trade_rows, summary_json
+
+def write_reports(self):
+    # Official native LEAN runtime statistics survive backtest logging
+    # throttling and are available in the result view on Cloud Free.
+    counts = Counter(row["type"] for row in self._signal_rows)
+    for stat, kind in (("Qwct D1 setups", "SCENARIO"),
+                       ("Qwct intents", "INTENT"),
+                       ("Qwct rejects", "REJECT"),
+                       ("Qwct errors", "ERROR")):
+        self.set_runtime_statistic(stat, counts[kind])
+    self.set_runtime_statistic(
+        "Qwct research candidates", counts["RESEARCH_CANDIDATE"])
+    self.set_runtime_statistic("Qwct D1 bounce", self._d1_models["bounce"])
+    self.set_runtime_statistic("Qwct D1 breakout", self._d1_models["breakout"])
+    self.set_runtime_statistic("Qwct D1 false",
+                               self._d1_models["false_breakout"])
+    self.set_runtime_statistic("Qwct BSU proxy blocked",
+                               sum(self._bsu_block_reasons.values()))
+    self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
+    self.set_runtime_statistic(
+        "Qwct BPU invalidations", sum(self._bpu_invalid_reasons.values()))
+    self.set_runtime_statistic(
+        "Qwct chart focus", self._chart_symbol.value
+        if self._chart_symbol is not None else "none")
+    self.set_runtime_statistic(
+        "Qwct focus M5 plotted", self._focus_m5_plotted)
+    top_bsu = (
+        self._bsu_block_reasons.most_common(1)[0]
+        if self._bsu_block_reasons else None)
+    top_gate = (
+        self._gate_failures.most_common(1)[0]
+        if self._gate_failures else None)
+    self.set_runtime_statistic(
+        "Qwct top BSU blocker",
+        (f"{top_bsu[0][:60]} ({top_bsu[1]})" if top_bsu
+         else ("no D1 bounce" if self._d1_models["bounce"] == 0
+               else "none")))
+    self.set_runtime_statistic(
+        "Qwct top M5 gate",
+        f"{top_gate[0]}:{top_gate[1]}" if top_gate else "none")
+    self.set_runtime_statistic(
+        "Qwct BSU swing proxies armed", self._bsu_proxy_armed_count)
+    self.set_runtime_statistic(
+        "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
+    self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
+    self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
+    self.set_runtime_statistic(
+        "Qwct traced D1 setups", len(self._setup_traces))
+    self.set_runtime_statistic(
+        "Qwct trace M5 checks",
+        sum(t.m5_checks for t in self._setup_traces))
+    self.set_runtime_statistic(
+        "Qwct traced setups without M5",
+        sum(t.m5_checks == 0 for t in self._setup_traces))
+    # One human-readable line for EACH accepted setup (capped), not
+    # thousands of per-candle logs that QuantConnect throttles.
+    # These are real observations, not fabricated outcomes.
+    for trace in self._setup_traces[:20]:
+        for line in trace.display_lines():
+            self.log(line)
+    if len(self._setup_traces) > 20:
+        self.log(
+            f"QWCT TRACE viewer limit: omitted "
+            f"{len(self._setup_traces) - 20} retained accepted setups")
+    if self._setup_traces_omitted:
+        self.log(
+            f"QWCT TRACE memory cap: {self._setup_traces_omitted} "
+            "additional accepted D1 setups not retained")
+    if not self._object_store_export_enabled:
+        # The Free cloud plan has no ObjectStore write permission.
+        # Emit only a short end-of-run count; DO NOT claim the complete
+        # decision journal was saved (it remains in-memory only).
+        reject_reasons = Counter(
+            "insufficient D1" if row["reason"] == "insufficient closed D1"
+            else "no nearby levels" if "нет уровней рядом" in row["reason"]
+            else "model score below threshold" if "скор " in row["reason"]
+            else "other" for row in self._signal_rows
+            if row["type"] == "REJECT")
+        self.log(
+            "Qwct research summary: "
+            + ", ".join(f"{key}={counts[key]}" for key in
+                        ("SCENARIO", "RESEARCH_CANDIDATE", "INTENT",
+                         "REJECT", "ERROR"))
+            + f"; M5 bars={self._m5_bars_seen}, "
+              f"M5 bar checks={self._m5_checks}, "
+              f"unready={self._intent_missing_atr}"
+            + "; D1 models=" + str(dict(self._d1_models))
+            + "; BSU block reasons=" +
+              str(dict(self._bsu_block_reasons.most_common(7)))
+            + f"; native BPU1={self._bsu_bpu1_count}"
+            + "; BPU invalid reasons=" +
+              str(dict(self._bpu_invalid_reasons.most_common(5)))
+            + f"; chart focus={self._chart_symbol.value if self._chart_symbol else 'none'}"
+            + f"; chart M5 drawn={self._focus_m5_plotted}"
+            + "; daily rejects=" + str(dict(reject_reasons))
+            + "; failed M5 gates=" +
+              str(dict(self._gate_failures.most_common(8)))
+            + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."
+        )
+        return
+    # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
+    trades = native_closed_trade_rows(self.trade_builder.closed_trades)
+    outputs = {
+        "signal_decisions.csv": csv_rows(self._signal_rows, SIGNAL_FIELDS),
+        "native_order_events.csv": csv_rows(
+            self._order_event_rows, ORDER_FIELDS),
+        "native_closed_trades.csv": csv_rows(trades, TRADE_FIELDS),
+        "summary.json": summary_json(
+            self._signal_rows, self._order_event_rows, trades,
+            self.portfolio.invested),
+    }
+    # LEAN ObjectStore: save at algorithm end to avoid constant writes.
+    # A unique AlgorithmId avoids overwriting another backtest's results.
+    prefix = f"{self.project_id}/{self.algorithm_id}/gerchik"
+    for filename, body in outputs.items():
+        try:
+            if not self.object_store.save(f"{prefix}/{filename}", body):
+                self.error(f"ObjectStore could not save {filename}")
+        except Exception as exc:
+            self.error(f"ObjectStore error saving {filename}: {exc}")
+    self.log(f"Gerchik journal and trade report: {prefix}")

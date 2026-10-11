@@ -177,6 +177,53 @@ class SetupTrace:
             "candidate": self.candidate,
         }
 
+    def display_lines(self) -> list[str]:
+        """Four short native LEAN log lines per setup, each <=190 chars.
+
+        Big single-line JSON/CSV is usually truncated in the Free
+        backtest log viewport. Split genuine source evidence by stage.
+        """
+        label = f"{self.symbol} {self.session}"
+        d1 = (
+            f"QWCT D1 {label} {self.model}/{self.side} "
+            f"L={self.level:.2f} score={self.score:.2f} "
+            f"close={self.d1_close:.2f} ATR={self.d1_atr:.2f} "
+            f"src={self.level_source}/{self.level_kind} "
+            f"swing={self.level_first_idx}-{self.level_last_idx} "
+            f"valid={self.level_valid_from}")
+        candles = ",".join(
+            f"{row['time'][11:16]}:"
+            f"{row['open']:.2f}/{row['high']:.2f}/"
+            f"{row['low']:.2f}/{row['close']:.2f}"
+            for row in self.last_two_m5) or "no-native-bars"
+        m5 = (
+            f"QWCT M5 {label} checks={self.m5_checks} "
+            f"first={self.first_m5[11:16]} last={self.last_m5[11:16]} "
+            f"OHLC={candles} missing_intent={self.missing_intent} "
+            f"candidate={'YES' if self.candidate else 'NO'}")
+        last_failed = [
+            (name, status, self.last_gate_reasons.get(name, ""))
+            for name, status in self.last_gate_outcomes.items()
+            if status != "TRUE"
+        ]
+        # Include both specific reason and aggregate count. Never infer
+        # approval from a missing/UNKNOWN gate.
+        gate_details = "; ".join(
+            f"{name}:{status}:{_short(reason, 38)}"
+            for name, status, reason in last_failed[:2]) or "none"
+        gates = (
+            f"QWCT GATES {label} last={gate_details} "
+            f"fails={','.join(f'{k}:{v}' for k,v in self.failed_gate_counts.most_common(3))}")
+        bpu_reasons = self.bpu_failure_reasons.most_common(1)
+        bpu_text = (f"{_short(bpu_reasons[0][0], 42)}:{bpu_reasons[0][1]}"
+                    if bpu_reasons else "none")
+        bsu = (
+            f"QWCT BSU {label} {self.bsu}:"
+            f"{_short(self.bsu_reason, 75)} "
+            f"BPU1={self.bpu1_count} BPU2={self.bpu2_count} "
+            f"invalid={bpu_text}")
+        return [line[:190] for line in (d1, m5, gates, bsu)]
+
     def log_line(self) -> str:
         problems = ",".join(
             f"{k}:{v}" for k, v in self.failed_gate_counts.most_common(4)

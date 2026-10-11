@@ -25,6 +25,8 @@ class FakeAlgorithm:
         self._bsu_block_reasons = Counter({"origin mismatch": n})
         self._bpu_invalid_reasons = Counter()
         self._gate_failures = Counter({"risk_approved": n})
+        self._m5_true_by_model = Counter()
+        self._m5_true_other_blockers = Counter()
         self._bsu_bpu1_count = 0
         self._bsu_proxy_armed_count = 0
         self._bsu_proxy_bpu2_count = 0

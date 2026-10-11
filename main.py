@@ -20,6 +20,7 @@ from strategy.bsu_bridge import create_bsu_research_observer
 from strategy.patterns_bsu import Bar as ResearchBpuBar
 from strategy.sessions import SessionPolicy
 from strategy.signals import build_intent
+from strategy.research_trace import SetupTrace, summarize_traces
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.protected_entry import review_schwab_protected_entry
 from strategy.reporting import (
@@ -81,6 +82,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._gate_failures = Counter()
         self._d1_models = Counter()
         self._bsu_block_reasons = Counter()
+        # In-memory evidence of the first accepted D1 setups; stop
+        # growing trace memory on 1-year Cloud Free research windows.
+        self._setup_traces = []
+        self._setup_traces_omitted = 0
         self._bsu_proxy_armed_count = 0
         self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
@@ -196,6 +201,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "session_levels": None,
             "bsu_link": None,
             "focus_level": None,
+            "setup_trace": None,
         }
         self._symbols[symbol] = state
         # Native LEAN consolidators must be removed on universe removal.
@@ -308,6 +314,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             state["session_levels"] = None
             state["bsu_link"] = None
             state["focus_level"] = None
+            state["setup_trace"] = None
             state["m5_rows"] = []
 
         for symbol in self.screen_watchlist:
@@ -340,6 +347,18 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 state["decision"] = decision
                 if decision.accepted:
                     self._d1_models[decision.model] += 1
+                    # A bounded scenario->M5 replay trace survives native
+                    # universe removal and does not claim fills/orders.
+                    if len(self._setup_traces) < 30:
+                        trace = SetupTrace.from_decision(
+                            decision, d1_close=float(d1["close"].iloc[-1]),
+                            native_atr=float(d1[f"atr{self.cfg.atr_period}"].iloc[-1]),
+                            level_count=len(levels))
+                        state["setup_trace"] = trace
+                        self._setup_traces.append(trace)
+                        trace.set_bsu(False, "not eligible: model is not bounce")
+                    else:
+                        self._setup_traces_omitted += 1
                     # On the single-ticker plot, show the accepted
                     # morning scenario level rather than an unrelated
                     # nearby context level. No intraday recalculation.
@@ -354,6 +373,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     link, why = create_bsu_research_observer(
                         decision, d1, native_tick_size, self.cfg)
                     state["bsu_link"] = link
+                    if state["setup_trace"] is not None:
+                        state["setup_trace"].set_bsu(
+                            link is not None,
+                            f"native swing proxy linked at {link.origin_time}"
+                            if link is not None else why)
                     if link is not None:
                         self._bsu_proxy_armed_count += 1
                     else:
@@ -423,6 +447,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     timeframe="M5", volume=float(bar.volume)))
                 if observed.phase == "bpu1" and before_phase != observed.phase:
                     self._bsu_bpu1_count += 1
+                    if state["setup_trace"] is not None:
+                        state["setup_trace"].bpu1_count += 1
                     if focus_charted_this_bar:
                         self.plot("Qwct Focus", "BPU1", observed.level_price)
                     self._record(
@@ -433,6 +459,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     if focus_charted_this_bar:
                         self.plot("Qwct Focus", "BPU2", observed.level_price)
                     self._bsu_proxy_bpu2_count += 1
+                    if state["setup_trace"] is not None:
+                        state["setup_trace"].bpu2_count += 1
                     self._record(
                         symbol, "BSU_PROXY_BPU2_CLOSED",
                         model="bounce", side=observed.side,
@@ -460,7 +488,14 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self.cfg, equity=float(self.portfolio.total_portfolio_value))
             if intent is None:
                 self._intent_missing_atr += 1
+                if state["setup_trace"] is not None:
+                    state["setup_trace"].missing_intent += 1
                 return
+            if state["setup_trace"] is not None:
+                state["setup_trace"].observe_m5(
+                    _time_index(bar.end_time).to_pydatetime(),
+                    {name: (gate.passed, gate.reason)
+                     for name, gate in intent.gates.items()})
             if not intent.all_gates_passed:
                 # Distinguish a research-worthy setup from an approved trade:
                 # missing native portfolio/Schwab risk approval is NEVER
@@ -483,6 +518,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                         intent.model, _time_index(bar.end_time).to_pydatetime())
                     if window_ok:
                         state["qualified_today"] = True
+                        if state["setup_trace"] is not None:
+                            state["setup_trace"].candidate = True
                         gates = ",".join(
                             f"{name}:{gate.passed}" for name, gate in intent.gates.items())
                         self._record(
@@ -632,6 +669,23 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
         self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
         self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
+        self.set_runtime_statistic(
+            "Qwct traced D1 setups", len(self._setup_traces))
+        self.set_runtime_statistic(
+            "Qwct trace M5 checks",
+            sum(t.m5_checks for t in self._setup_traces))
+        self.set_runtime_statistic(
+            "Qwct traced setups without M5",
+            sum(t.m5_checks == 0 for t in self._setup_traces))
+        # One human-readable line for EACH accepted setup (capped), not
+        # thousands of per-candle logs that QuantConnect throttles.
+        # These are real observations, not fabricated outcomes.
+        for line in summarize_traces(self._setup_traces, limit=20):
+            self.log(line)
+        if self._setup_traces_omitted:
+            self.log(
+                f"QWCT TRACE memory cap: {self._setup_traces_omitted} "
+                "additional accepted D1 setups not retained")
         if not self._object_store_export_enabled:
             # The Free cloud plan has no ObjectStore write permission.
             # Emit only a short end-of-run count; DO NOT claim the complete

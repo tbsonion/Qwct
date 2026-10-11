@@ -26,6 +26,91 @@ def _short(value: object, limit: int = 84) -> str:
     return str(value).replace("\n", " ").replace("\r", " ")[:limit]
 
 
+
+class BpuTouchAudit:
+    """Native closed-M5 distance to the original BSU swing pivot.
+
+    A resistance BPU1 requires the M5 HIGH to equal the reference
+    pivot within the detector's native reference tick tolerance.
+    A candle passing across the pivot does NOT equal a precise touch.
+    Split-adjusted prices may have sub-cent effective precision;
+    the reference tick is reported, NEVER silently widened.
+    """
+
+    def __init__(self, side: str, level: float, native_tick: float):
+        if side not in ("long", "short"):
+            raise ValueError("unsupported BPU side")
+        self.side = side
+        self.level = float(level)
+        self.native_tick = float(native_tick)
+        if (not isfinite(self.level) or self.level <= 0
+                or not isfinite(self.native_tick) or self.native_tick <= 0):
+            raise ValueError("native BPU price/tick must be finite and positive")
+        self.tolerance = self.native_tick * 0.5 + self.native_tick * 1e-7
+        self.bars = 0
+        self.touches = 0
+        self.undershoots = 0
+        self.overshoots = 0
+        self.closest_extreme = None
+        self.closest_gap = None
+        self.nearest_time = ""
+        self.maximum_high = None
+        self.minimum_low = None
+
+    def observe(self, timestamp: datetime, low: float, high: float,
+                close: float) -> None:
+        at = _as_et(timestamp)
+        low, high, close = float(low), float(high), float(close)
+        if (not all(isfinite(v) and v > 0 for v in (low, high, close))
+                or not low <= close <= high):
+            raise ValueError("native M5 OHLC is invalid")
+        high_before = self.maximum_high
+        low_before = self.minimum_low
+        self.maximum_high = high if high_before is None else max(high_before, high)
+        self.minimum_low = low if low_before is None else min(low_before, low)
+        extreme = high if self.side == "short" else low
+        gap = extreme - self.level
+        if self.closest_gap is None or abs(gap) < abs(self.closest_gap):
+            self.closest_gap = gap
+            self.closest_extreme = extreme
+            self.nearest_time = at.isoformat(timespec="seconds")
+        if abs(gap) <= self.tolerance:
+            self.touches += 1
+        elif gap < 0:
+            self.undershoots += 1
+        else:
+            self.overshoots += 1
+        self.bars += 1
+
+    def as_dict(self):
+        return {
+            "side": self.side, "level": self.level,
+            "native_tick": self.native_tick, "tolerance": self.tolerance,
+            "bars": self.bars, "touches": self.touches,
+            "undershoots": self.undershoots, "overshoots": self.overshoots,
+            "closest_extreme": self.closest_extreme,
+            "closest_gap": self.closest_gap,
+            "closest_gap_ticks": (
+                self.closest_gap / self.native_tick
+                if self.closest_gap is not None else None),
+            "nearest_time": self.nearest_time,
+            "maximum_high": self.maximum_high, "minimum_low": self.minimum_low,
+        }
+
+    def short_line(self, symbol: str, session: str) -> str:
+        if self.closest_gap is None:
+            return f"QWCT TOUCH {symbol} {session} no observed M5 candles"
+        return (
+            f"QWCT TOUCH {symbol} {session} {self.side} "
+            f"n={self.bars} pivot={self.level:.4f} "
+            f"tick={self.native_tick:.5f} tolerance={self.tolerance:.5f} "
+            f"closest={self.closest_extreme:.4f} "
+            f"gap={self.closest_gap:+.4f} "
+            f"at={self.nearest_time[11:16]} "
+            f"exact={self.touches} under={self.undershoots} over={self.overshoots}"
+        )[:190]
+
+
 @dataclass
 class SetupTrace:
     symbol: str
@@ -58,6 +143,10 @@ class SetupTrace:
     bpu1_count: int = 0
     bpu2_count: int = 0
     bpu_failure_reasons: Counter = field(default_factory=Counter)
+    touch_audit: BpuTouchAudit | None = None
+    m5_passes: int = 0
+    first_m5_pass: str = ""
+    first_m5_pass_gates: str = ""
     candidate: bool = False
 
     @classmethod
@@ -139,6 +228,15 @@ class SetupTrace:
         self.last_m5 = iso
         self.last_gate_outcomes = {}
         self.last_gate_reasons = {}
+        # Capture rare positive M5 confirmations, not just 450 failures:
+        # the last-bar gate state is not representative of the full day.
+        if gates.get("m5_confirmed", (None, ""))[0] is True:
+            self.m5_passes += 1
+            if not self.first_m5_pass:
+                self.first_m5_pass = iso
+                self.first_m5_pass_gates = ",".join(
+                    f"{k}={'T' if v[0] is True else 'F' if v[0] is False else '?'}"
+                    for k, v in gates.items())
         for name, (passed, reason) in gates.items():
             status = "TRUE" if passed is True else "FALSE" if passed is False else "UNKNOWN"
             self.last_gate_outcomes[name] = status
@@ -174,6 +272,11 @@ class SetupTrace:
             "failed_gate_counts": dict(self.failed_gate_counts),
             "bpu1_count": self.bpu1_count, "bpu2_count": self.bpu2_count,
             "bpu_failure_reasons": dict(self.bpu_failure_reasons),
+            "bpu_touch": (self.touch_audit.as_dict()
+                          if self.touch_audit is not None else None),
+            "m5_passes": self.m5_passes,
+            "first_m5_pass": self.first_m5_pass,
+            "first_m5_pass_gates": self.first_m5_pass_gates,
             "candidate": self.candidate,
         }
 
@@ -222,7 +325,18 @@ class SetupTrace:
             f"{_short(self.bsu_reason, 75)} "
             f"BPU1={self.bpu1_count} BPU2={self.bpu2_count} "
             f"invalid={bpu_text}")
-        return [line[:190] for line in (d1, m5, gates, bsu)]
+        lines = [line[:190] for line in (d1, m5, gates, bsu)]
+        # Log the FIRST positive M5 event to explain why a rare valid
+        # M5 candle still failed another independent risk/trend gate.
+        if self.m5_passes:
+            lines.append((
+                f"QWCT M5 PASS {label} n={self.m5_passes} "
+                f"first={self.first_m5_pass[11:16]} "
+                f"gates={self.first_m5_pass_gates}")[:190])
+        if self.touch_audit is not None:
+            lines.append(self.touch_audit.short_line(
+                self.symbol, self.session))
+        return lines
 
     def log_line(self) -> str:
         problems = ",".join(

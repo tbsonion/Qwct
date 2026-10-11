@@ -40,14 +40,18 @@ independently, and cannot prove the strategy is correct or profitable.
   failure totals for each named gate;
 - the last two **native already-seen consolidated M5 OHLCV** observations
   with their native timestamps; rejects fabricated/future observations;
+  Cloud logs show their real OHLC values in a separate short M5 line;
 - BPU1/BPU2 observation counts and exact native BPU invalidation reasons;
 - preliminary research-candidate yes/no, never broker authorization.
 
 On the LEAN side `main.py` constructs this only when a D1 decision is
 accepted; attaches the same per-symbol trace to the existing actual M5
 callback, and retains the first 30 accepted setups across universe
-subscription removals. End-of-run logging emits at most the first 20
-compact trace lines, plus an explicit omitted count if limits apply.
+subscription removals. End-of-run logging emits up to 20 setups,
+with FOUR separate <=190-character lines for each (D1 source, M5
+native OHLC, gate rejection and BSU/BPU evidence). This prevents the
+Cloud log viewer from truncating the most useful field off a long
+single-line report. An explicit omitted count appears if limits apply.
 It never fetches history during M5 decisions or synthesizes candles.
 
 No trading rules were relaxed, no bracket/broker orders added, and no

@@ -82,6 +82,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._gate_failures = Counter()
         self._d1_models = Counter()
         self._bsu_block_reasons = Counter()
+        self._bpu_invalid_reasons = Counter()
         # In-memory evidence of the first accepted D1 setups; stop
         # growing trace memory on 1-year Cloud Free research windows.
         self._setup_traces = []
@@ -445,6 +446,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     open=float(bar.open), high=float(bar.high),
                     low=float(bar.low), close=float(bar.close),
                     timeframe="M5", volume=float(bar.volume)))
+                if (observed.phase == "invalidated"
+                        and before_phase != "invalidated"):
+                    self._bpu_invalid_reasons[observed.reason] += 1
+                    if state["setup_trace"] is not None:
+                        state["setup_trace"].add_bpu_failure(observed.reason)
                 if observed.phase == "bpu1" and before_phase != observed.phase:
                     self._bsu_bpu1_count += 1
                     if state["setup_trace"] is not None:
@@ -645,6 +651,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                                    sum(self._bsu_block_reasons.values()))
         self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
         self.set_runtime_statistic(
+            "Qwct BPU invalidations", sum(self._bpu_invalid_reasons.values()))
+        self.set_runtime_statistic(
             "Qwct chart focus", self._chart_symbol.value
             if self._chart_symbol is not None else "none")
         self.set_runtime_statistic(
@@ -708,6 +716,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 + "; BSU block reasons=" +
                   str(dict(self._bsu_block_reasons.most_common(7)))
                 + f"; native BPU1={self._bsu_bpu1_count}"
+                + "; BPU invalid reasons=" +
+                  str(dict(self._bpu_invalid_reasons.most_common(5)))
                 + f"; chart focus={self._chart_symbol.value if self._chart_symbol else 'none'}"
                 + f"; chart M5 drawn={self._focus_m5_plotted}"
                 + "; daily rejects=" + str(dict(reject_reasons))

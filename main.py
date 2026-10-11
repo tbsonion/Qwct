@@ -17,7 +17,8 @@ from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
 from strategy.bsu_bridge import create_bsu_research_observer
 from strategy.sessions import SessionPolicy
-from strategy.research_trace import SetupTrace
+from strategy.research_trace import SetupTrace, BpuTouchAudit
+from strategy.focus import choose_focus
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.reporting import native_order_event_row
 from strategy.runtime_reporting import write_reports
@@ -95,6 +96,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # Free Cloud quota: 10 series, 4,000 points/series. Only draw
         # up to 3,500 M5 bars to avoid silently exceeding that limit.
         self._chart_symbol = None
+        # Optional QuantConnect parameter focuses a specific ticker if it
+        # actually has a D1 setup. Otherwise prioritize first real bounce.
+        self._focus_preference = (self.get_parameter("focus_symbol") or "").strip().upper()
         self._focus_m5_plotted = 0
         focus_chart = Chart("Qwct Focus")
         focus_chart.add_series(CandlestickSeries("M5", "$"))
@@ -202,6 +206,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "bsu_link": None,
             "focus_level": None,
             "setup_trace": None,
+            "touch_audit": None,
         }
         self._symbols[symbol] = state
         # Native LEAN consolidators must be removed on universe removal.
@@ -309,9 +314,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # Freeze the focus Symbol on the FIRST qualifying trading day.
         # Do not dynamically switch prices between TSLA/NVDA/etc. on
         # a single chart with a deceptive shared dollar-price axis.
-        if self._chart_symbol is None and self.screen_watchlist:
-            self._chart_symbol = self.screen_watchlist[0]
-            self.debug(f"Qwct Focus chart fixed symbol: {self._chart_symbol.value}")
+        # Do NOT freeze the chart to the top liquidity stock here.
+        # Wait until D1 decisions are known; never mix ticker prices.
         for state in self._symbols.values():
             state["qualified_today"] = False
             state["decision"] = None
@@ -319,6 +323,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             state["bsu_link"] = None
             state["focus_level"] = None
             state["setup_trace"] = None
+            state["touch_audit"] = None
             state["m5_rows"] = []
 
         for symbol in self.screen_watchlist:
@@ -386,6 +391,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                             if link is not None else why)
                     if link is not None:
                         self._bsu_proxy_armed_count += 1
+                        audit = BpuTouchAudit(
+                            decision.side, link.origin_price, link.tick_size)
+                        state["touch_audit"] = audit
+                        if state["setup_trace"] is not None:
+                            state["setup_trace"].touch_audit = audit
                     else:
                         self._bsu_block_reasons[why] += 1
                         self._record(symbol, "BSU_PROXY_BLOCKED", reason=why)
@@ -413,6 +423,21 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self._record(symbol, "ERROR", reason=str(exc))
                 self.error(f"Scenario error {symbol}: {exc}")
 
+        if self._chart_symbol is None:
+            decisions = {
+                symbol: self._symbols[symbol]["decision"]
+                for symbol in self.screen_watchlist}
+            selected = choose_focus(
+                self.screen_watchlist, decisions, self._focus_preference)
+            if selected is not None:
+                # Keep one price scale for the whole backtest.
+                self._chart_symbol = selected
+                d = self._symbols[selected]["decision"]
+                self._symbols[selected]["focus_level"] = float(d.level.price)
+                self.debug(
+                    f"Qwct Focus locked to accepted D1 setup: "
+                    f"{selected.value} {d.model}/{d.side} "
+                    f"level={d.level.price:.4f}")
         # One D1 snapshot per trading day. Makes accepted setups visible
         # even when free-plan logs are throttled.
         self.plot("Qwct Research", "Screener", len(self.screen_watchlist))

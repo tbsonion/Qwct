@@ -82,6 +82,26 @@ def test_six_setup_traces_are_separate_and_zero_candidates_explained():
     assert all("STK" in x and "M5=1" in x and "candidate=NO" in x for x in result)
 
 
+def test_invalidated_bpu2_reasons_and_m5_gate_explanations_are_visible():
+    t = SetupTrace.from_decision(accepted(), 101., 2., 3)
+    t.set_bsu(True, "native swing candidate; no TVX")
+    t.bpu1_count += 1
+    t.add_bpu_failure("BPU2 wick broke BPU1 extreme")
+    t.add_bpu_failure("BPU2 wick broke BPU1 extreme")
+    at = datetime(2024, 1, 3, 12, 5, tzinfo=ET)
+    t.observe_m5(at, {
+        "m5_confirmed": (False, "M5 close never crossed level"),
+        "risk_approved": (None, "no real portfolio manager"),
+    })
+    assert t.as_dict()["bpu_failure_reasons"] == {
+        "BPU2 wick broke BPU1 extreme": 2}
+    text = t.log_line()
+    assert "BPU-invalid=" in text
+    assert "BPU2 wick" in text
+    assert "close never crossed" in text
+    assert "no real portfolio" in text
+
+
 def test_no_m5_bar_is_not_indistinguishable_from_failed_m5():
     t = SetupTrace.from_decision(accepted(), 102., 2.5, 3)
     row = t.as_dict()

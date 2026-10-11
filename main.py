@@ -377,7 +377,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     if state["setup_trace"] is not None:
                         state["setup_trace"].set_bsu(
                             link is not None,
-                            f"native swing proxy linked at {link.origin_time}"
+                            (f"native swing origin={link.origin_time} "
+                             f"pivot={link.origin_price:.4f} "
+                             f"cluster={link.cluster_price:.4f}")
                             if link is not None else why)
                     if link is not None:
                         self._bsu_proxy_armed_count += 1

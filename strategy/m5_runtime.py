@@ -35,6 +35,15 @@ def process_m5(self, bar, time_index):
     link = state["bsu_link"]
     if link is not None:
         try:
+            # Measure every native M5 extreme against the exact traced
+            # historical BSU pivot, not the clustered D1 median. Neither
+            # a wick crossing nor an approximate price is a BPU1 touch.
+            audit = state.get("touch_audit")
+            if audit is not None:
+                audit.observe(
+                    time_index(bar.end_time).to_pydatetime(),
+                    low=float(bar.low), high=float(bar.high),
+                    close=float(bar.close))
             if link.detector.state.phase == "invalidated":
                 link.detector.reset()
             before_phase = link.detector.state.phase
@@ -94,6 +103,13 @@ def process_m5(self, bar, time_index):
             if state["setup_trace"] is not None:
                 state["setup_trace"].missing_intent += 1
             return
+        if intent.gates["m5_confirmed"].passed is True:
+            self._m5_true_by_model[intent.model] += 1
+            # A valid M5 event is NOT enough for a signal. Preserve
+            # the separate independent gates that prevent a candidate.
+            for name, gate in intent.gates.items():
+                if name != "m5_confirmed" and gate.passed is not True:
+                    self._m5_true_other_blockers[name] += 1
         if state["setup_trace"] is not None:
             state["setup_trace"].observe_m5(
                 time_index(bar.end_time).to_pydatetime(),

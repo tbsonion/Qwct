@@ -168,7 +168,7 @@ def test_eight_original_signal_gates_exist():
 
 
 def test_no_shadow_oms_or_trading_in_lean_entrypoint():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "class QwctGerchikAlgorithm(QCAlgorithm)" in src
     assert '"atr": AverageTrueRange(' in src
     assert '"sma": SimpleMovingAverage(' in src

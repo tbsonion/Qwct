@@ -50,6 +50,12 @@ def test_single_accepted_d1_to_m5_trace_preserves_provenance_and_gate_failures()
     assert row["d1_close"] == 101.0
     assert row["d1_atr"] == 3.0
     assert row["level_count"] == 4
+    assert row["level_kind"] == "support"
+    assert row["level_source"] == "swing_cluster"
+    assert row["level_first_idx"] == 20
+    assert row["level_last_idx"] == 45
+    assert row["level_valid_from"] == "2024-01-03"
+    assert row["level_formed_at"] == "2023-12-29"
     assert row["bsu"] == "blocked"
     assert row["bsu_reason"] == "no native swing matching exact level"
     assert row["m5_checks"] == 2

@@ -45,6 +45,8 @@ def test_actual_runtime_reporting_function_emits_empty_research_statistics():
             self._bsu_block_reasons = Counter()
             self._bpu_invalid_reasons = Counter()
             self._gate_failures = Counter()
+            self._m5_true_by_model = Counter()
+            self._m5_true_other_blockers = Counter()
             self._chart_symbol = None
             self._focus_m5_plotted = 0
             self._bsu_bpu1_count = 0

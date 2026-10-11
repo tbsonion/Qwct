@@ -64,7 +64,11 @@ def test_native_resistance_audit_76_m5_bar_extremes_replay_exact_gap():
     assert info["overshoots"] == 0
     assert info["nearest_time"].startswith("2024-01-02T15:50")
     assert info["maximum_high"] == 49.75
-    assert "76" in audit.short_line("NVDA", "2024-01-02")
+    line = audit.short_line("NVDA", "2024-01-02")
+    assert "76" in line
+    assert "maxHi=49.7500" in line
+    assert "gap=-0.5160" in line
+    assert len(line) <= 190
 
 
 def test_native_touch_audit_does_not_confuse_wick_cross_with_exact_touch():

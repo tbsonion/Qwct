@@ -61,7 +61,7 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
 
 
 def test_source_uses_actual_leans_native_multi_symbol_events():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "self.universe_settings.resolution = Resolution.MINUTE" in src
     assert "self.universe_settings.fill_forward = False" in src
     assert "self._symbols[symbol] = state" in src
@@ -88,7 +88,7 @@ def test_source_uses_actual_leans_native_multi_symbol_events():
 
 
 def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     cancel = src.index("    def _cancel_before_close(self)")
     end = src.index("    def _end_session(self)")
     verify = src.index("    def _verify_flat_before_close(self)")
@@ -105,7 +105,7 @@ def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
 
 
 def test_native_reporting_object_store_and_trade_builder():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "def on_order_event(" in src
     assert "native_order_event_row(event, tag)" in src
     assert "self.trade_builder.closed_trades" in src
@@ -133,7 +133,7 @@ def test_missing_real_trade_fee_property_fails_instead_of_lying():
 
 
 def test_native_batched_history_warmup_and_no_synthetic_indicators():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "def _warm_symbols(self, symbols)" in src
     assert "symbols, 180, Resolution.DAILY" in src
     # Real LEAN 2.5 returns a TradeBars collection for each historical
@@ -149,7 +149,7 @@ def test_native_batched_history_warmup_and_no_synthetic_indicators():
 
 
 def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert 'Chart("Qwct Focus")' in src
     assert 'CandlestickSeries("M5", "$")' in src
     assert 'Series("D1 Level", SeriesType.LINE, 0)' in src
@@ -172,7 +172,7 @@ def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
 
 
 def test_zero_signal_backtest_explains_models_and_bsu_rejections():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert 'self._d1_models = Counter()' in src
     assert 'self._bsu_block_reasons = Counter()' in src
     assert 'self._bsu_bpu1_count = 0' in src
@@ -189,7 +189,7 @@ def test_zero_signal_backtest_explains_models_and_bsu_rejections():
 
 def test_accepted_d1_scenarios_are_traced_through_actual_m5_gate_results():
     from pathlib import Path
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "from strategy.research_trace import SetupTrace" in src
     assert '"setup_trace": None' in src
     assert 'state["setup_trace"] = None' in src

@@ -176,7 +176,7 @@ def test_origin_after_morning_decision_fails_closed():
 
 def test_source_contract_main_connects_observer_without_imaginary_30s_data():
     from pathlib import Path
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "from strategy.bsu_bridge import create_bsu_research_observer" in src
     assert "self.securities[symbol].symbol_properties.minimum_price_variation" in src
     assert "create_bsu_research_observer(" in src

@@ -80,6 +80,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()
+        self._m5_true_by_model = Counter()
+        self._m5_true_other_blockers = Counter()
         self._d1_models = Counter()
         self._bsu_block_reasons = Counter()
         self._bpu_invalid_reasons = Counter()

@@ -16,7 +16,8 @@ class QuietResearchAlgorithm:
         self._session_date = datetime(2024, 1, 3).date()
         self.screen_watchlist = ("TSLA",)
         self._symbols = {"TSLA": {"m5_rows": [], "decision": None,
-                                  "bsu_link": None, "focus_level": None}}
+                                  "bsu_link": None, "focus_level": None,
+                                  "qualified_today": False}}
         self._m5_bars_seen = 0
         self._chart_symbol = "NVDA"
         self._focus_m5_plotted = 0

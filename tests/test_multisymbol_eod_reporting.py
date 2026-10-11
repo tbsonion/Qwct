@@ -202,7 +202,7 @@ def test_accepted_d1_scenarios_are_traced_through_actual_m5_gate_results():
     assert "state[\"setup_trace\"].candidate = True" in src
     assert "self._setup_traces_omitted += 1" in src
     assert "for line in trace.display_lines():" in src
-    assert "self._setup_traces[:20]" in src
+    assert "self._setup_traces[:8]" in src
     assert '"Qwct traced D1 setups"' in src
     assert '"Qwct traced setups without M5"' in src
     assert 'self._native_exit_enabled = False' in src

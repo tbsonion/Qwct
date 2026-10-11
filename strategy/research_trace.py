@@ -47,6 +47,7 @@ class SetupTrace:
     last_m5: str = ""
     last_gate_outcomes: dict[str, str] = field(default_factory=dict)
     last_gate_reasons: dict[str, str] = field(default_factory=dict)
+    last_two_m5: list[dict] = field(default_factory=list)
     failed_gate_counts: Counter = field(default_factory=Counter)
     bpu1_count: int = 0
     bpu2_count: int = 0
@@ -82,13 +83,41 @@ class SetupTrace:
         self.bsu_reason = _short(reason, 160)
 
     def observe_m5(self, timestamp: datetime,
-                   gates: dict[str, tuple[bool | None, str]]) -> None:
+                   gates: dict[str, tuple[bool | None, str]],
+                   closed_bars: list[dict] | None = None) -> None:
         at = _as_et(timestamp)
         if at.date().isoformat() != self.session or at <= self.decided_at:
             raise ValueError("M5 event not in accepted scenario's session")
         iso = at.isoformat(timespec="seconds")
         if self.last_m5 and iso <= self.last_m5:
             raise ValueError("M5 event not chronologically newer than prior check")
+        bars = []
+        if closed_bars is not None:
+            if len(closed_bars) > 2:
+                raise ValueError("audit snapshot must contain at most two M5 bars")
+            for row in closed_bars:
+                ts = _as_et(row["date"])
+                try:
+                    o, h, lo, cl, vol = (
+                        float(row[k]) for k in
+                        ("open", "high", "low", "close", "volume"))
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    raise ValueError("incomplete native M5 snapshot") from None
+                if (not all(isfinite(v) for v in (o, h, lo, cl, vol))
+                        or min(o, h, lo, cl) <= 0 or vol < 0
+                        or h < max(o, lo, cl) or lo > min(o, h, cl)
+                        or ts > at or ts.date().isoformat() != self.session
+                        or ts <= self.decided_at):
+                    raise ValueError("invalid or future M5 evidence")
+                bars.append({
+                    "time": ts.isoformat(timespec="seconds"),
+                    "open": o, "high": h, "low": lo,
+                    "close": cl, "volume": vol})
+            if bars and (bars[-1]["time"] != iso or
+                         any(bars[i]["time"] >= bars[i+1]["time"]
+                             for i in range(len(bars)-1))):
+                raise ValueError("native M5 snapshot timestamp mismatch")
+        self.last_two_m5 = bars
         self.m5_checks += 1
         if not self.first_m5:
             self.first_m5 = iso
@@ -119,6 +148,7 @@ class SetupTrace:
             "first_m5": self.first_m5, "last_m5": self.last_m5,
             "last_gate_outcomes": dict(self.last_gate_outcomes),
             "last_gate_reasons": dict(self.last_gate_reasons),
+            "last_two_m5": [dict(row) for row in self.last_two_m5],
             "failed_gate_counts": dict(self.failed_gate_counts),
             "bpu1_count": self.bpu1_count, "bpu2_count": self.bpu2_count,
             "bpu_failure_reasons": dict(self.bpu_failure_reasons),
@@ -140,6 +170,10 @@ class SetupTrace:
             f"{k}:{_short(self.last_gate_reasons.get(k, ''), 48)}"
             for k, v in self.last_gate_outcomes.items() if v != "TRUE"
         )[:150] or "none"
+        m5_ohlc = ",".join(
+            f"{row['time'][11:16]}:{row['open']:.2f}/"
+            f"{row['high']:.2f}/{row['low']:.2f}/{row['close']:.2f}"
+            for row in self.last_two_m5) or "no-native-bars"
         bpu_failure = self.bpu_failure_reasons.most_common(1)
         bpu_text = (
             f"{_short(bpu_failure[0][0], 52)}:{bpu_failure[0][1]}"
@@ -152,6 +186,7 @@ class SetupTrace:
             f"BSU={self.bsu}:{_short(self.bsu_reason, 60)} "
             f"M5={self.m5_checks} first={self.first_m5[-14:]} last={self.last_m5[-14:]} "
             f"failed={problems} last_fail={latest} reasons={detail} "
+            f"m5_ohlc={m5_ohlc} "
             f"no_intent={self.missing_intent} BPU1={self.bpu1_count} "
             f"BPU2={self.bpu2_count} BPU-invalid={bpu_text} "
             f"candidate={'YES' if self.candidate else 'NO'}"

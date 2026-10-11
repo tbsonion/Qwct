@@ -100,12 +100,15 @@ class BpuTouchAudit:
     def short_line(self, symbol: str, session: str) -> str:
         if self.closest_gap is None:
             return f"QWCT TOUCH {symbol} {session} no observed M5 candles"
+        bound = (
+            f"maxHi={self.maximum_high:.4f}" if self.side == "short"
+            else f"minLo={self.minimum_low:.4f}")
         return (
             f"QWCT TOUCH {symbol} {session} {self.side} "
             f"n={self.bars} pivot={self.level:.4f} "
             f"tick={self.native_tick:.5f} tolerance={self.tolerance:.5f} "
             f"closest={self.closest_extreme:.4f} "
-            f"gap={self.closest_gap:+.4f} "
+            f"gap={self.closest_gap:+.4f} {bound} "
             f"at={self.nearest_time[11:16]} "
             f"exact={self.touches} under={self.undershoots} over={self.overshoots}"
         )[:190]

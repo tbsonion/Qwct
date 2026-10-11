@@ -35,8 +35,10 @@ def _time_index(ts: datetime) -> pd.Timestamp:
 
 class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
+        # Reproduce the user-verified Jan/Feb 2024 Cloud Free smoke;
+        # don't silently expand chart or log volume to a year.
         self.set_start_date(2024, 1, 1)
-        self.set_end_date(2025, 1, 1)
+        self.set_end_date(2024, 2, 5)
         self.cfg = StrategyConfig()
         self.set_cash(self.cfg.starting_equity)
         self.set_time_zone("America/New_York")

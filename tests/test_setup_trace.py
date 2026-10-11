@@ -140,3 +140,43 @@ def test_replay_reports_are_bounded_and_no_data_is_invented():
     assert len(rows) == 4
     assert "omitted 5" in rows[-1]
     assert "M5=0" in rows[0]
+
+
+def test_actual_strategy_signal_gates_feed_trace_not_fabricated_gate_values():
+    # Exercises actual build_intent + evaluate_gates logic, not manually
+    # invented gate outcomes. LEAN native callbacks still need Cloud test.
+    from strategy.signals import build_intent
+    from strategy.data import MarketData
+    idx = pd.bdate_range(end="2024-01-02", periods=110, tz=ET)
+    d1 = pd.DataFrame({
+        "open": 99.8, "high": 101.0, "low": 98.8,
+        "close": 99.9, "volume": 500000,
+        "atr14": 2.0, "sma50": 99.5,
+    }, index=idx)
+    m5_idx = pd.DatetimeIndex([
+        datetime(2024, 1, 3, 10, 35, tzinfo=ET),
+        datetime(2024, 1, 3, 10, 40, tzinfo=ET)])
+    m5 = pd.DataFrame(
+        [[99.6, 99.9, 99.3, 99.7],
+         [99.7, 100.3, 99.6, 100.2]],
+        index=m5_idx,
+        columns=["open", "high", "low", "close"])
+    decision = accepted(model="breakout", side="long", level=100.)
+    trace = SetupTrace.from_decision(decision, d1_close=99.9,
+                                     native_atr=2.0, level_count=2)
+    trace.set_bsu(False, "not eligible: model is not bounce")
+    market = MarketData("TSLA", d1, m5, session_levels=(decision.level,))
+    intent = build_intent(decision, market, m5_idx[-1].to_pydatetime(),
+                          StrategyConfig(), equity=25000.)
+    assert intent is not None
+    assert intent.gates["m5_confirmed"].passed is True
+    assert intent.gates["risk_approved"].passed is None
+    trace.observe_m5(m5_idx[-1].to_pydatetime(), {
+        name: (gate.passed, gate.reason)
+        for name, gate in intent.gates.items()})
+    row = trace.as_dict()
+    assert row["m5_checks"] == 1
+    assert row["last_gate_outcomes"]["m5_confirmed"] == "TRUE"
+    assert row["last_gate_outcomes"]["risk_approved"] == "UNKNOWN"
+    assert row["candidate"] is False
+    assert "no native risk approval" in row["last_gate_reasons"]["risk_approved"]

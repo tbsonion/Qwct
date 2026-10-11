@@ -108,6 +108,23 @@ def test_invalidated_bpu2_reasons_and_m5_gate_explanations_are_visible():
     assert "no real portfolio" in text
 
 
+def test_cloud_free_trace_logs_are_split_into_short_readable_parts():
+    t = SetupTrace.from_decision(accepted(), 101., 2., 3)
+    t.set_bsu(False, "missing verified swing-source BSU evidence")
+    t.observe_m5(datetime(2024, 1, 3, 12, 5, tzinfo=ET),
+                 {"m5_confirmed": (False, "no observed crossing"),
+                  "risk_approved": (None, "not native-approved")})
+    lines = t.display_lines()
+    assert len(lines) == 4
+    assert all(len(s) <= 190 for s in lines)
+    assert lines[0].startswith("QWCT D1 TSLA")
+    assert lines[1].startswith("QWCT M5 TSLA")
+    assert lines[2].startswith("QWCT GATES TSLA")
+    assert lines[3].startswith("QWCT BSU TSLA")
+    assert "no observed crossing" in lines[2]
+    assert "missing verified" in lines[3]
+
+
 def test_no_m5_bar_is_not_indistinguishable_from_failed_m5():
     t = SetupTrace.from_decision(accepted(), 102., 2.5, 3)
     row = t.as_dict()

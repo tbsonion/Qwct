@@ -501,7 +501,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 state["setup_trace"].observe_m5(
                     _time_index(bar.end_time).to_pydatetime(),
                     {name: (gate.passed, gate.reason)
-                     for name, gate in intent.gates.items()})
+                     for name, gate in intent.gates.items()},
+                    # Native consolidated price evidence already captured
+                    # in the same M5 callback. Do NOT retrieve new/future
+                    # History bars or synthesize unobserved candle prices.
+                    closed_bars=state["m5_rows"][-2:])
             if not intent.all_gates_passed:
                 # Distinguish a research-worthy setup from an approved trade:
                 # missing native portfolio/Schwab risk approval is NEVER

@@ -185,3 +185,23 @@ def test_zero_signal_backtest_explains_models_and_bsu_rejections():
     assert '"Qwct native BPU1"' in src
     assert 'BSU block reasons=' in src
     assert 'D1 models=' in src
+
+
+def test_accepted_d1_scenarios_are_traced_through_actual_m5_gate_results():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    assert "from strategy.research_trace import SetupTrace, summarize_traces" in src
+    assert '"setup_trace": None' in src
+    assert 'state["setup_trace"] = None' in src
+    assert "SetupTrace.from_decision(" in src
+    assert "state[\"setup_trace\"].set_bsu(" in src
+    assert "state[\"setup_trace\"].observe_m5(" in src
+    assert "for name, gate in intent.gates.items()" in src
+    assert "state[\"setup_trace\"].missing_intent += 1" in src
+    assert "state[\"setup_trace\"].candidate = True" in src
+    assert "self._setup_traces_omitted += 1" in src
+    assert "summarize_traces(self._setup_traces, limit=20)" in src
+    assert '"Qwct traced D1 setups"' in src
+    assert '"Qwct traced setups without M5"' in src
+    assert 'self._native_exit_enabled = False' in src
+    assert "observe_preclose(" not in src

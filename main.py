@@ -50,6 +50,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
         self._screen_ranks = {}
+        # QuantConnect Free limits the entire backtest log to ~10 KB.
+        # Don't exhaust it with daily ten-symbol universe detail.
+        self._screen_logged = False
+        self._bsu_blocks_logged = 0
         self._symbols = {}
         self.screen_watchlist = ()
         self._session_date = None
@@ -282,11 +286,15 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         qualifying.sort(key=lambda item: (item[0], item[1].value))
         qualifying = qualifying[:self.cfg.screener_watchlist_limit]
         self.screen_watchlist = tuple(row[1] for row in qualifying)
-        detail = ", ".join(
-            f"{s.value}(P={p:.2f},ATR={a:.2f},V20={v:.0f})"
-            for _, s, p, a, v in qualifying)
-        self.debug(f"SCREEN {self.time.date()}: "
-                   f"{len(qualifying)} qualified: {detail or 'none'}")
+        # Actual daily selected count is plotted on Qwct Research.
+        # Log the initial membership ONCE; reserve Cloud Free's short
+        # log quota for real D1/BSU/M5 evidence at backtest completion.
+        if not self._screen_logged:
+            self._screen_logged = True
+            tickers = ",".join(row[1].value for row in qualifying)
+            self.debug(
+                f"SCREEN initial {self.time.date()}: "
+                f"{len(qualifying)} qualified [{tickers[:110]}]")
 
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
@@ -381,6 +389,16 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     else:
                         self._bsu_block_reasons[why] += 1
                         self._record(symbol, "BSU_PROXY_BLOCKED", reason=why)
+                        # Log the *real* rejection at decision time in case
+                        # the Cloud backtest log quota is later exhausted.
+                        # Never change a gate simply to get extra signals.
+                        if self._bsu_blocks_logged < 6:
+                            self._bsu_blocks_logged += 1
+                            self.log(
+                                f"QWCT BSU BLOCKED {symbol.value} "
+                                f"{self._session_date} "
+                                f"{decision.model}/{decision.side} "
+                                f"level={decision.level.price:.2f} reason={why}")
                 if decision.accepted:
                     self._record(
                         symbol, "SCENARIO", decision.model, decision.side,

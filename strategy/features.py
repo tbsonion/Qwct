@@ -244,20 +244,33 @@ def g09_context(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     diffs = w["close"].diff().dropna()
     direction = 1 if diffs.sum() > 0 else -1
     pullbacks = sum(1 for x in diffs if x * direction < -cfg.max_pullback_atr * a)
-    long_pullback_free = pullbacks == 0 and \
-        _dist(w["close"].iloc[-1], level.price, a) <= 1.0
+    # Direction and narrowing distance must agree: an unbroken move AWAY
+    # from the level is not a Gerchik approach even if the last close
+    # remains inside the broad 1*ATR neighbourhood.
+    approaching_level = (
+        direction == _dir_to_level(float(w["close"].iloc[0]), level.price)
+        and _dist(float(w["close"].iloc[-1]), level.price, a)
+            < _dist(float(w["close"].iloc[0]), level.price, a))
+    long_pullback_free = (pullbacks == 0 and approaching_level
+                          and _dist(w["close"].iloc[-1], level.price, a) <= 1.0)
     # подход на больших барах (для отбоя)
     big = sum(1 for _, b in d1.iloc[-3:].iterrows()
               if (b["high"] - b["low"]) >= cfg.big_bar_atr * a)
-    big_bars_approach = big >= 3 and _dist(d1["close"].iloc[-1], level.price, a) <= 1.0
+    big_bars_approach = (
+        big >= 3 and
+        _dist(d1["close"].iloc[-1], level.price, a) <= 1.0 and
+        _dist(d1["close"].iloc[-1], level.price, a)
+        < _dist(d1["close"].iloc[-3], level.price, a))
     # пустота за уровнем
     from .levels import next_level as _next
     d = _dir_to_level(d1["close"].iloc[-1], level.price)
-    nl = _next(levels, d1["close"].iloc[-1], d)
-    clean_zone = True
-    if nl is not None:
-        clean_zone = abs(nl.price - level.price) > 2.0 * a
-    room_atr = abs(nl.price - level.price) / a if nl else None  # None = пустота
+    # The next level must lie *BEYOND THE CURRENT CANDIDATE*, not
+    # between the closing price and candidate itself. No next recorded
+    # level means UNKNOWN room, not proven 'clean-zone=True'.
+    nl = _next(levels, level.price, d)
+    clean_zone = (abs(nl.price - level.price) > 2.0 * a
+                  if nl is not None else None)
+    room_atr = abs(nl.price - level.price) / a if nl else None
     # тренды — значения как подпункты (гейт trend_aligned использует их же)
     gt = global_trend(d1, len(d1) - 1, cfg)
     lt = trend_direction(d1, len(d1) - 1, cfg)
@@ -266,6 +279,7 @@ def g09_context(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
                          {"no_along_level_trading": no_along_level_trading,
                           "fast_local_approach": fast_local_approach,
                           "long_pullback_free": long_pullback_free,
+                          "approaching_level": approaching_level,
                           "big_bars_approach": big_bars_approach,
                           "clean_zone": clean_zone,
                           "room_atr": round(room_atr, 2) if room_atr else None,

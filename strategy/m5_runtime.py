@@ -153,7 +153,7 @@ def process_m5(self, bar, time_index):
                             and link.provenance == (
                                 "D1_CONFIRMED_SWING_PROXY_NOT_CANONICAL_BSU")):
                         state["bsu_tvx_evidence"] = BpuTvxEvidence(
-                            symbol=symbol.value,
+                            symbol=str(getattr(symbol, "value", symbol)),
                             session=self._session_date,
                             side=observed.side,
                             d1_level_price=link.cluster_price,

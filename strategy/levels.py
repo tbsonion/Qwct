@@ -75,19 +75,35 @@ def _cluster(points: list[tuple], tol: float):
     return clusters
 
 
+def native_cluster_tolerance(d1_asof: pd.DataFrame,
+                             cfg: StrategyConfig,
+                             atr_samples: pd.Series | None = None) -> float | None:
+    """Same historical native D1 ATR tolerance for detector and BSU bridge.
+
+    A cluster's price grouping uses the MEDIAN of ready ATRs, whereas
+    stop distance for a new session uses its most recent ready ATR.
+    Mixing the two makes valid historical clusters fail to arm BPU.
+    """
+    values = (atr_samples if atr_samples is not None
+              else atr(d1_asof, cfg.atr_period))
+    ready = values.loc[np.isfinite(values) & (values > 0)]
+    if ready.empty:
+        return None
+    tolerance = float(ready.median() * cfg.level_tolerance_atr)
+    return tolerance if np.isfinite(tolerance) and tolerance > 0 else None
+
+
 def detect_levels(d1_asof: pd.DataFrame, cfg: StrategyConfig) -> list[Level]:
     """Уровни по закрытым дневкам. У каждого — valid_from (as-of)."""
     n = len(d1_asof)
     if n < 2 * cfg.swing_k + 5:
         return []
     a = atr(d1_asof, cfg.atr_period)
-    # Missing native ATR is a normal fail-closed case, not a NumPy
-    # "mean of empty slice" warning. Do not invent a tolerance.
-    ready_atr = a.loc[np.isfinite(a) & (a > 0)]
-    if ready_atr.empty:
-        return []
-    tol = float(ready_atr.median() * cfg.level_tolerance_atr)
-    if not np.isfinite(tol) or tol <= 0:
+    # The bridge and level detector MUST agree on the exact historical
+    # tolerance that created each D1 cluster. Never use last day's ATR
+    # as an accidental substitute for the clustering threshold.
+    tol = native_cluster_tolerance(d1_asof, cfg, a)
+    if tol is None:
         return []
 
     highs, lows = _confirmed_swings(d1_asof, cfg.swing_k)

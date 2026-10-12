@@ -61,7 +61,7 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
 
 
 def test_source_uses_actual_leans_native_multi_symbol_events():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "self.universe_settings.resolution = Resolution.MINUTE" in src
     assert "self.universe_settings.fill_forward = False" in src
     assert "self._symbols[symbol] = state" in src
@@ -88,7 +88,7 @@ def test_source_uses_actual_leans_native_multi_symbol_events():
 
 
 def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     cancel = src.index("    def _cancel_before_close(self)")
     end = src.index("    def _end_session(self)")
     verify = src.index("    def _verify_flat_before_close(self)")
@@ -105,7 +105,7 @@ def test_eod_uses_schwab_documented_cancel_then_liquidate_ordering():
 
 
 def test_native_reporting_object_store_and_trade_builder():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "def on_order_event(" in src
     assert "native_order_event_row(event, tag)" in src
     assert "self.trade_builder.closed_trades" in src
@@ -133,7 +133,7 @@ def test_missing_real_trade_fee_property_fails_instead_of_lying():
 
 
 def test_native_batched_history_warmup_and_no_synthetic_indicators():
-    src = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
     assert "def _warm_symbols(self, symbols)" in src
     assert "symbols, 180, Resolution.DAILY" in src
     # Real LEAN 2.5 returns a TradeBars collection for each historical
@@ -146,3 +146,66 @@ def test_native_batched_history_warmup_and_no_synthetic_indicators():
     assert "if self._register_symbol(self.symbol):" in src
     assert "FillGroupingMethod.FLAT_TO_FLAT" in src
     assert "self.time_rules.after_market_close(self.symbol, 1)" in src
+
+
+def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
+    assert 'Chart("Qwct Focus")' in src
+    assert 'CandlestickSeries("M5", "$")' in src
+    assert 'Series("D1 Level", SeriesType.LINE, 0)' in src
+    assert 'Series("BPU1", SeriesType.SCATTER, 0)' in src
+    assert 'Series("BPU2", SeriesType.SCATTER, 0)' in src
+    assert 'self.plot("Qwct Focus", "M5", bar)' in src
+    assert 'self.plot("Qwct Focus", "D1 Level",' in src
+    assert 'self._chart_symbol' in src
+    assert 'if self._chart_symbol is None:' in src
+    assert 'selected = choose_focus(' in src
+    assert '"Qwct M5 two-bar passes"' in src
+    assert 'symbol == self._chart_symbol and self._focus_m5_plotted < 3500)' in src
+    assert 'if focus_charted_this_bar:' in src
+    assert src.count('if focus_charted_this_bar:') == 3
+    assert '"Qwct focus M5 plotted"' in src
+    assert '"Qwct top BSU blocker"' in src
+    assert '"Qwct top M5 gate"' in src
+    # LEAN Free has 10 allowed chart series; existing research has 5,
+    # focus chart must be <=4 rather than allocating one chart per stock.
+    assert 'self.plot("Qwct Focus", "BPU1",' in src
+    assert 'self.plot("Qwct Focus", "BPU2",' in src
+
+
+def test_zero_signal_backtest_explains_models_and_bsu_rejections():
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
+    assert 'self._d1_models = Counter()' in src
+    assert 'self._bsu_block_reasons = Counter()' in src
+    assert 'self._bsu_bpu1_count = 0' in src
+    assert 'self._d1_models[decision.model] += 1' in src
+    assert 'self._bsu_block_reasons[why] += 1' in src
+    assert '"Qwct D1 bounce"' in src
+    assert '"Qwct D1 breakout"' in src
+    assert '"Qwct D1 false"' in src
+    assert '"Qwct BSU proxy blocked"' in src
+    assert '"Qwct native BPU1"' in src
+    assert 'BSU block reasons=' in src
+    assert 'D1 models=' in src
+
+
+def test_accepted_d1_scenarios_are_traced_through_actual_m5_gate_results():
+    from pathlib import Path
+    src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
+    assert "from strategy.research_trace import SetupTrace" in src
+    assert '"setup_trace": None' in src
+    assert 'state["setup_trace"] = None' in src
+    assert "SetupTrace.from_decision(" in src
+    assert "state[\"setup_trace\"].set_bsu(" in src
+    assert "state[\"setup_trace\"].observe_m5(" in src
+    assert 'closed_bars=state["m5_rows"][-2:]' in src
+    assert "for name, gate in intent.gates.items()" in src
+    assert "state[\"setup_trace\"].missing_intent += 1" in src
+    assert "state[\"setup_trace\"].candidate = True" in src
+    assert "self._setup_traces_omitted += 1" in src
+    assert "for line in trace.display_lines():" in src
+    assert "self._setup_traces[:8]" in src
+    assert '"Qwct traced D1 setups"' in src
+    assert '"Qwct traced setups without M5"' in src
+    assert 'self._native_exit_enabled = False' in src
+    assert "observe_preclose(" not in src

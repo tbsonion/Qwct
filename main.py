@@ -13,19 +13,16 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from strategy.config import StrategyConfig
-from strategy.data import MarketData
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
 from strategy.bsu_bridge import create_bsu_research_observer
-from strategy.patterns_bsu import Bar as ResearchBpuBar
 from strategy.sessions import SessionPolicy
-from strategy.signals import build_intent
+from strategy.research_trace import SetupTrace, BpuTouchAudit
+from strategy.focus import choose_focus
 from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
-from strategy.protected_entry import review_schwab_protected_entry
-from strategy.reporting import (
-    SIGNAL_FIELDS, ORDER_FIELDS, TRADE_FIELDS, csv_rows,
-    native_order_event_row, native_closed_trade_rows, summary_json
-)
+from strategy.reporting import native_order_event_row
+from strategy.runtime_reporting import write_reports
+from strategy.m5_runtime import process_m5
 
 
 ET = ZoneInfo("America/New_York")
@@ -38,8 +35,10 @@ def _time_index(ts: datetime) -> pd.Timestamp:
 
 class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
+        # Reproduce the user-verified Jan/Feb 2024 Cloud Free smoke;
+        # don't silently expand chart or log volume to a year.
         self.set_start_date(2024, 1, 1)
-        self.set_end_date(2025, 1, 1)
+        self.set_end_date(2024, 2, 5)
         self.cfg = StrategyConfig()
         self.set_cash(self.cfg.starting_equity)
         self.set_time_zone("America/New_York")
@@ -54,6 +53,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
         self._screen_ranks = {}
+        # QuantConnect Free limits the entire backtest log to ~10 KB.
+        # Don't exhaust it with daily ten-symbol universe detail.
+        self._screen_logged = False
+        self._bsu_blocks_logged = 0
         self._symbols = {}
         self.screen_watchlist = ()
         self._session_date = None
@@ -79,8 +82,34 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()
+        self._m5_true_by_model = Counter()
+        self._m5_true_other_blockers = Counter()
+        self._d1_models = Counter()
+        self._bsu_block_reasons = Counter()
+        self._bpu_invalid_reasons = Counter()
+        # In-memory evidence of the first accepted D1 setups; stop
+        # growing trace memory on 1-year Cloud Free research windows.
+        self._setup_traces = []
+        self._setup_traces_omitted = 0
         self._bsu_proxy_armed_count = 0
+        self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
+
+        # A single fixed selected symbol, NOT mixed-ticker data on one
+        # price axis. One LEAN Focus chart = 4 series; Qwct Research = 5.
+        # Free Cloud quota: 10 series, 4,000 points/series. Only draw
+        # up to 3,500 M5 bars to avoid silently exceeding that limit.
+        self._chart_symbol = None
+        # Optional QuantConnect parameter focuses a specific ticker if it
+        # actually has a D1 setup. Otherwise prioritize first real bounce.
+        self._focus_preference = (self.get_parameter("focus_symbol") or "").strip().upper()
+        self._focus_m5_plotted = 0
+        focus_chart = Chart("Qwct Focus")
+        focus_chart.add_series(CandlestickSeries("M5", "$"))
+        focus_chart.add_series(Series("D1 Level", SeriesType.LINE, 0))
+        focus_chart.add_series(Series("BPU1", SeriesType.SCATTER, 0))
+        focus_chart.add_series(Series("BPU2", SeriesType.SCATTER, 0))
+        self.add_chart(focus_chart)
 
         # Native Fundamental Universe owns stock membership and data feeds.
         # Minute resolution is required for real M5 consolidators on *each*
@@ -179,6 +208,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "decision": None, "qualified_today": False,
             "session_levels": None,
             "bsu_link": None,
+            "focus_level": None,
+            "setup_trace": None,
+            "touch_audit": None,
         }
         self._symbols[symbol] = state
         # Native LEAN consolidators must be removed on universe removal.
@@ -263,11 +295,15 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         qualifying.sort(key=lambda item: (item[0], item[1].value))
         qualifying = qualifying[:self.cfg.screener_watchlist_limit]
         self.screen_watchlist = tuple(row[1] for row in qualifying)
-        detail = ", ".join(
-            f"{s.value}(P={p:.2f},ATR={a:.2f},V20={v:.0f})"
-            for _, s, p, a, v in qualifying)
-        self.debug(f"SCREEN {self.time.date()}: "
-                   f"{len(qualifying)} qualified: {detail or 'none'}")
+        # Actual daily selected count is plotted on Qwct Research.
+        # Log the initial membership ONCE; reserve Cloud Free's short
+        # log quota for real D1/BSU/M5 evidence at backtest completion.
+        if not self._screen_logged:
+            self._screen_logged = True
+            tickers = ",".join(row[1].value for row in qualifying)
+            self.debug(
+                f"SCREEN initial {self.time.date()}: "
+                f"{len(qualifying)} qualified [{tickers[:110]}]")
 
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
@@ -279,11 +315,19 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             if self._register_symbol(self.symbol):
                 self._warm_symbols([self.symbol])
         self._refresh_screen_watchlist()
+        # Freeze the focus Symbol on the FIRST qualifying trading day.
+        # Do not dynamically switch prices between TSLA/NVDA/etc. on
+        # a single chart with a deceptive shared dollar-price axis.
+        # Do NOT freeze the chart to the top liquidity stock here.
+        # Wait until D1 decisions are known; never mix ticker prices.
         for state in self._symbols.values():
             state["qualified_today"] = False
             state["decision"] = None
             state["session_levels"] = None
             state["bsu_link"] = None
+            state["focus_level"] = None
+            state["setup_trace"] = None
+            state["touch_audit"] = None
             state["m5_rows"] = []
 
         for symbol in self.screen_watchlist:
@@ -300,10 +344,39 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 # scenarios. Recalculate neither their kind nor their
                 # next-level distances while a live M5 is arriving.
                 state["session_levels"] = levels
+                if symbol == self._chart_symbol and levels:
+                    # Draw the closest D1 level only when in the same
+                    # neighbourhood as the previous closed D1 price.
+                    # The chart line is context, NOT an entry decision.
+                    chart_price = float(d1["close"].iloc[-1])
+                    chart_atr = float(state["atr"].current.value)
+                    closest = min(levels, key=lambda l: abs(l.price - chart_price))
+                    if (chart_atr > 0 and
+                            abs(closest.price - chart_price) <= 2 * chart_atr):
+                        state["focus_level"] = float(closest.price)
                 decision = self._scenario_evaluator.evaluate(
                     symbol.value, self._session_date,
                     _time_index(self.time).to_pydatetime(), d1, None, levels)
                 state["decision"] = decision
+                if decision.accepted:
+                    self._d1_models[decision.model] += 1
+                    # A bounded scenario->M5 replay trace survives native
+                    # universe removal and does not claim fills/orders.
+                    if len(self._setup_traces) < 30:
+                        trace = SetupTrace.from_decision(
+                            decision, d1_close=float(d1["close"].iloc[-1]),
+                            native_atr=float(d1[f"atr{self.cfg.atr_period}"].iloc[-1]),
+                            level_count=len(levels))
+                        state["setup_trace"] = trace
+                        self._setup_traces.append(trace)
+                        trace.set_bsu(False, "not eligible: model is not bounce")
+                    else:
+                        self._setup_traces_omitted += 1
+                    # On the single-ticker plot, show the accepted
+                    # morning scenario level rather than an unrelated
+                    # nearby context level. No intraday recalculation.
+                    if symbol == self._chart_symbol:
+                        state["focus_level"] = float(decision.level.price)
                 if decision.accepted and decision.model == "bounce":
                     # Native symbol properties (never a guessed USD 0.01)
                     # and actual as-of D1 origin are mandatory. A confirmed
@@ -313,10 +386,33 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     link, why = create_bsu_research_observer(
                         decision, d1, native_tick_size, self.cfg)
                     state["bsu_link"] = link
+                    if state["setup_trace"] is not None:
+                        state["setup_trace"].set_bsu(
+                            link is not None,
+                            (f"native swing origin={link.origin_time} "
+                             f"pivot={link.origin_price:.4f} "
+                             f"cluster={link.cluster_price:.4f}")
+                            if link is not None else why)
                     if link is not None:
                         self._bsu_proxy_armed_count += 1
+                        audit = BpuTouchAudit(
+                            decision.side, link.origin_price, link.tick_size)
+                        state["touch_audit"] = audit
+                        if state["setup_trace"] is not None:
+                            state["setup_trace"].touch_audit = audit
                     else:
+                        self._bsu_block_reasons[why] += 1
                         self._record(symbol, "BSU_PROXY_BLOCKED", reason=why)
+                        # Log the *real* rejection at decision time in case
+                        # the Cloud backtest log quota is later exhausted.
+                        # Never change a gate simply to get extra signals.
+                        if self._bsu_blocks_logged < 6:
+                            self._bsu_blocks_logged += 1
+                            self.log(
+                                f"QWCT BSU BLOCKED {symbol.value} "
+                                f"{self._session_date} "
+                                f"{decision.model}/{decision.side} "
+                                f"level={decision.level.price:.2f} reason={why}")
                 if decision.accepted:
                     self._record(
                         symbol, "SCENARIO", decision.model, decision.side,
@@ -331,6 +427,21 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 self._record(symbol, "ERROR", reason=str(exc))
                 self.error(f"Scenario error {symbol}: {exc}")
 
+        if self._chart_symbol is None:
+            decisions = {
+                symbol: self._symbols[symbol]["decision"]
+                for symbol in self.screen_watchlist}
+            selected = choose_focus(
+                self.screen_watchlist, decisions, self._focus_preference)
+            if selected is not None:
+                # Keep one price scale for the whole backtest.
+                self._chart_symbol = selected
+                d = self._symbols[selected]["decision"]
+                self._symbols[selected]["focus_level"] = float(d.level.price)
+                self.debug(
+                    f"Qwct Focus locked to accepted D1 setup: "
+                    f"{selected.value} {d.model}/{d.side} "
+                    f"level={d.level.price:.4f}")
         # One D1 snapshot per trading day. Makes accepted setups visible
         # even when free-plan logs are throttled.
         self.plot("Qwct Research", "Screener", len(self.screen_watchlist))
@@ -341,132 +452,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 and self._symbols[symbol]["decision"].accepted))
 
     def _on_m5(self, bar: TradeBar) -> None:
-        symbol = bar.symbol
-        if (not self._signals_open or
-                symbol not in self.screen_watchlist or
-                _time_index(bar.end_time).date() != self._session_date):
-            return
-        state = self._symbols.get(symbol)
-        if state is None:
-            return
-        self._m5_bars_seen += 1
-        state["m5_rows"].append({
-            "date": _time_index(bar.end_time),
-            "open": float(bar.open), "high": float(bar.high),
-            "low": float(bar.low), "close": float(bar.close),
-            "volume": float(bar.volume)})
-        state["m5_rows"] = state["m5_rows"][-80:]
-        # Observe closed native M5 BPU1/BPU2 for D1 swing proxies
-        # independently of M5 gate scoring. This is NO TVX signal:
-        # the original method requires 30 seconds BEFORE BPU2 close.
-        link = state["bsu_link"]
-        if link is not None:
-            try:
-                if link.detector.state.phase == "invalidated":
-                    link.detector.reset()
-                before_phase = link.detector.state.phase
-                observed = link.detector.on_bar(ResearchBpuBar(
-                    ts=_time_index(bar.end_time).to_pydatetime(),
-                    open=float(bar.open), high=float(bar.high),
-                    low=float(bar.low), close=float(bar.close),
-                    timeframe="M5", volume=float(bar.volume)))
-                if observed.phase == "bpu2_confirmed" and before_phase != observed.phase:
-                    self._bsu_proxy_bpu2_count += 1
-                    self._record(
-                        symbol, "BSU_PROXY_BPU2_CLOSED",
-                        model="bounce", side=observed.side,
-                        level=observed.level_price,
-                        reason=(
-                            f"{link.provenance}; D1 origin={link.origin_time}; "
-                            "BPU2 completed on native closed M5; "
-                            "NO 30s TVX observation, NO ORDERS OR FILLS"))
-            except Exception as exc:
-                # Do not hide broken native D1/M5 integration as a signal.
-                state["bsu_link"] = None
-                self._record(symbol, "ERROR", reason=f"BPU bridge: {exc}")
-                self.error(f"BPU research error {symbol}: {exc}")
-        decision = state["decision"]
-        if state["qualified_today"] or decision is None or not decision.accepted:
-            return
-        market = MarketData(
-            symbol.value, self._frame(state["daily_rows"]),
-            self._frame(state["m5_rows"]),
-            session_levels=state["session_levels"])
-        try:
-            self._m5_checks += 1
-            intent = build_intent(
-                decision, market, _time_index(bar.end_time).to_pydatetime(),
-                self.cfg, equity=float(self.portfolio.total_portfolio_value))
-            if intent is None:
-                self._intent_missing_atr += 1
-                return
-            if not intent.all_gates_passed:
-                # Distinguish a research-worthy setup from an approved trade:
-                # missing native portfolio/Schwab risk approval is NEVER
-                # sufficient to issue an INTENT or any broker order.
-                research_ready = (
-                    # An approximate 2-bar bounce cannot stand in for
-                    # Gerchik's explicit BPU/TVX pattern. A CLOSED BPU2
-                    # observation still cannot prove the 30s entry.
-                    intent.model != "bounce"
-                    and intent.gates["risk_approved"].passed is None
-                    and intent.shares > 0
-                    and intent.limit_price > 0
-                    and intent.shares * intent.limit_price <=
-                        float(self.portfolio.total_portfolio_value)
-                    and all(gate.passed is True for name, gate in intent.gates.items()
-                            if name != "risk_approved")
-                )
-                if research_ready:
-                    window_ok, _ = self._session_policy.is_entry_allowed(
-                        intent.model, _time_index(bar.end_time).to_pydatetime())
-                    if window_ok:
-                        state["qualified_today"] = True
-                        gates = ",".join(
-                            f"{name}:{gate.passed}" for name, gate in intent.gates.items())
-                        self._record(
-                            symbol, "RESEARCH_CANDIDATE", intent.model, intent.side,
-                            intent.level_price, decision.score,
-                            intent.limit_price, intent.stop_price,
-                            intent.risk_per_share, gates,
-                            "PRELIMINARY ONLY: native risk/buying-power and "
-                            "protected brokerage entry NOT approved; NO ORDERS")
-                # Counts are per evaluated M5 bar (not distinct trades).
-                for name, gate in intent.gates.items():
-                    if gate.passed is not True:
-                        self._gate_failures[name] += 1
-                return
-            window_ok, _ = self._session_policy.is_entry_allowed(
-                intent.model, _time_index(bar.end_time).to_pydatetime())
-            if not window_ok:
-                return
-            state["qualified_today"] = True
-            # The risk estimate alone is NOT proof of a working broker stop.
-            # Native Bracket/OTO waits for complete entry fill; Schwab has
-            # no OUO for partial exit protection. Review only, no orders.
-            protection = review_schwab_protected_entry(
-                side=intent.side, shares=intent.shares,
-                limit_price=intent.limit_price, stop_price=intent.stop_price,
-                target_r=self.cfg.tp_r,
-                max_risk_usd=(
-                    float(self.portfolio.total_portfolio_value)
-                    * self.cfg.risk_per_trade_pct / 100.0))
-            gates = ",".join(
-                f"{name}:{gate.passed}" for name, gate in intent.gates.items())
-            self._record(
-                symbol, "INTENT", intent.model, intent.side,
-                intent.level_price, decision.score,
-                intent.limit_price, intent.stop_price,
-                intent.risk_per_share, gates,
-                "NO ORDERS SENT; NATIVE PROTECTION BLOCKED: "
-                + "; ".join(protection.blockers))
-            self.debug(
-                f"SIGNAL {symbol.value} {intent.model}/{intent.side}"
-                f" entry={intent.limit_price:.2f}"
-                f" stop={intent.stop_price:.2f} [NO ORDER]")
-        except Exception as exc:
-            self._record(symbol, "ERROR", reason=str(exc))
-            self.error(f"Signal error {symbol}: {exc}")
+        # LEAN consolidator callback. All checks still run on the same
+        # native completed 5-minute TradeBar; no additional history fetch.
+        process_m5(self, bar, _time_index)
 
     def _cancel_before_close(self) -> None:
         # Stop issuing signals before starting any native broker lifecycle.
@@ -529,63 +517,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._write_reports()
 
     def _write_reports(self) -> None:
-        # Official native LEAN runtime statistics survive backtest logging
-        # throttling and are available in the result view on Cloud Free.
-        counts = Counter(row["type"] for row in self._signal_rows)
-        for stat, kind in (("Qwct D1 setups", "SCENARIO"),
-                           ("Qwct intents", "INTENT"),
-                           ("Qwct rejects", "REJECT"),
-                           ("Qwct errors", "ERROR")):
-            self.set_runtime_statistic(stat, counts[kind])
-        self.set_runtime_statistic(
-            "Qwct research candidates", counts["RESEARCH_CANDIDATE"])
-        self.set_runtime_statistic(
-            "Qwct BSU swing proxies armed", self._bsu_proxy_armed_count)
-        self.set_runtime_statistic(
-            "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
-        self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
-        self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
-        if not self._object_store_export_enabled:
-            # The Free cloud plan has no ObjectStore write permission.
-            # Emit only a short end-of-run count; DO NOT claim the complete
-            # decision journal was saved (it remains in-memory only).
-            reject_reasons = Counter(
-                "insufficient D1" if row["reason"] == "insufficient closed D1"
-                else "no nearby levels" if "нет уровней рядом" in row["reason"]
-                else "model score below threshold" if "скор " in row["reason"]
-                else "other" for row in self._signal_rows
-                if row["type"] == "REJECT")
-            self.log(
-                "Qwct research summary: "
-                + ", ".join(f"{key}={counts[key]}" for key in
-                            ("SCENARIO", "RESEARCH_CANDIDATE", "INTENT",
-                             "REJECT", "ERROR"))
-                + f"; M5 bars={self._m5_bars_seen}, "
-                  f"M5 bar checks={self._m5_checks}, "
-                  f"unready={self._intent_missing_atr}"
-                + "; daily rejects=" + str(dict(reject_reasons))
-                + "; failed M5 gates=" + str(dict(self._gate_failures))
-                + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."
-            )
-            return
-        # LEAN TradeBuilder owns the realized P&L and round-trip grouping.
-        trades = native_closed_trade_rows(self.trade_builder.closed_trades)
-        outputs = {
-            "signal_decisions.csv": csv_rows(self._signal_rows, SIGNAL_FIELDS),
-            "native_order_events.csv": csv_rows(
-                self._order_event_rows, ORDER_FIELDS),
-            "native_closed_trades.csv": csv_rows(trades, TRADE_FIELDS),
-            "summary.json": summary_json(
-                self._signal_rows, self._order_event_rows, trades,
-                self.portfolio.invested),
-        }
-        # LEAN ObjectStore: save at algorithm end to avoid constant writes.
-        # A unique AlgorithmId avoids overwriting another backtest's results.
-        prefix = f"{self.project_id}/{self.algorithm_id}/gerchik"
-        for filename, body in outputs.items():
-            try:
-                if not self.object_store.save(f"{prefix}/{filename}", body):
-                    self.error(f"ObjectStore could not save {filename}")
-            except Exception as exc:
-                self.error(f"ObjectStore error saving {filename}: {exc}")
-        self.log(f"Gerchik journal and trade report: {prefix}")
+        # Delegate to a separate module because QuantConnect Cloud editors
+        # reject files larger than 32,000 characters. Callback stays native.
+        write_reports(self)

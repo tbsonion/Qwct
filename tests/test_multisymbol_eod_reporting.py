@@ -62,7 +62,9 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
 
 def test_source_uses_actual_leans_native_multi_symbol_events():
     src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
-    assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self.universe_settings.resolution = (" in src
+    assert "Resolution.SECOND if self._tvx_seconds_enabled" in src
+    assert "else Resolution.MINUTE" in src
     assert "self.universe_settings.fill_forward = False" in src
     assert "self._symbols[symbol] = state" in src
     assert "self.consolidate(" in src

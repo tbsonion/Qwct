@@ -1,7 +1,8 @@
 """M5 native LEAN research callback implementation. No orders. """
 from .data import MarketData
 from .patterns_bsu import Bar as ResearchBpuBar
-from .signals import build_intent
+from .signals import build_intent, GateResult
+from .lean_risk_observer import review_native_lean_risk
 from .protected_entry import review_schwab_protected_entry
 
 def process_m5(self, bar, time_index):
@@ -104,6 +105,27 @@ def process_m5(self, bar, time_index):
                 state["setup_trace"].missing_intent += 1
             return
         if intent.gates["m5_confirmed"].passed is True:
+            # Partial *native* LEAN evidence, for research ONLY. Missing
+            # closed-trade ledger, period starts, cashflows and stop risk
+            # remain UNKNOWN. No preview may turn risk_approved=True.
+            if intent.shares > 0:
+                try:
+                    preview = review_native_lean_risk(
+                        self, symbol, intent,
+                        time_index(bar.end_time).to_pydatetime(), time_index)
+                    failed = preview.mechanical_pass is False
+                    blocked = next(
+                        (r for r in preview.blockers
+                         if not r.startswith("unknown native")),
+                        "native loss / risk history not verified")
+                    intent.gates["risk_approved"] = GateResult(
+                        "risk_approved", False if failed else None,
+                        "NATIVE PARTIAL RESEARCH; " + blocked[:150])
+                except Exception as exc:
+                    intent.gates["risk_approved"] = GateResult(
+                        "risk_approved", None,
+                        "native risk observer failed closed: "
+                        + str(exc)[:130])
             self._m5_true_by_model[intent.model] += 1
             # A valid M5 event is NOT enough for a signal. Preserve
             # the separate independent gates that prevent a candidate.

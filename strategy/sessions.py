@@ -8,9 +8,9 @@
 - 15:00–16:00 — наблюдение, входов нет.
 
 Окна настраиваются через StrategyConfig (session_windows_*).
-ORB + Stocks in Play живёт по своим часам (модуль orb_stocks_in_play,
-там открытие диапазона в 9:35) и этим расписанием НЕ ограничивается:
-политика применяется только к режиму Gerchik.
+Qwct does NOT include a trading ORB/Stocks-in-Play implementation.
+The separate opening-volume research comparator does NOT apply these
+entry windows or generate signals: this policy is Gerchik only.
 """
 from dataclasses import dataclass
 from datetime import datetime, time

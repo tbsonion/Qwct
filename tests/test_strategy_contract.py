@@ -9,7 +9,7 @@ import pytest
 
 from strategy.config import StrategyConfig
 from strategy.data import MarketData
-from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep
+from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep, g09_context
 import strategy.scenarios as scenario_module
 from strategy.indicators import atr, global_trend, trend_direction
 from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
@@ -181,3 +181,35 @@ def test_no_shadow_oms_or_trading_in_lean_entrypoint():
         "OrderManager", "BrokerAdapter", "NativeBracketGateway",
         "self.market_order(", "self.limit_order(",
         "self.bracket_order("))
+
+
+def test_g09_pullback_free_bars_moving_away_from_level_are_not_an_approach():
+    cfg = StrategyConfig()
+    d1 = daily()
+    closes = [100.0, 100.4, 100.8, 101.2, 101.6]
+    for i, cl in enumerate(closes):
+        row = d1.index[-5+i]
+        d1.loc[row, ["open", "close", "high", "low"]] = [
+            cl, cl, cl + 2.3, cl - 2.3]
+    level = Level(price=100.0, kind="resistance")
+    f = g09_context(d1, None, d1.index[-1].to_pydatetime(),
+                    level, [level], cfg)
+    assert f.detail["approaching_level"] is False
+    assert f.detail["long_pullback_free"] is False
+    assert f.detail["big_bars_approach"] is False
+
+
+def test_g09_clean_zone_looks_past_candidate_level_not_from_daily_close():
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1.loc[d1.index[-1], "close"] = 98.
+    target = Level(price=100.0, kind="resistance")
+    behind = Level(price=110.0, kind="resistance")
+    f = g09_context(d1, None, d1.index[-1].to_pydatetime(),
+                    target, [target, behind], cfg)
+    assert f.detail["clean_zone"] is True
+    assert f.detail["room_atr"] == 4.0
+    unknown = g09_context(d1, None, d1.index[-1].to_pydatetime(),
+                          target, [target], cfg)
+    assert unknown.detail["clean_zone"] is None
+    assert unknown.detail["room_atr"] is None

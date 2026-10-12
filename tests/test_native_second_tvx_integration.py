@@ -47,7 +47,8 @@ class ResearchHarness:
                     tick_size=0.01, bsu_ts=datetime(2023, 8, 24, 16, tzinfo=ET)),
                 provenance="D1_CONFIRMED_SWING_PROXY_NOT_CANONICAL_BSU",
                 origin_time=AT-timedelta(days=50),
-                origin_price=100., cluster_price=100.)
+                origin_price=100., cluster_price=100.,
+                tick_size=.01)
         }}
         self.records = []
 

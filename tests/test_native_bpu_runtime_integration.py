@@ -113,3 +113,35 @@ def test_missing_traded_intermediate_m5_invalidates_immediate_bpu2():
     assert a._bsu_proxy_bpu2_count == 0
     assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "invalidated"
     assert a._bpu_invalid_reasons["BPU2 not the immediate next completed candle"] == 1
+
+
+def test_duplicate_native_m5_bar_cannot_count_two_bpu1_events():
+    a = AlgorithmHarness()
+    now = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
+    candle = SimpleNamespace(
+        symbol="NVDA", end_time=now, open=50., high=50.27,
+        low=49.9, close=50.08, volume=500)
+    process_m5(a, candle, pd.Timestamp)
+    process_m5(a, candle, pd.Timestamp)
+    assert a._m5_bars_seen == 1
+    assert a._m5_input_rejections["M5_DUPLICATE_OR_OUT_OF_ORDER"] == 1
+    assert a._symbols["NVDA"]["touch_audit"].touches == 1
+    assert a._bsu_bpu1_count == 1
+    assert [row[1] for row in a.records] == ["BSU_PROXY_BPU1"]
+
+
+def test_late_older_m5_bar_cannot_rewrite_bsu_trajectory():
+    a = AlgorithmHarness()
+    now = datetime(2024, 1, 2, 9, 40, tzinfo=ET)
+    newest = SimpleNamespace(
+        symbol="NVDA", end_time=now, open=49., high=49.5,
+        low=48.7, close=49., volume=400)
+    older = SimpleNamespace(
+        symbol="NVDA", end_time=now - timedelta(minutes=5),
+        open=50., high=50.27, low=49.9, close=50.08, volume=500)
+    process_m5(a, newest, pd.Timestamp)
+    process_m5(a, older, pd.Timestamp)
+    assert a._m5_bars_seen == 1
+    assert a._m5_input_rejections["M5_DUPLICATE_OR_OUT_OF_ORDER"] == 1
+    assert a._bsu_bpu1_count == 0
+    assert not a.records

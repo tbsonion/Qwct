@@ -29,7 +29,8 @@ def setup():
     daily = pd.DataFrame({
         "open": closes, "high": [x+1.0 for x in closes],
         "low": [x-1.0 for x in closes],
-        "close": closes, "atr14": 3., "sma50": closes,
+        "close": closes, "atr14": 3.,
+        "sma50": pd.Series(closes).rolling(50, min_periods=1).mean().tolist(),
         "volume": 1_000_000},
         index=daily_index)
     m5 = pd.DataFrame(

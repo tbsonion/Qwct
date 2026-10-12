@@ -33,7 +33,8 @@ def process_second_slice(self, data, time_index):
         if not (window.bpu1_end < end_at <= window.cutoff):
             continue
         before_block = window.blocked_reason
-        sample = window.accept(bar, symbol=symbol)
+        sample = window.accept(
+            bar, symbol=symbol, end_at=end_at.to_pydatetime())
         if window.blocked_reason and not before_block:
             self._tvx_second_reasons[window.blocked_reason] += 1
             self._record(

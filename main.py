@@ -398,7 +398,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                         side=decision.side,
                         level_price=float(decision.level.price),
                         atr_value=float(d1[f"atr{self.cfg.atr_period}"].iloc[-1]),
-                        max_confirm_chase_atr=self.cfg.max_entry_distance_atr)
+                        max_confirm_chase_atr=self.cfg.max_entry_distance_atr,
+                        max_retest_bars=self.cfg.breakout_retest_max_bars,
+                        retest_tolerance_atr=self.cfg.breakout_retest_touch_atr,
+                        invalidation_atr=self.cfg.breakout_retest_invalid_atr)
                 if decision.accepted and decision.model == "bounce":
                     # Native symbol properties (never a guessed USD 0.01)
                     # and actual as-of D1 origin are mandatory. A confirmed

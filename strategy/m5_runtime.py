@@ -104,6 +104,7 @@ def process_m5(self, bar, time_index):
             if state["setup_trace"] is not None:
                 state["setup_trace"].missing_intent += 1
             return
+        native_risk_read_ok = False
         if intent.gates["m5_confirmed"].passed is True:
             # Partial *native* LEAN evidence, for research ONLY. Missing
             # closed-trade ledger, period starts, cashflows and stop risk
@@ -113,6 +114,10 @@ def process_m5(self, bar, time_index):
                     preview = review_native_lean_risk(
                         self, symbol, intent,
                         time_index(bar.end_time).to_pydatetime(), time_index)
+                    # A failed native API read must NOT become a
+                    # research candidate merely because the mandatory
+                    # risk_approved gate is currently UNKNOWN.
+                    native_risk_read_ok = True
                     failed = preview.mechanical_pass is False
                     blocked = next(
                         (r for r in preview.blockers
@@ -150,6 +155,7 @@ def process_m5(self, bar, time_index):
                 # Gerchik's explicit BPU/TVX pattern. A CLOSED BPU2
                 # observation still cannot prove the 30s entry.
                 intent.model != "bounce"
+                and native_risk_read_ok
                 and intent.gates["risk_approved"].passed is None
                 and intent.shares > 0
                 and intent.limit_price > 0

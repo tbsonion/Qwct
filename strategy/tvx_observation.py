@@ -45,6 +45,8 @@ class NativeSecondTvxWindow:
     def on_second(self, bar: Bar):
         if self.done:
             raise ValueError("preclose window already consumed")
+        if self.detector.state.phase != "bpu1":
+            raise ValueError("BPU1 no longer active; SEC observation invalid")
         if not isinstance(bar, Bar) or bar.timeframe != "SEC":
             raise ValueError("original completed native SEC TradeBar required")
         timestamp = bar.ts

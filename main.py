@@ -37,15 +37,11 @@ def _time_index(ts: datetime) -> pd.Timestamp:
 
 class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
-        # Reproduce the user-verified Jan/Feb 2024 Cloud Free smoke;
-        # don't silently expand chart or log volume to a year.
+        # Preserve user-verified Jan/Feb 2024 Cloud Free smoke.
         self.set_start_date(2024, 1, 1)
         self.set_end_date(2024, 2, 5)
         self.cfg = StrategyConfig()
-        # Optional SEC research subscription: the original 50-stock
-        # universe would otherwise pull dense one-second data all day.
-        # Requires explicit Cloud parameter tvx_seconds=true; never
-        # use a minute feed as surrogate for a -30s TVX.
+        # Opt-in SEC feed: tvx_seconds=true; high Cloud data cost.
         self._tvx_seconds_enabled = (
             (self.get_parameter("tvx_seconds") or "").strip().lower() == "true")
         self.set_cash(self.cfg.starting_equity)
@@ -76,16 +72,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._session_date = None
         self._signals_open = False
 
-        # NO runtime parameter can turn on trading. This is an explicit
-        # source-level kill switch until protective entries are independently
-        # verified with the LEAN/Schwab brokerage integration.
+        # Trading is hard-disabled regardless of parameters.
         self._native_exit_enabled = False
         # QuantConnect Cloud Free organizations cannot write ObjectStore.
         # Keep signal research usable without misleading export errors.
         # This is a SOURCE-LEVEL research setting, not a trading toggle.
         self._object_store_export_enabled = False
-        # LEAN defaults to FILL_TO_FILL, which is not a full position
-        # round-trip. Use its official FLAT_TO_FLAT TradeBuilder grouping.
+        # Native LEAN FLAT_TO_FLAT round-trip grouping.
         self.set_trade_builder(TradeBuilder(
             FillGroupingMethod.FLAT_TO_FLAT, FillMatchingMethod.FIFO))
         self._signal_rows = []
@@ -114,10 +107,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
 
-        # A single fixed selected symbol, NOT mixed-ticker data on one
-        # price axis. One LEAN Focus chart = 4 series; Qwct Research = 5.
-        # Free Cloud quota: 10 series, 4,000 points/series. Only draw
-        # up to 3,500 M5 bars to avoid silently exceeding that limit.
+        # Stable chart symbol: never plot mixed-ticker price axes.
         self._chart_symbol = None
         # Optional QuantConnect parameter focuses a specific ticker if it
         # actually has a D1 setup. Otherwise prioritize first real bounce.
@@ -130,12 +120,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         focus_chart.add_series(Series("BPU2", SeriesType.SCATTER, 0))
         self.add_chart(focus_chart)
 
-        # One native LEAN resolution per universe: SECOND (opt-in TVX
-        # validation only) produces *actual* SEC TradeBars, and the
-        # official Consolidate still builds completed native M5/D1.
-        # Keep default MINUTE mode for the existing free-plan smoke.
-        # Do not add a second overlapping subscription for a symbol
-        # already subscribed through the Fundamental Universe.
+        # Official native feed; default MINUTE keeps Cloud smoke small.
         self.universe_settings.resolution = (
             Resolution.SECOND if self._tvx_seconds_enabled
             else Resolution.MINUTE)
@@ -152,9 +137,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_open(self.symbol, 1),
             self._prepare_session)
-        # Two-stage EOD is mandated by documented Schwab cancellation lag.
-        # First cancel broker orders, then check confirmed cancellations;
-        # never submit Liquidate while contingent orders remain pending.
+        # Schwab EOD: cancel orders, confirm cancellation, only then exit.
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_close(
@@ -497,8 +480,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 and self._symbols[symbol]["decision"].accepted))
 
     def on_data(self, data: Slice) -> None:
-        # Native SECOND bars only; no scheduled callback may claim a
-        # same-timestamp SEC observation before OnData processes that bar.
+        # No Scheduled Event lookahead; SEC on_data is after consolidators.
         process_second_slice(self, data, _time_index)
 
     def _on_m5(self, bar: TradeBar) -> None:

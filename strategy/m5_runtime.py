@@ -6,6 +6,7 @@ from .signals import build_intent, GateResult
 from .lean_risk_observer import review_native_lean_risk
 from .protected_entry import review_schwab_protected_entry
 from .native_second_tvx import NativeSecondTvxWindow
+from .bpu_tvx_evidence import BpuTvxEvidence
 
 def process_m5(self, bar, time_index):
     symbol = bar.symbol
@@ -94,6 +95,7 @@ def process_m5(self, bar, time_index):
                         native_end.to_pydatetime() > sec_window.bpu2_end):
                     link.detector.reset()
                     state["tvx_sec_window"] = None
+                    state["bsu_tvx_evidence"] = None
             # LEAN supplies no TradeBar for a second without trades.
             # If the exact -30s source candle never arrived, record
             # that gap only when the genuine M5 BPU2 closes. Never
@@ -144,6 +146,22 @@ def process_m5(self, bar, time_index):
                     state["setup_trace"].bpu2_count += 1
                 if observed.preclose_seen:
                     self._tvx_preclose_reconciled += 1
+                    win = state.get("tvx_sec_window")
+                    if (isinstance(win, NativeSecondTvxWindow)
+                            and win.complete and not win.blocked_reason
+                            and win.last_at == win.cutoff
+                            and link.provenance == (
+                                "D1_CONFIRMED_SWING_PROXY_NOT_CANONICAL_BSU")):
+                        state["bsu_tvx_evidence"] = BpuTvxEvidence(
+                            symbol=symbol.value,
+                            session=self._session_date,
+                            side=observed.side,
+                            d1_level_price=link.cluster_price,
+                            native_origin_price=link.origin_price,
+                            bpu1_end=observed.bpu1_ts,
+                            preclose_at=win.cutoff,
+                            bpu2_end=native_end.to_pydatetime(),
+                            origin_provenance=link.provenance)
                 self._record(
                     symbol, "BSU_PROXY_BPU2_CLOSED",
                     model="bounce", side=observed.side,
@@ -159,6 +177,7 @@ def process_m5(self, bar, time_index):
             # Do not hide broken native D1/M5 integration as a signal.
             state["bsu_link"] = None
             state["tvx_sec_window"] = None
+            state["bsu_tvx_evidence"] = None
             self._record(symbol, "ERROR", reason=f"BPU bridge: {exc}")
             self.error(f"BPU research error {symbol}: {exc}")
     decision = state["decision"]
@@ -170,7 +189,8 @@ def process_m5(self, bar, time_index):
         session_levels=state["session_levels"],
         breakout_retest=(
             state["breakout_retest"].evidence
-            if state.get("breakout_retest") is not None else None))
+            if state.get("breakout_retest") is not None else None),
+        bpu_tvx=state.get("bsu_tvx_evidence"))
     try:
         self._m5_checks += 1
         intent = build_intent(

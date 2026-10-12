@@ -19,6 +19,7 @@ class QuietResearchAlgorithm:
                                   "bsu_link": None, "focus_level": None,
                                   "qualified_today": False}}
         self._m5_bars_seen = 0
+        self._m5_input_rejections = Counter()
         self._chart_symbol = "NVDA"
         self._focus_m5_plotted = 0
 

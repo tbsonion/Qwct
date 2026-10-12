@@ -1,5 +1,6 @@
 """M5 native LEAN research callback implementation. No orders. """
 from .data import MarketData
+from .native_m5_validation import validate_m5_tradebar
 from .patterns_bsu import Bar as ResearchBpuBar
 from .signals import build_intent, GateResult
 from .lean_risk_observer import review_native_lean_risk
@@ -13,6 +14,14 @@ def process_m5(self, bar, time_index):
         return
     state = self._symbols.get(symbol)
     if state is None:
+        return
+    # M5 OHLCV is real data evidence, never an interpolation. Reject a
+    # zero-volume, fill-forward or malformed native candle BEFORE feeding
+    # either BSU/BPU research or the regular two-bar signal proxy.
+    valid_m5, rejection = validate_m5_tradebar(
+        bar, time_index(bar.end_time).to_pydatetime())
+    if not valid_m5:
+        self._m5_input_rejections[rejection] += 1
         return
     self._m5_bars_seen += 1
     state["m5_rows"].append({

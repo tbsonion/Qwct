@@ -59,3 +59,27 @@ def test_m5_endtime_must_be_native_aware_aligned(end, reason):
     assert actual == reason
 
 
+
+
+@pytest.mark.parametrize("changes,reason", [
+    ({"period": timedelta(minutes=1)}, "M5_SOURCE_PERIOD_NOT_FIVE_MINUTES"),
+    ({"period": timedelta(minutes=10)}, "M5_SOURCE_PERIOD_NOT_FIVE_MINUTES"),
+    ({"period": None}, "M5_SOURCE_PERIOD_MISSING"),
+    ({"time": datetime(2024, 1, 2, 9, 31, tzinfo=ET)},
+     "M5_SOURCE_START_END_INCONSISTENT"),
+])
+def test_native_m5_rejects_wrong_period_even_if_endtime_is_0935(changes, reason):
+    # A 09:34-09:35 M1 candle is NOT a real 09:30-09:35 M5 bar.
+    accepted, actual = validate_m5_tradebar(
+        bar(**changes), datetime(2024, 1, 2, 9, 35, tzinfo=ET))
+    assert accepted is False
+    assert actual == reason
+
+
+def test_native_m5_rejects_missing_source_start_datetime():
+    x = bar()
+    del x.time
+    accepted, reason = validate_m5_tradebar(
+        x, datetime(2024, 1, 2, 9, 35, tzinfo=ET))
+    assert not accepted
+    assert reason == "M5_SOURCE_PERIOD_OR_CHRONOLOGY_UNVERIFIED"

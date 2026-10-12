@@ -15,6 +15,12 @@ def review_native_lean_risk(algorithm, symbol, intent, observed_at, time_index):
     algorithm-local naive DateTime. Native margin buying power is sourced
     for this security and direction, not estimated as cash.
     """
+    # A consolidator can publish its completed bar later than its nominal
+    # EndTime when sparse ticks/minute data arrive late. Portfolio state
+    # observed at that later algorithm time is NOT evidence as-of the bar.
+    native_asof = time_index(algorithm.time).to_pydatetime()
+    if native_asof != observed_at:
+        raise ValueError("native portfolio time is not aligned to completed M5")
     # Delayed import avoids requiring AlgorithmImports in pure-rule tests.
     from AlgorithmImports import OrderDirection
 

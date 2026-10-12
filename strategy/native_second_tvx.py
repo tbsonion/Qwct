@@ -51,19 +51,24 @@ class NativeSecondTvxWindow:
         self.blocked_reason = ""
         self.complete = False
 
-    def accept(self, bar, *, symbol=None) -> NativePrecloseSample | None:
+    def accept(self, bar, *, symbol=None,
+               end_at=None) -> NativePrecloseSample | None:
         """Accept one native one-second TradeBar. Never read future M5 data."""
         if self.complete or self.blocked_reason:
             return None
         try:
-            start, end = bar.time, bar.end_time
+            # Native PythonNet DateTime values can be .NET objects.
+            # LEAN adapter uses the SAME exchange-local conversion as M5
+            # instead of assuming end_time is a Python datetime.
+            start, native_end = bar.time, bar.end_time
+            end = native_end if end_at is None else end_at
             if (not isinstance(end, datetime) or end.tzinfo is None
                     or end.utcoffset() is None):
                 raise ValueError("SEC_END_UNVERIFIED")
             if symbol is not None and bar.symbol != symbol:
                 raise ValueError("SEC_SYMBOL_MISMATCH")
             if _duration_seconds(bar.period) != 1 or (
-                    _duration_seconds(end - start) != 1):
+                    _duration_seconds(native_end - start) != 1):
                 raise ValueError("SEC_NATIVE_PERIOD_INVALID")
             if end <= self.bpu1_end or end > self.cutoff:
                 raise ValueError("SEC_OUTSIDE_BPU2_PRECLOSE_WINDOW")

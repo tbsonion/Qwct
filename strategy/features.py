@@ -13,6 +13,7 @@ value: True / False / None (None = данных нет, явно указано 
 """
 from dataclasses import dataclass, field
 from datetime import datetime
+from math import isfinite
 
 import pandas as pd
 
@@ -34,7 +35,7 @@ class FeatureResult:
 
 def _a(d1: pd.DataFrame, cfg: StrategyConfig) -> float:
     v = atr(d1, cfg.atr_period).iloc[-1]
-    if pd.isna(v) or v <= 0:
+    if pd.isna(v) or not isfinite(float(v)) or v <= 0:
         raise ValueError("Native LEAN ATR is not ready; do not approximate it")
     return float(v)
 

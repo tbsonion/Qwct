@@ -288,3 +288,33 @@ def test_g03_first_lookback_bar_uses_prior_closed_bar_for_gap_check():
         d1, None, dates[-1].to_pydatetime(), lvl, [lvl], cfg)
     assert result.detail["gap_retest"] is True
     assert result.detail["touched_in_window"] is True
+
+
+def test_g03_gap_retest_bonus_requires_gap_closer_to_daily_level():
+    cfg = StrategyConfig()
+    d1 = daily()
+    dates = d1.index[-11:]
+    # Prior close at 99 is already ONE dollar from level 100.
+    # Today opens at 102 (now TWO dollars from that level), then
+    # trades down through it. This is an intraday wick retest,
+    # but certainly not a gap TOWARD the level.
+    d1.loc[dates, ["open", "high", "low", "close"]] = [
+        102., 102.4, 101.6, 102.]
+    d1.loc[dates[-2], ["open", "high", "low", "close"]] = [
+        99., 99.5, 98.7, 99.]
+    d1.loc[dates[-1], ["open", "high", "low", "close"]] = [
+        102., 102.3, 99.8, 100.2]
+    lvl = Level(price=100., kind="support")
+    r = g03_near_retest(d1, None, dates[-1].to_pydatetime(),
+                        lvl, [lvl], cfg)
+    assert r.detail["touched_in_window"] is True
+    assert r.detail["gap_retest"] is False
+
+    # A genuine DOWNWARD gap TOWARD support does earn the bonus.
+    d1.loc[dates[-2], ["open", "high", "low", "close"]] = [
+        102., 102.4, 101.6, 102.]
+    d1.loc[dates[-1], ["open", "high", "low", "close"]] = [
+        100.1, 100.5, 99.8, 100.2]
+    r = g03_near_retest(d1, None, dates[-1].to_pydatetime(),
+                        lvl, [lvl], cfg)
+    assert r.detail["gap_retest"] is True

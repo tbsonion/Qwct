@@ -68,7 +68,12 @@ def test_preview_uses_only_already_closed_m5_and_native_sec_not_future_bpu2():
     assert checks["native_tick_limit_stop"] is True
     assert checks["frozen_next_level_room_4r"] is True
     assert checks["gerchik_session"] is True
+    assert checks["native_d1_trend"] is True
+    assert checks["daily_atr_ready"] is True
+    assert checks["target_3r"] is True
+    assert checks["preliminary_risk_budget"] is True
     assert checks["last_trade_no_chase"] is True
+    assert review.evidence_ready is True
     assert checks["broker_protection"] is None
     assert review.can_submit is False
     assert review.observed_at == CUT

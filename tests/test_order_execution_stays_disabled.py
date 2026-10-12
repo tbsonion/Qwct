@@ -65,12 +65,22 @@ def test_only_known_disabled_main_eod_code_may_include_liquidate():
                  and n.value.value is False)
     ]
     assert not enabling, "trading kill-switch reassigned"
+    algorithm_class = next(
+        n for n in source_tree.body
+        if isinstance(n, ast.ClassDef)
+        and n.name == "QwctGerchikAlgorithm")
     for method in ("_cancel_before_close", "_end_session",
                    "_verify_flat_before_close"):
         fn = next(
-            n for n in source_tree.body
-            if isinstance(n, ast.ClassDef)
-            and n.name == "QwctGerchikAlgorithm"
-            for x in n.body
-            if isinstance(x, ast.FunctionDef) and x.name == method
-        )
+            n for n in algorithm_class.body
+            if isinstance(n, ast.FunctionDef) and n.name == method)
+        guards = [
+            node for node in fn.body
+            if isinstance(node, ast.If)
+            and isinstance(node.test, ast.UnaryOp)
+            and isinstance(node.test.op, ast.Not)
+            and isinstance(node.test.operand, ast.Attribute)
+            and node.test.operand.attr == "_native_exit_enabled"
+            and any(isinstance(t, ast.Return) for t in ast.walk(node))
+        ]
+        assert guards, f"{method} missing explicit no-trading return"

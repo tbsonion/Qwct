@@ -203,9 +203,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             symbol = security.symbol
             if symbol in self._screen_ranks and self._register_symbol(symbol):
                 new_symbols.append(symbol)
-        # Official LEAN performance guidance: batch symbols in ONE typed
-        # History[TradeBar] call. A typed multi-symbol enumerable yields bars,
-        # not a pandas DataFrame; avoid 50 separate history requests.
         self._warm_symbols(new_symbols)
 
     def _register_symbol(self, symbol) -> bool:
@@ -327,19 +324,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
         self._signals_open = True
-        # A manually subscribed clock stock may already exist before the
-        # fundamental universe selects it and won't necessarily appear in
-        # added_securities. Use the same native setup path, once.
         if self.symbol in self._screen_ranks:
             if self._register_symbol(self.symbol):
                 self._warm_symbols([self.symbol])
         rewarm_split_symbols(self)
         self._refresh_screen_watchlist()
-        # Freeze the focus Symbol on the FIRST qualifying trading day.
-        # Do not dynamically switch prices between TSLA/NVDA/etc. on
-        # a single chart with a deceptive shared dollar-price axis.
-        # Do NOT freeze the chart to the top liquidity stock here.
-        # Wait until D1 decisions are known; never mix ticker prices.
         for state in self._symbols.values():
             state["qualified_today"] = False
             state["decision"] = None
@@ -400,9 +389,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                         trace.set_bsu(False, "not eligible: model is not bounce")
                     else:
                         self._setup_traces_omitted += 1
-                    # On the single-ticker plot, show the accepted
-                    # morning scenario level rather than an unrelated
-                    # nearby context level. No intraday recalculation.
                     if symbol == self._chart_symbol:
                         state["focus_level"] = float(decision.level.price)
                 if decision.accepted and decision.model == "breakout":

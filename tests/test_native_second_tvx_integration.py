@@ -33,6 +33,7 @@ class ResearchHarness:
         self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
         self._bpu_invalid_reasons = Counter()
+        self._native_sec_received = 0
         self._tvx_preclose_count = 0
         self._tvx_preclose_reconciled = 0
         self._tvx_second_reasons = Counter()
@@ -330,4 +331,14 @@ def test_sec_future_timestamp_cannot_claim_tvx_either():
     on_sec(a, sec_bar(1), arrive_at=AT)
     assert a._symbols["NVDA"]["tvx_sec_window"].blocked_reason == (
         "SEC_DELAYED_OR_FUTURE_SLICE")
+    assert a._tvx_preclose_count == 0
+
+
+def test_native_sec_count_does_not_require_active_gerchik_bsu_setup():
+    a = ResearchHarness()
+    # Native TradeBar may be present even when this symbol has no
+    # accepted D1 morning bounce. That still proves SEC was subscribed.
+    a._symbols["NVDA"]["bsu_link"] = None
+    on_sec(a, sec_bar(1))
+    assert a._native_sec_received == 1
     assert a._tvx_preclose_count == 0

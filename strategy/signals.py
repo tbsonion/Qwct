@@ -1,6 +1,7 @@
 """Восемь обязательных фильтров («идеальная сделка») + торговое намерение.
 
-ID гейтов — строго по контракту hybrid (orb_stocks_in_play/hybrid.py):
+ID гейтов — строго по исходной спецификации Gerchik из
+docs/strategy_spec.md. Legacy ORB/hybrid module is NOT part of Qwct:
     trend_aligned, daily_level_valid, m5_confirmed, stop_behind_d1_level,
     room_at_least_4r, target_at_least_3r, risk_approved, matching_trade_model
 

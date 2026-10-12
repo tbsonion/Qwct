@@ -24,6 +24,7 @@ from strategy.screener import select_liquid_fundamentals, passes_gerchik_screene
 from strategy.reporting import native_order_event_row
 from strategy.runtime_reporting import write_reports
 from strategy.m5_runtime import process_m5
+from strategy.second_runtime import process_second_slice
 
 
 ET = ZoneInfo("America/New_York")
@@ -41,6 +42,12 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self.set_start_date(2024, 1, 1)
         self.set_end_date(2024, 2, 5)
         self.cfg = StrategyConfig()
+        # Optional SEC research subscription: the original 50-stock
+        # universe would otherwise pull dense one-second data all day.
+        # Requires explicit Cloud parameter tvx_seconds=true; never
+        # use a minute feed as surrogate for a -30s TVX.
+        self._tvx_seconds_enabled = (
+            (self.get_parameter("tvx_seconds") or "").strip().lower() == "true")
         self.set_cash(self.cfg.starting_equity)
         self.set_time_zone("America/New_York")
 
@@ -96,6 +103,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._bsu_block_reasons = Counter()
         self._bpu_invalid_reasons = Counter()
         self._breakout_retest_counts = Counter()
+        self._tvx_preclose_count = 0
+        self._tvx_preclose_reconciled = 0
+        self._tvx_second_reasons = Counter()
         # In-memory evidence of the first accepted D1 setups; stop
         # growing trace memory on 1-year Cloud Free research windows.
         self._setup_traces = []
@@ -120,10 +130,15 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         focus_chart.add_series(Series("BPU2", SeriesType.SCATTER, 0))
         self.add_chart(focus_chart)
 
-        # Native Fundamental Universe owns stock membership and data feeds.
-        # Minute resolution is required for real M5 consolidators on *each*
-        # selected stock, not only on the anchor or first watchlist stock.
-        self.universe_settings.resolution = Resolution.MINUTE
+        # One native LEAN resolution per universe: SECOND (opt-in TVX
+        # validation only) produces *actual* SEC TradeBars, and the
+        # official Consolidate still builds completed native M5/D1.
+        # Keep default MINUTE mode for the existing free-plan smoke.
+        # Do not add a second overlapping subscription for a symbol
+        # already subscribed through the Fundamental Universe.
+        self.universe_settings.resolution = (
+            Resolution.SECOND if self._tvx_seconds_enabled
+            else Resolution.MINUTE)
         # By default LEAN forward-fills bars when there are no trades.
         # Gerchik M5 confirmation must not be inferred from those
         # previously observed prices as if a real fresh bar arrived.
@@ -161,7 +176,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.time_rules.after_market_close(self.symbol, 1),
             self._checkpoint_reports)
 
-        self.debug("Qwct: multi-symbol Gerchik signal-only; ALL ORDERS DISABLED")
+        self.debug(
+            "Qwct: signal-only; ALL ORDERS DISABLED; "
+            + ("native SEC TVX research ENABLED, high data volume"
+               if self._tvx_seconds_enabled else "native SEC TVX NOT ENABLED"))
 
     def _record(self, symbol, kind, model="", side="", level="",
                 score="", entry="", stop="", risk="", gates="", reason=""):
@@ -217,6 +235,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "decision": None, "qualified_today": False,
             "session_levels": None,
             "bsu_link": None,
+            "tvx_sec_window": None,
             "breakout_retest": None,
             "focus_level": None,
             "setup_trace": None,
@@ -335,6 +354,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             state["decision"] = None
             state["session_levels"] = None
             state["bsu_link"] = None
+            state["tvx_sec_window"] = None
             state["breakout_retest"] = None
             state["focus_level"] = None
             state["setup_trace"] = None
@@ -475,6 +495,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             sum(1 for symbol in self.screen_watchlist
                 if self._symbols[symbol]["decision"] is not None
                 and self._symbols[symbol]["decision"].accepted))
+
+    def on_data(self, data: Slice) -> None:
+        # Native SECOND bars only; no scheduled callback may claim a
+        # same-timestamp SEC observation before OnData processes that bar.
+        process_second_slice(self, data, _time_index)
 
     def _on_m5(self, bar: TradeBar) -> None:
         # LEAN consolidator callback. All checks still run on the same

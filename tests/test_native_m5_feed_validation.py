@@ -83,3 +83,15 @@ def test_native_m5_rejects_missing_source_start_datetime():
         x, datetime(2024, 1, 2, 9, 35, tzinfo=ET))
     assert not accepted
     assert reason == "M5_SOURCE_PERIOD_OR_CHRONOLOGY_UNVERIFIED"
+
+
+def test_native_dotnet_timespan_property_is_supported_for_bar_period():
+    # QuantConnect is Python-facing but LEAN types originate in .NET.
+    # Contract must tolerate either System.TimeSpan.TotalSeconds
+    # or native Python timedelta.total_seconds().
+    native_style_span = SimpleNamespace(TotalSeconds=300.)
+    x = bar(period=native_style_span)
+    accepted, reason = validate_m5_tradebar(
+        x, datetime(2024, 1, 2, 9, 35, tzinfo=ET))
+    assert accepted is True
+    assert reason == "M5_NATIVE_VALIDATED_SHAPE"

@@ -5,6 +5,7 @@ from .patterns_bsu import Bar as ResearchBpuBar
 from .signals import build_intent, GateResult
 from .lean_risk_observer import review_native_lean_risk
 from .protected_entry import review_schwab_protected_entry
+from .native_second_tvx import NativeSecondTvxWindow
 
 def process_m5(self, bar, time_index):
     symbol = bar.symbol
@@ -70,9 +71,9 @@ def process_m5(self, bar, time_index):
         if state["focus_level"] is not None:
             self.plot("Qwct Focus", "D1 Level", state["focus_level"])
         self._focus_m5_plotted += 1
-    # Observe closed native M5 BPU1/BPU2 for D1 swing proxies
-    # independently of M5 gate scoring. This is NO TVX signal:
-    # the original method requires 30 seconds BEFORE BPU2 close.
+    # Observe closed native M5 BPU1/BPU2 independently of breakout.
+    # A native SECOND source (when opted in) supplies a separate
+    # preliminary -30s TVX. M5 after the cutoff only reconciles it.
     link = state["bsu_link"]
     if link is not None:
         try:
@@ -86,7 +87,13 @@ def process_m5(self, bar, time_index):
                     low=float(bar.low), high=float(bar.high),
                     close=float(bar.close))
             if link.detector.state.phase == "invalidated":
-                link.detector.reset()
+                sec_window = state.get("tvx_sec_window")
+                # A failed pre-close SEC check must NOT be erased by a
+                # M5 reset at the very BPU2 close that it invalidated.
+                if (sec_window is None or
+                        native_end.to_pydatetime() > sec_window.bpu2_end):
+                    link.detector.reset()
+                    state["tvx_sec_window"] = None
             before_phase = link.detector.state.phase
             observed = link.detector.on_bar(ResearchBpuBar(
                 ts=time_index(bar.end_time).to_pydatetime(),
@@ -99,6 +106,12 @@ def process_m5(self, bar, time_index):
                 if state["setup_trace"] is not None:
                     state["setup_trace"].add_bpu_failure(observed.reason)
             if observed.phase == "bpu1" and before_phase != observed.phase:
+                if getattr(self, "_tvx_seconds_enabled", False):
+                    # Arm exactly when the native consolidated BPU1
+                    # closes. Next 270 traded SEC seconds must be
+                    # observed through LEAN on_data, without History.
+                    state["tvx_sec_window"] = NativeSecondTvxWindow(
+                        native_end.to_pydatetime())
                 self._bsu_bpu1_count += 1
                 if state["setup_trace"] is not None:
                     state["setup_trace"].bpu1_count += 1
@@ -114,6 +127,8 @@ def process_m5(self, bar, time_index):
                 self._bsu_proxy_bpu2_count += 1
                 if state["setup_trace"] is not None:
                     state["setup_trace"].bpu2_count += 1
+                if observed.preclose_seen:
+                    self._tvx_preclose_reconciled += 1
                 self._record(
                     symbol, "BSU_PROXY_BPU2_CLOSED",
                     model="bounce", side=observed.side,
@@ -121,10 +136,14 @@ def process_m5(self, bar, time_index):
                     reason=(
                         f"{link.provenance}; D1 origin={link.origin_time}; "
                         "BPU2 completed on native closed M5; "
-                        "NO 30s TVX observation, NO ORDERS OR FILLS"))
+                        + ("native SEC -30s candidate RECONCILED; "
+                           if observed.preclose_seen else
+                           "NO verified SEC -30s TVX; ")
+                        + "NO ORDERS OR FILLS"))
         except Exception as exc:
             # Do not hide broken native D1/M5 integration as a signal.
             state["bsu_link"] = None
+            state["tvx_sec_window"] = None
             self._record(symbol, "ERROR", reason=f"BPU bridge: {exc}")
             self.error(f"BPU research error {symbol}: {exc}")
     decision = state["decision"]

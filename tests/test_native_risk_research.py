@@ -4,7 +4,8 @@ Use KNOWN native portfolio values for a pure fail-closed preview.
 Unknown realized P&L, pending fills, reserved risk or day-break state
 cannot be treated as zero.  No orders or virtual portfolio are created.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -131,3 +132,21 @@ def test_preview_never_promotes_unverified_broker_stop_or_lean_risk_gate():
                        entry_price=100., stop_price=95., cfg=StrategyConfig())
     assert review.can_submit is False
     assert "orders" not in review.__dict__
+
+
+def test_native_decimal_values_are_normalized_to_float():
+    snap = full_snapshot(equity=Decimal("25000.00"),
+                         available_buying_power=Decimal("24500.00"),
+                         daily_start_equity=Decimal("25000.00"))
+    assert type(snap.equity) is float
+    result = review_risk(snap, side="long", shares=10,
+                         entry_price=Decimal("100"),
+                         stop_price=Decimal("95"), cfg=StrategyConfig())
+    assert result.mechanical_pass is True
+    assert result.can_submit is False
+
+
+@pytest.mark.parametrize("bad", [1, 0, "true", 1.0])
+def test_cashflow_provenance_accepts_only_an_explicit_boolean(bad):
+    with pytest.raises(ValueError, match="period_cashflows_verified"):
+        full_snapshot(period_cashflows_verified=bad)

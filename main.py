@@ -1,9 +1,6 @@
 """Gerchik D1 / M5 multi-equity signal research using native LEAN APIs.
 
-Execution is HARD DISABLED. No entries, custom broker adapter, fill simulator,
-software OCO or shadow portfolio. Native EOD cancellation/liquidation is
-prepared but gated off until a reviewed Schwab-compatible execution solution
-exists. Schwab requires order cancel confirmations BEFORE market liquidation.
+NO ORDERS: broker, fills and EOD liquidation disabled.
 """
 from AlgorithmImports import *
 from datetime import datetime, timedelta
@@ -15,7 +12,7 @@ import pandas as pd
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
-from strategy.bsu_bridge import create_bsu_research_observer
+from strategy.bsu_bridge import create_bsu_research_observer, audit_bsu_price_basis
 from strategy.breakout_retest import BreakoutRetestObserver
 from strategy.sessions import SessionPolicy
 from strategy.research_trace import SetupTrace, BpuTouchAudit
@@ -52,11 +49,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # The anchor is a clock only. All actual Gerchik decisions use
         # independently warmed symbols selected by the native universe.
         anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
-        # Use a single native as-of price basis: RAW TradeBars for both
-        # MINUTE and SECOND subscriptions. SPLIT_ADJUSTED uses the entire
-        # future split history, so 2024 NVDA can appear on a false 10:1
-        # post-2024 lattice. Historical D1 warmup uses official SCALED_RAW
-        # at the algorithm time, not an invented split factor.
+        # RAW subscriptions; SCALED_RAW is used only to warm native D1.
         self._equity_normalization_mode = DataNormalizationMode.RAW
         # Anchor can be in universe: use SECOND here in SEC mode too.
         self.symbol = self.add_equity(
@@ -364,9 +357,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 continue
             try:
                 levels = tuple(levels_for_session(d1, self._session_date, self.cfg))
-                # Freeze exactly the D1 levels used to rank the morning
-                # scenarios. Recalculate neither their kind nor their
-                # next-level distances while a live M5 is arriving.
+                # Freeze confirmed D1 levels for the session.
                 state["session_levels"] = levels
                 if symbol == self._chart_symbol and levels:
                     # Draw the closest D1 level only when in the same
@@ -384,8 +375,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 state["decision"] = decision
                 if decision.accepted:
                     self._d1_models[decision.model] += 1
-                    # A bounded scenario->M5 replay trace survives native
-                    # universe removal and does not claim fills/orders.
+                    # Bounded scenario trace for research only.
                     if len(self._setup_traces) < 30:
                         trace = SetupTrace.from_decision(
                             decision, d1_close=float(d1["close"].iloc[-1]),
@@ -399,10 +389,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     if symbol == self._chart_symbol:
                         state["focus_level"] = float(decision.level.price)
                 if decision.accepted and decision.model == "breakout":
-                    # Research-only lifecycle: genuine D1 level from this
-                    # premarket snapshot; actual native completed M5 will
-                    # progress breakout -> retest -> confirmation. It can
-                    # never submit a broker order or replace Gerchik risk.
+                    # Research-only breakout/retest; never submits orders.
                     state["breakout_retest"] = BreakoutRetestObserver(
                         symbol=symbol.value, session=self._session_date,
                         side=decision.side,
@@ -413,13 +400,25 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                         retest_tolerance_atr=self.cfg.breakout_retest_touch_atr,
                         invalidation_atr=self.cfg.breakout_retest_invalid_atr)
                 if decision.accepted and decision.model == "bounce":
-                    # Native symbol properties (never a guessed USD 0.01)
-                    # and actual as-of D1 origin are mandatory. A confirmed
-                    # D1 swing is only a BSU PROXY, not a discretionary BSU.
+                    # The D1 pivot is a BSU research proxy, not canonical.
                     native_tick_size = float(
                         self.securities[symbol].symbol_properties.minimum_price_variation)
                     link, why = create_bsu_research_observer(
                         decision, d1, native_tick_size, self.cfg)
+
+                    # Diagnostic uses genuine RAW D1 on this one session only.
+                    if (symbol.value == "NVDA" and
+                            self._session_date.isoformat() == "2024-01-02"):
+                        try:
+                            raw = [
+                                bar for bars in self.history[TradeBar](
+                                    [symbol], 180, Resolution.DAILY,
+                                    data_normalization_mode=DataNormalizationMode.RAW)
+                                for key, bar in bars.items() if key == symbol]
+                            self.log(audit_bsu_price_basis(
+                                decision, d1, native_tick_size, raw, _time_index))
+                        except Exception as exc:
+                            self.log(f"QWCT BSU BASIS UNVERIFIED: {str(exc)[:190]}")
                     state["bsu_link"] = link
                     if state["setup_trace"] is not None:
                         state["setup_trace"].set_bsu(
@@ -438,9 +437,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     else:
                         self._bsu_block_reasons[why] += 1
                         self._record(symbol, "BSU_PROXY_BLOCKED", reason=why)
-                        # Log the *real* rejection at decision time in case
-                        # the Cloud backtest log quota is later exhausted.
-                        # Never change a gate simply to get extra signals.
+                        # Log the rejection before Cloud log quota is exhausted.
                         if self._bsu_blocks_logged < 6:
                             self._bsu_blocks_logged += 1
                             self.log(

@@ -161,8 +161,9 @@ def test_legitimate_sparse_second_without_trades_is_not_fabricated_or_rejected()
     assert win.count == 269
     assert win.unobserved_seconds == 1
     assert a._tvx_preclose_count == 1
-    assert "269 traded SEC bars" in a.records[-1][2]["reason"]
-    assert "1 seconds without a bar" in a.records[-1][2]["reason"]
+    sec = next(v for v in a.records if v[1] == "TVX_SEC_PRE_CLOSE")
+    assert "269 traded SEC bars" in sec[2]["reason"]
+    assert "1 seconds without a bar" in sec[2]["reason"]
 
 
 def test_excessive_unobserved_sec_gap_fails_closed_before_cutoff():

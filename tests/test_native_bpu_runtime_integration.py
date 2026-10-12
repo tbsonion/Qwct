@@ -94,3 +94,22 @@ def test_zero_volume_native_m5_cannot_create_bpu1_research_evidence():
     assert a._symbols["NVDA"]["touch_audit"].touches == 0
     assert a._bsu_bpu1_count == 0
     assert not a.records
+
+
+def test_missing_traded_intermediate_m5_invalidates_immediate_bpu2():
+    a = AlgorithmHarness()
+    t = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
+
+    def deliver(end, volume):
+        process_m5(a, SimpleNamespace(
+            symbol="NVDA", end_time=end, open=50.0, high=50.27,
+            low=49.9, close=50.08, volume=volume), pd.Timestamp)
+
+    deliver(t, 500)  # True BPU1 native traded candle
+    assert a._bsu_bpu1_count == 1
+    deliver(t + timedelta(minutes=5), 0)  # No evidence of next trade bar
+    assert a._m5_input_rejections["M5_NO_OBSERVED_TRADES"] == 1
+    deliver(t + timedelta(minutes=10), 500)
+    assert a._bsu_proxy_bpu2_count == 0
+    assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "invalidated"
+    assert a._bpu_invalid_reasons["BPU2 not the immediate next completed candle"] == 1

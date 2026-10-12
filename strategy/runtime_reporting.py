@@ -46,6 +46,8 @@ def write_reports(self):
     self.set_runtime_statistic(
         "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
     self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
+    self.set_runtime_statistic(
+        "Qwct M5 feed rejected", sum(self._m5_input_rejections.values()))
     self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
     self.set_runtime_statistic(
         "Qwct M5 two-bar passes", sum(self._m5_true_by_model.values()))
@@ -78,6 +80,7 @@ def write_reports(self):
                         ("SCENARIO", "RESEARCH_CANDIDATE", "INTENT",
                          "REJECT", "ERROR"))
             + f"; M5 bars={self._m5_bars_seen}, "
+              f"M5 feed rejects={dict(self._m5_input_rejections.most_common(3))}, "
               f"M5 bar checks={self._m5_checks}, "
               f"unready={self._intent_missing_atr}"
             + "; D1 models=" + str(dict(self._d1_models))

@@ -35,6 +35,15 @@ def process_second_slice(self, data, time_index):
             continue
         if not (window.bpu1_end < end_at <= window.cutoff):
             continue
+        # A bar with EndTime=-30s that only arrives on a LATER
+        # Slice can never be treated as a tradable -30s decision.
+        # Native OnData callback time must equal the actual bar end.
+        if time_index(self.time) != end_at:
+            window.blocked_reason = "SEC_DELAYED_OR_FUTURE_SLICE"
+            self._tvx_second_reasons[window.blocked_reason] += 1
+            self._record(symbol, "TVX_SEC_BLOCKED", model="bounce",
+                         reason=window.blocked_reason + "; NO ORDERS")
+            continue
         before_block = window.blocked_reason
         sample = window.accept(
             bar, symbol=symbol, end_at=end_at.to_pydatetime())

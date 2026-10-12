@@ -4,6 +4,8 @@ No home-grown ATR or moving-average calculations. The QCAlgorithm feeds
 the 'atr14' and 'sma50' columns from AverageTrueRange and SimpleMovingAverage.
 Missing data is explicit (NaN) and all dependent gates must fail closed.
 """
+from math import isfinite
+
 import pandas as pd
 
 from .config import StrategyConfig
@@ -29,7 +31,7 @@ def trend_direction(df: pd.DataFrame, idx: int, cfg: StrategyConfig,
         close = float(df["close"].iloc[idx])
     except (TypeError, ValueError, IndexError, KeyError):
         return 0
-    if pd.isna(now) or pd.isna(prior) or pd.isna(close):
+    if not all(isfinite(v) for v in (now, prior, close)):
         return 0
     if now > prior and close > now:
         return 1

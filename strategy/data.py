@@ -13,6 +13,7 @@ import pandas as pd
 if TYPE_CHECKING:
     from .levels import Level
     from .breakout_retest import BreakoutRetestEvidence
+    from .bpu_tvx_evidence import BpuTvxEvidence
 
 ET = ZoneInfo("America/New_York")
 
@@ -39,6 +40,7 @@ class MarketData:
     # Per-symbol, per-session, bar-close-stamped breakout/retest evidence.
     # Not a substitute for native portfolio/broker authorization.
     breakout_retest: "BreakoutRetestEvidence | None" = None
+    bpu_tvx: "BpuTvxEvidence | None" = None
 
     def d1_asof(self, ts: datetime) -> pd.DataFrame:
         current_day = _et(ts).normalize()

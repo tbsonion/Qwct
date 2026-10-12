@@ -46,6 +46,7 @@ def test_actual_runtime_reporting_function_emits_empty_research_statistics():
             self._d1_models = Counter()
             self._bsu_block_reasons = Counter()
             self._bpu_invalid_reasons = Counter()
+            self._breakout_retest_counts = Counter()
             self._gate_failures = Counter()
             self._m5_true_by_model = Counter()
             self._m5_true_other_blockers = Counter()
@@ -72,5 +73,6 @@ def test_actual_runtime_reporting_function_emits_empty_research_statistics():
     write_reports(algorithm)
     assert algorithm.stats["Qwct D1 setups"] == 0
     assert algorithm.stats["Qwct M5 checks"] == 0
+    assert algorithm.stats["Qwct breakout retest confirmed"] == 0
     assert algorithm.stats["Qwct traced D1 setups"] == 0
     assert any("ObjectStore DISABLED" in s for s in algorithm.logs)

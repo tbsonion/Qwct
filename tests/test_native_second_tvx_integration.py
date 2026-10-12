@@ -141,18 +141,33 @@ def test_not_enabled_uses_closed_m5_without_invented_preclose():
     assert "NO verified SEC -30s TVX" in a.records[-1][2]["reason"]
 
 
-def test_missing_one_second_fails_closed_and_no_late_preclose():
+def test_legitimate_sparse_second_without_trades_is_not_fabricated_or_rejected():
     a = ResearchHarness()
     arm(a)
     for n in range(1, 271):
         if n != 100:
             on_sec(a, sec_bar(n))
     win = a._symbols["NVDA"]["tvx_sec_window"]
-    assert win.blocked_reason == "SEC_MISSING_DUPLICATE_OR_LATE_SECOND"
+    assert win.blocked_reason == ""
+    assert win.complete is True
+    assert win.count == 269
+    assert win.unobserved_seconds == 1
+    assert a._tvx_preclose_count == 1
+    assert "269 traded SEC bars" in a.records[-1][2]["reason"]
+    assert "1 seconds without a bar" in a.records[-1][2]["reason"]
+
+
+def test_excessive_unobserved_sec_gap_fails_closed_before_cutoff():
+    a = ResearchHarness()
+    arm(a)
+    for n in range(1, 271):
+        if n not in range(100, 112):
+            on_sec(a, sec_bar(n))
+    win = a._symbols["NVDA"]["tvx_sec_window"]
+    assert win.blocked_reason == "SEC_UNOBSERVED_GAP_OVER_10S"
     assert win.complete is False
     assert a._tvx_preclose_count == 0
     assert a._tvx_second_reasons[win.blocked_reason] == 1
-    assert [v[1] for v in a.records].count("TVX_SEC_BLOCKED") == 1
 
 
 def test_zero_volume_and_fill_forward_native_seconds_cannot_confirm():
@@ -217,7 +232,7 @@ def test_early_or_duplicate_second_is_not_a_complete_preclose_sample():
     window = NativeSecondTvxWindow(AT)
     assert window.accept(sec_bar(1)) is None
     assert window.accept(sec_bar(1)) is None
-    assert window.blocked_reason == "SEC_MISSING_DUPLICATE_OR_LATE_SECOND"
+    assert window.blocked_reason == "SEC_DUPLICATE_OR_LATE_SECOND"
     assert not window.complete
 
 

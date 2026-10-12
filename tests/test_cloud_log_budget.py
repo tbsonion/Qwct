@@ -33,6 +33,7 @@ class FakeAlgorithm:
         self._chart_symbol = SimpleNamespace(value="TSLA")
         self._focus_m5_plotted = 100
         self._m5_bars_seen = 200
+        self._m5_input_rejections = Counter()
         self._m5_checks = n * 2
         self._intent_missing_atr = 0
         self._setup_traces = [FakeTrace(i) for i in range(n)]

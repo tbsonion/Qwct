@@ -173,3 +173,38 @@ def test_m5_far_from_d1_level_rejects_no_chase_threshold():
     assert intent is not None
     # 1.9 USD chase / ATR 4 = 0.475 ATR; cfg allows <=0.3 ATR.
     assert intent.gates["m5_confirmed"].passed is False
+
+
+def test_external_permissive_risk_manager_cannot_bypass_native_gate():
+    d = daily()
+    at = (d.index[-1] + pd.Timedelta(days=1)).to_pydatetime()
+    lvl = Level(price=100, kind="support", touches=2, strength=3,
+                valid_from=date(2023, 8, 1))
+    decision = ScenarioDecision("AAPL", at.date(), at, lvl, "bounce", "long")
+
+    class PermissiveLegacyManager:
+        def can_open(self, *_args):
+            return True, "approved"
+        def position_size(self, *_args):
+            return 10, 50
+
+    intent = build_intent(
+        decision, MarketData("AAPL", d), at, StrategyConfig(),
+        risk_mgr=PermissiveLegacyManager())
+    assert intent is not None
+    assert intent.gates["risk_approved"].passed is None
+    assert intent.all_gates_passed is False
+
+
+def test_experimental_countertrend_flag_does_not_bypass_mandatory_trend():
+    from dataclasses import replace
+    d = daily()
+    at = (d.index[-1] + pd.Timedelta(days=1)).to_pydatetime()
+    lvl = Level(price=100, kind="support", touches=2, strength=3,
+                valid_from=date(2023, 8, 1))
+    decision = ScenarioDecision("AAPL", at.date(), at, lvl, "bounce", "long")
+    cfg = replace(StrategyConfig(), allow_countertrend=True)
+    intent = build_intent(decision, MarketData("AAPL", d), at, cfg)
+    assert intent is not None
+    assert intent.gates["trend_aligned"].passed is None
+    assert intent.all_gates_passed is False

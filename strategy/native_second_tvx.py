@@ -3,9 +3,10 @@
 Consumes real, completed one-second TradeBars from an existing LEAN
 subscription. NOT a second-bar generator, feed, 5m consolidator, execution
 model, or fill simulation. A read-only sample requires every one of the
-270 completed second bars in BPU2 BEFORE its -30s cutoff. Missing trade
-seconds (fill_forward=False) intentionally fail closed rather than
-pretend a synthetic uninterrupted source.
+observed traded-second bars in BPU2 BEFORE its -30s cutoff.
+LEAN may omit a one-second bar when no price-setting trade occurred.
+Never fill gaps with synthetic bars; bound unobserved stretches to
+10 seconds and require a real traded bar ending EXACTLY at -30s.
 """
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,7 +17,8 @@ from .native_m5_validation import _duration_seconds
 SECOND = timedelta(seconds=1)
 BPU2_LENGTH = timedelta(minutes=5)
 PRECLOSE_GAP = timedelta(seconds=30)
-OBSERVED_SECONDS = 270
+MAX_SECONDS = 270
+MAX_UNOBSERVED_GAP = timedelta(seconds=10)
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,8 @@ class NativePrecloseSample:
     observed_low: float
     observed_high: float
     last_price: float
+    observed_bars: int = 0
+    unobserved_seconds: int = 0
     source: str = "SEC"
     can_submit: bool = False
 
@@ -45,6 +49,7 @@ class NativeSecondTvxWindow:
         self.cutoff = self.bpu2_end - PRECLOSE_GAP
         self.last_at = bpu1_end
         self.count = 0
+        self.unobserved_seconds = 0
         self.low = None
         self.high = None
         self.last_price = None
@@ -72,8 +77,11 @@ class NativeSecondTvxWindow:
                 raise ValueError("SEC_NATIVE_PERIOD_INVALID")
             if end <= self.bpu1_end or end > self.cutoff:
                 raise ValueError("SEC_OUTSIDE_BPU2_PRECLOSE_WINDOW")
-            if end != self.last_at + SECOND:
-                raise ValueError("SEC_MISSING_DUPLICATE_OR_LATE_SECOND")
+            gap = end - self.last_at
+            if gap <= timedelta(0):
+                raise ValueError("SEC_DUPLICATE_OR_LATE_SECOND")
+            if gap > MAX_UNOBSERVED_GAP:
+                raise ValueError("SEC_UNOBSERVED_GAP_OVER_10S")
             if getattr(bar, "is_fill_forward", False):
                 raise ValueError("SEC_FILL_FORWARD")
             o, hi, lo, close, vol = (
@@ -89,17 +97,20 @@ class NativeSecondTvxWindow:
             return None
 
         self.last_at = end
+        self.unobserved_seconds += int(gap.total_seconds()) - 1
         self.count += 1
         self.low = lo if self.low is None else min(self.low, lo)
         self.high = hi if self.high is None else max(self.high, hi)
         self.last_price = close
         if end != self.cutoff:
             return None
-        if self.count != OBSERVED_SECONDS:
-            self.blocked_reason = "SEC_PRECLOSE_INCOMPLETE"
+        if self.count + self.unobserved_seconds != MAX_SECONDS:
+            self.blocked_reason = "SEC_PRECLOSE_CHRONOLOGY_MISMATCH"
             return None
         self.complete = True
         return NativePrecloseSample(
             observed_at=end, observed_since=self.bpu1_end,
             bpu2_end=self.bpu2_end, observed_low=self.low,
-            observed_high=self.high, last_price=self.last_price)
+            observed_high=self.high, last_price=self.last_price,
+            observed_bars=self.count,
+            unobserved_seconds=self.unobserved_seconds)

@@ -77,6 +77,7 @@ def test_cloud_free_extracted_package_imports_real_rule_helpers(tmp_path):
     smoke = """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from collections import namedtuple
 from zoneinfo import ZoneInfo
 from strategy import choose_focus, select_liquid_fundamentals, passes_gerchik_screener
 from strategy.config import StrategyConfig
@@ -84,7 +85,8 @@ from strategy.native_second_tvx import _duration_seconds, validate_m5_tradebar
 from strategy.second_runtime import process_second_slice
 from strategy.m5_runtime import process_m5
 cfg = StrategyConfig()
-a = SimpleNamespace(symbol=SimpleNamespace(value="AAA"),
+Symbol = namedtuple("Symbol", "value")
+a = SimpleNamespace(symbol=Symbol("AAA"),
                     price=50., volume=10., dollar_volume=500.,
                     has_fundamental_data=True)
 assert select_liquid_fundamentals([a], cfg) == [a.symbol]

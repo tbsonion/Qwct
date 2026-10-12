@@ -215,3 +215,29 @@ def test_valid_bpu2_with_precise_preclose_observation_is_research_only():
     assert st.phase == "bpu2_confirmed"
     assert st.preclose_seen
     assert not st.can_submit
+
+
+@pytest.mark.parametrize("side,expected_stop,expected_limit", [
+    ("long", 99.69, 100.06),
+    ("short", 100.31, 99.94),
+])
+def test_real_native_tick_grid_quantizes_stop_and_tvx_limit(
+        side, expected_stop, expected_limit):
+    # $1.234 D1 ATR creates a raw $0.3085 stop offset and a
+    # $0.0617 luft, both fractional cents. A US 1-cent tick
+    # is mandatory for a hypothetical executable limit/stop.
+    d = detector(side, atr=1.234)
+    bpu1 = (m5(BPU1_END, 100., 100.2)
+            if side == "long" else m5(BPU1_END, 99.8, 100.))
+    assert d.on_bar(bpu1).phase == "bpu1"
+    sample = d.observe_preclose(
+        observed_at=BPU2_END-timedelta(seconds=30),
+        bpu2_end=BPU2_END,
+        observed_low=100.0 if side == "long" else 99.8,
+        observed_high=100.2 if side == "long" else 100.0,
+        last_price=100.1 if side == "long" else 99.9,
+        source="SEC", observed_since=BPU1_END)
+    assert sample.phase == "preclose_candidate"
+    assert sample.stop_price == pytest.approx(expected_stop)
+    assert sample.entry_price == pytest.approx(expected_limit)
+    assert sample.can_submit is False

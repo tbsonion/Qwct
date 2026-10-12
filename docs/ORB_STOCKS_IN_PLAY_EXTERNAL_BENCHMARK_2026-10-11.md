@@ -34,11 +34,15 @@ https://www.quantconnect.com/research/18444/opening-range-breakout-for-stocks-in
 - **CRITICAL CONTRARY EVIDENCE**: the discussion's Python port
   returned ~-0.148 Sharpe rather than C# 2.396, and -0.189
   when the commentator constrained the period to 2016.
-  Staff acknowledged the Python implementation was NOT functionally
-  equivalent (different ATR filter / daily+minute data and indicator
-  concerns). The code *name* or paper *name* is insufficient proof.
-  The discussion also questions backtests on other years, slippage
-  and actual fees.
+  Staff acknowledged the initial Python implementation was NOT
+  functionally equivalent (different ATR filter / daily+minute data
+  and indicator concerns). One community member later corrected
+  ANOTHER Python port and reported results close to the C# version;
+  this changes the interpretation from "Python cannot work" to
+  "implementation details, D1 indicator warmup and data granularity
+  can reverse apparent profitability." The paper *name* or method
+  alone is insufficient proof. Other-year, fee and slippage
+  sensitivity remained under discussion.
 
 QuantConnect publication is C# code and published analysis;
 **not** an audited live brokerage execution track record.
@@ -80,7 +84,9 @@ LEAN's native exchange calendar, **not** reconstructed here.
 | A6: Realistic friction | QC discussion highlights trading costs / slippage differences; LEAN fee/slippage/fill models exist | No broker fill / fee / slippage measured; pure signal checks only | **P0 for performance claims**, make explicit cost/stress matrix |
 | A7: Short borrow reality | Native LEAN has ShortableProvider and borrow rate modeling | Research accepts short models without verified borrow availability/rates | **P0 for executing short signals**, license / broker data dependent |
 | A8: Robust out-of-sample | QC presents 2016 plus parameter grid; commenter questions 2016–2024 returns | Qwct historical Jan–Feb 2024 was only a *signal-only smoke*; no trade P&L | **P0 before claiming profits**: walk-forward splits, unchanged parameters, 2016–2026 if feed supports, adjust splits/fees |
-| A9: Component equivalence | C# and Python reports diverged dramatically | LEAN native Python test still pending; unit tests test pure code & mock-shaped adapters | **P0**: native engine time/data parity, as-of evidence and actual logs before claims |
+| A9: Component equivalence | Initial C# and Python results diverged; a later corrected Python community port reportedly approached C# results | LEAN native Python test still pending; unit tests test pure code & mock-shaped adapters | **P0**: verify native daily ATR updates vs minute streams, open-bar timing, as-of evidence and actual logs before claims |
+| A11: Fill timing divergence | Community reported stop order attached next minute in minute-backtest vs sooner on live ticks/seconds | No protected broker orders; TVX needs actual 30s preclose data | **P0**: cannot certify fill/stop behavior from M5-only tests; need explicitly approved LEAN scenario tests at native execution resolution |
+| A12: One-time daily admission | Community observed exact 09:35 clock condition could repeat on every data event at higher resolution | Qwct has one D1 scenario per day and preliminary candidate flag, not full order lifecycle | **P0**: event handler must be idempotent, real open-order state native; no order path before safety proof |
 | A10: Market context | ORB implicitly captures event-driven relative activity | 14 D1 heuristic features but no true earnings/catalyst, index/sector relative strength | **Optional research only**; event/market signal is NOT a user-approved Gerchik mandatory rule |
 
 ## 4. Confirmed false claims to avoid
@@ -101,8 +107,13 @@ LEAN's native exchange calendar, **not** reconstructed here.
 - The 5-minute ORB opening range is **not** Gerchik's D1 level,
   BSU/BPU1/BPU2 30-second TVX entry; do not substitute one for the other.
 - Even two backtests on the 'same' ORB paper can differ by
-  Python vs C# implementation, data normalization, warm-up,
-  risk caps, fill handling and transaction cost assumptions.
+  Python vs C# implementation, data normalization, daily ATR accidentally
+  updated from intraday bars, warm-up, risk caps, fill handling, protective
+  stop submission timing and transaction cost assumptions.
+- QuantConnect ORB discussion includes detailed feedback on historical
+  minute-backtest vs live second/tick stop-order timing and exact
+  clock comparisons that can place duplicated orders. Those are
+  **community-reported cases**, not independently replicated Qwct facts.
 
 ## 5. Checklist for future separate experimental comparison
 

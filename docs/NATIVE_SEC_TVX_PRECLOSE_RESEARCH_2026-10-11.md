@@ -72,16 +72,22 @@ intrabar price signal is fabricated.
 `strategy/m5_runtime.py::process_m5` after a native-validated M5 BPU1
 arms one `NativeSecondTvxWindow`, ending at `BPU1_end + 5min - 30s`.
 `strategy/native_second_tvx.py` is a **strict observation window**,
-not a feed or consolidator. It accepts exactly consecutive completed
-native 1-second bars with `Time`, `EndTime`, `Period=1s`, positive
-traded volume and sound OHLC. It aggregates only the real observed
-high/low/last price; never interpolates missing ticks, never uses
-end-of-M5 high/low in the preclose check and never guesses a future
-close. **If even one of 270 seconds is missing or invalid, the TVX
-candidate remains blocked** (more conservative than a human who
-watches sparse trading). Duplicate/late, fill-forward, wrong-symbol,
-minute bars all fail closed. Current implementation requires a
-continuous traded-second sequence; it may reject many illiquid stocks.
+not a feed or consolidator. Native SECOND data are **sparse**:
+QuantConnect may not publish a TradeBar for a one-second interval
+without any qualifying price-setting trades. The revised window
+accepts genuinely observed completed `Time`, `EndTime`, `Period=1s`
+bars and sums *actual* traded highs, lows and latest prices. It
+permits at most a **10-second unobserved interval** between received
+bars (conservative research default, not an original Gerchik number).
+It counts missing seconds and never creates fake prices for them.
+A genuine traded one-second bar ending **exactly 30s before close**
+is still mandatory; without that precise observation, no preclose
+signal is authorized. Gaps over 10s, duplicates, delayed bars,
+fill-forward, wrong symbols, zero-volume, bad OHLC, or a minute
+subscription fail closed. The 10s tolerance balances false negatives
+from legitimate sparse prices with the risk of undetected feed stalls,
+which must be tested on real Cloud SEC data. It is NOT an assurance
+that an omitted bar could not represent a provider outage.
 
 At the completed SECOND bar ending exactly at `HH:MM:30`,
 `BsuDetector.observe_preclose(...source="SEC", observed_since=BPU1_end)`
@@ -111,9 +117,10 @@ native EOD cancellation, liquidation or ticket state management.
 
 `tests/test_native_second_tvx_integration.py` drives **the same
 extracted M5 and SECOND Slice handlers used by main.py**, with
-deterministic native-shaped 270 SEC observations. It checks exact
-preclose timestamp (only on the 270th traded second), no future
-M5 data, later M5 consistency, disabled mode, one missing second,
+deterministic native-shaped SEC observations. It checks exact
+preclose timestamp, allowing missing trade-free seconds with bounded
+gaps but never fabricating data, no future M5, final M5 consistency,
+disabled mode, excessive 10s gaps, and absent cutoff bar,
 zero-volume/fill-forward/wrong-period, other-symbol contamination,
 duplicate and early input, mid-BPU2 price penetration and invalidation
 surviving the next completed M5. Reports count provisional and
@@ -176,3 +183,36 @@ the source BSU price reliable. The protective Schwab stop / actual fill
 availability is UNKNOWN, never approved. Research gate success is not
 proof of live entry, realized P&L or adherence to all discretionary
 Gerchik rules.
+
+
+## Critical second review: level identity and sparse feeds
+
+A day-scoped D1 `swing_cluster` median is NOT necessarily the
+same price as the originating native D1 swing extreme used to
+recognize a Gerchik BPU1. The detector can still report exploratory
+swing candidates at nearby clustered prices. But
+`BpuTvxEvidence.matches` now **fails closed** if the cluster median
+differs from the actual originating pivot by more than half of the
+native minimum price variation. A backtest must never call these
+different prices one valid BSU/BPU level merely because the D1
+clustering tolerance is 0.25 ATR.
+
+A historical D1 source extreme that does not fall on the current
+native tick grid also fails closed in the BSU bridge, to reduce false
+exact-touch claims in `SPLIT_ADJUSTED` history. This is a conservative
+partial safeguard only: a split-adjusted historical value can
+coincidentally land on the grid and STILL not represent an actual
+price that traded at the historical date. Full correct normalization
+requires a single as-of price basis through D1 history, streaming
+M5/SEC, and corporate-action changes, and a native Cloud trial.
+We have NOT quietly switched to `RAW`, which can make rolling D1
+ATR/trend history discontinuous across actual splits unless
+split handling/warmup resets are also implemented and validated.
+
+The observed preclose candidate is available **before** BPU2 close,
+but the complete eight-gate `m5_confirmed` evidence is produced
+only at the subsequent BPU2 M5 close, **30 seconds later**. This is a
+post-event reconciliation and CANNOT be used as the original
+executable Gerchik limit-entry authorization without a separate
+as-of-preclose (risk, level, broker protection) approval stage.
+All Qwct order submission remains hard-disabled.

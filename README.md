@@ -1,134 +1,64 @@
-# Qwct — Gerchik Levels on QuantConnect LEAN
+# Qwct — Gerchik D1/M5 research on QuantConnect LEAN
 
-**Current stage: research code, signal-only.** This code does **not** place
-orders, connect Schwab, simulate fills, claim profitability, or maintain a
-second broker ledger. The 2024–2025 dates in `main.py` are placeholder
-algorithm initialization dates, not a completed backtest.
+**Current status (2026-10-12): RESEARCH ONLY. ALL ORDERS DISABLED.**
 
-## Full strategy status (October 9, 2026)
+**Canonical current backlog:** [TODO.md](TODO.md) — status of every subsystem, verification criteria, outstanding deep research, and release gates. The dated reports under `docs/` are **historical snapshots**; some say no LEAN run was performed or refer to old draft PRs. Do not treat them as current status.
 
-The feature-by-feature completion matrix and unanswered trading-strategy
-questions are in **[docs/STRATEGY_STATUS_2026-10-09.md](docs/STRATEGY_STATUS_2026-10-09.md)**.
-The eight standalone tests are not LEAN/runtime/broker validation. Risk policy,
-partial entry protection and broker compatibility must be investigated
-alongside the strategy logic, not deferred behind new homemade wrappers.
+## What was actually verified in Cloud
 
-## Automatic US-stock screener (feature branch)
+User-supplied QuantConnect Cloud signal-only backtest, LEAN 2.5.0.0.18178, 2024-01-01 to 2024-02-05:
 
-The native Fundamental Universe filters price above $5 and prior-session
-share volume >= 500k, ranks by dollar liquidity and subscribes to up to
-50 stocks at minute resolution (required for per-symbol M5 candles). Native LEAN ATR(14) and SMA(20) of completed
-D1 share volume then produce a top-10 eligible **watchlist**, printed
-before market open. The list is **not** an automatic list of trades: the selected watchlist
-stocks are now analyzed independently through D1 + closed M5 conditions,
-but there are still NO broker order submissions.
+| Measure | Observed |
+| --- | ---: |
+| Processed data points | 1,233,385 |
+| Native M5 bars processed | 18,240 |
+| Accepted D1 scenarios | 6 |
+| M5 evaluations | 456 |
+| Two-bar M5 proxy passes | 6 |
+| Native BPU1 | **0** |
+| Confirmed SEC TVX -30s | **0** (disabled) |
+| Research candidates / trade intents | **0 / 0** |
+| Runtime errors | **0** |
 
-**Read [docs/EQUITY_SCREENER_2026-10-09.md](docs/EQUITY_SCREENER_2026-10-09.md)**
-for the official API references, a deliberate conservative one-day
-volume prefilter, and all runtime verification gaps. No custom data feed,
-new ATR calculator, brokerage access or execution is introduced.
+The standard LEAN equity curve remains flat **because orders are intentionally disabled**. No win rate, Sharpe, expected monthly returns, or executable trade P&L has been established.
 
-## Multi-stock Gerchik signals, EOD preparation and native reports (PR #3)
+**Known P0 blocker:** historical D1 BSU original pivot is rejected as off the native tick grid. RAW minute subscriptions plus as-of SCALED_RAW daily warmup produced a 2024-01-02 NVDA D1 **cluster median** of ~502.5744 versus ~50.2660 under SPLIT_ADJUSTED, but the bridge still rejects the **original pivot**. Those prices must not be conflated. Exact pivot, split factor, tick grid and M5 basis require a native audit before changing the detector.
 
-The branch based on the unfinished [PR #2 screener] contains D1/M5
-consolidators, native ATR/SMA and **independent Gerchik decisions for up to
-10 shortlisted stocks**. Universe candidate subscriptions are at minute
-resolution (capped at 50) and managed by LEAN, including native removal
-of old consolidators.
+## Design constraints
 
-LEAN's native, Schwab-documented **cancel first → wait for confirmation →
-liquidate all holdings → verify flat** sequence has been coded behind the
-permanently disabled `_native_exit_enabled = False` safety flag.
-**EOD flattening is NOT active and not broker-verified.**
+- **Use official LEAN** for subscriptions, fundamental universes, native ATR/SMA, consolidators, History, Exchange.Hours, Portfolio, scheduled events and (later) broker executions. No synthetic fills, homemade OrderManager/OMS, shadow portfolio, software OCO, or parallel brokerage connector.
+- `main.py`: dynamic US stock universe → D1 premarket frozen levels and scenarios → completed M5 research → optionally native SEC/-30s research. Strict `risk_approved` UNKNOWN prevents trade intents; no actual orders are placed.
+- `strategy/`: original Gerchik-specific levels/features/scenarios/signals, BSU/BPU1/BPU2 proxy, native SEC research, read-only risk checks, diagnostics.
+- Maximum 50 fundamental candidates / 10 D1-qualified research watchlist (not a guaranteed all-market scanner); RVOL comparator exists **but is not connected** to screening.
+- Existing native EOD cancel/flat verification code is **disabled** and **not broker verified**. The first contemplated trading target is single **3R**, not 70/20/10; partial-fill protective-stop compatibility must be proven before execution.
+- The Gerchik course reference is [docs/strategy_spec.md](docs/strategy_spec.md). Algorithmic swing levels and two-bar M5 tests are **research proxies**, not proof of equivalence to annotated course examples.
 
-Reports use genuine `OnOrderEvent` events and
-`TradeBuilder.closed_trades` only, saved through native LEAN Object Store
-at algorithm end and checkpointed once daily during live operation.
-Signal-only mode produces decision logs and **zero trades**, as expected.
-
-Review [docs/MULTISYMBOL_EOD_REPORTING_2026-10-09.md](docs/MULTISYMBOL_EOD_REPORTING_2026-10-09.md)
-before any claim of execution readiness. Python-only tests do not prove
-LEAN/Schwab behavior. No order-entry code has been added.
-
-## Architecture: use LEAN instead of writing a second LEAN
-
-| Concern | Owner |
-| --- | --- |
-| Market data and US exchange trading sessions | LEAN `add_equity`, `History`, consolidators, scheduled events |
-| Daily ATR and SMA | LEAN `AverageTrueRange`, `SimpleMovingAverage` |
-| Holdings, available buying power and eventual fills | LEAN `Portfolio`, buying-power model, `OrderTicket`, `OnOrderEvent` |
-| Eventual bracket / OCO orders and EOD liquidation | **Native LEAN APIs only**, subject to brokerage capabilities |
-| D1 Gerchik levels / 14 feature groups / three models | `strategy/levels.py`, `features.py`, `scenarios.py` |
-| Eight mandatory M5 gates + Gerchik entry windows | `strategy/signals.py`, `sessions.py` |
-| BSU/BPU1/BPU2/TVX research logic | `strategy/patterns_bsu.py` (preserved; not wired into live signals yet) |
-| Configuration | `strategy/config.py` — $25,000 baseline, 0.2%/$50 risk |
-
-The `strategy/indicators.py` module **does not calculate** ATR or SMA:
-it reads daily snapshot columns populated by the native LEAN indicators.
-The small `strategy/data.py` is just an *as-of view* of completed candles,
-not a market feed, calendar, or custom execution system.
-
-## What's working in code
-
-`main.py` subscribes to US stock minute bars, seeds D1 history,
-updates native D1 ATR/SMA, receives M5 and D1 consolidations,
-prepares a pre-open scenario from closed D1 bars, evaluates the 14 groups
-and 8 mandatory gates, filters by Gerchik time windows, and logs
-qualified intents. **No order submission is implemented.**
-
-These rules were **ported** from `tbsonion/QuantConnectTest` rather than
-invented anew. The original strategy specification is preserved at
-`docs/strategy_spec.md`. Review the proxy assumptions in that source;
-it is not proof of strategy accuracy or expected returns.
-
-### Run the pure tests
+## Run pure source tests
 
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m pytest -q tests
 ```
 
-Those checks run without `AlgorithmImports`, brokerage credentials, or
-market data. GitHub Actions runs the same checks and Python syntax compilation.
-They **cannot validate** a QuantConnect LEAN runtime or Charles Schwab.
+GitHub CI is not a LEAN/Schwab runtime test. Pure tests cannot prove native market data precision, broker support, actual execution, or profitability.
 
-### Use inside the official LEAN environment
+## QuantConnect Cloud Free package
 
-Use an existing QuantConnect **Python** algorithm project or create one
-with the official [LEAN CLI](https://www.quantconnect.com/docs/v2/lean-cli).
-Copy `main.py` and the `strategy/` package into the LEAN Python algorithm
-project, and install/enable the project's Python dependencies in that environment.
-Do not assume ordinary `python main.py` works outside LEAN: the
-`AlgorithmImports` module comes from LEAN.
+Do not hand-edit or delete canonical `strategy/*.py` to fit the editor quota. Generate the deployable **24-Python-file** Cloud package; keep the existing `research.ipynb` as the 25th project file:
 
-Do not enable live or paper trading. The first approved trading milestone is a
-**single 3R target**, not three scaled targets. LEAN's native Bracket API
-activates child exits only when the **entry completely fills**, so a partially
-filled limit entry can have no active stop. Schwab does not support OUO and
-restricts updating contingent orders. These require genuine LEAN/broker
-compatibility tests before enabling any execution; never implement a homemade
-OMS or a software OCO to hide the gap.
+```bash
+python tools/package_quantconnect_free.py --output dist/Qwct-QuantConnect-Free-24py.zip
+```
 
-## Explicitly not migrated
+Deploy the *entire generated bundle* together when syncing a new Cloud project, not a mixture of old/new import layouts. Live and paper brokerage orders must remain disabled.
 
-- `orders.py` (~1,900 lines), `LeanBrokerAdapter`,
-  `NativeBracketGateway`, `MockBroker`, broker simulations
-- Custom NYSE holiday calculator, fake session lifecycle, simulated fills
-- Shadow cash/portfolio/position balances and independent order reconciliation
-- D1 synthetic market data generator, extra CSV feed, backtest/profit dashboards
-- ORB/hybrid wiring from an unmerged research branch (not falsely marked ready)
+## Documentation / next work
 
-## Status / remaining work
+- **[TODO.md](TODO.md)** — single current project plan and research questions.
+- [strategy specification](docs/strategy_spec.md)
+- [historical corporate-action/tick-grid investigation](docs/NVDA_BSU_RAW_ASOF_2026-10-12.md)
+- [native SEC -30s Cloud smoke protocol](docs/LEAN_CLOUD_TVX_30S_SMOKE_2026-10-11.md)
+- [deep source-vs-LEAN-vs-Gerchik audit](docs/QWCT_DEEP_IMPLEMENTATION_AUDIT_2026-10-11.md)
+- [native Schwab compatibility notes](docs/SCHWAB_LEAN_COMPATIBILITY_2026-10-09.md)
 
-Pure Python unit tests have passed in GitHub CI. **No actual LEAN integration
-run, historical trading backtest, Schwab verification or broker order tests
-have been performed.** The original BSU signal activation, complete ORB/hybrid
-integration, broker-native 3R exit safety, and final buying-power/portfolio
-checks before entry remain open.
-
-Native references:
-- [LEAN Bracket Orders](https://www.quantconnect.com/docs/v2/writing-algorithms/trading-and-orders/order-types/contingent-orders/bracket-orders)
-- [LEAN History](https://www.quantconnect.com/docs/v2/writing-algorithms/historical-data/history-requests)
-- [LEAN consolidators](https://www.quantconnect.com/docs/v2/writing-algorithms/consolidating-data/consolidator-types/time-period-consolidators)
-- [LEAN scheduled events](https://www.quantconnect.com/docs/v2/writing-algorithms/scheduled-events)
-- [Charles Schwab brokerage limitations](https://www.quantconnect.com/docs/v2/cloud-platform/live-trading/brokerages/charles-schwab)
+**Immediate next deep research:** identify exact historical NVDA D1 **pivot** on the 2024-01-02 setup (not merely D1 cluster median), its contemporary tick lattice and split adjustment factors, and reconcile with native RAW M5 bars; preserve the strict exact-touch rule until the discrepancy is proved and fixed.

@@ -114,10 +114,6 @@ def process_m5(self, bar, time_index):
                     preview = review_native_lean_risk(
                         self, symbol, intent,
                         time_index(bar.end_time).to_pydatetime(), time_index)
-                    # A failed native API read must NOT become a
-                    # research candidate merely because the mandatory
-                    # risk_approved gate is currently UNKNOWN.
-                    native_risk_read_ok = True
                     failed = preview.mechanical_pass is False
                     blocked = next(
                         (r for r in preview.blockers
@@ -126,6 +122,9 @@ def process_m5(self, bar, time_index):
                     intent.gates["risk_approved"] = GateResult(
                         "risk_approved", False if failed else None,
                         "NATIVE PARTIAL RESEARCH; " + blocked[:150])
+                    # Promote only AFTER the full native preview is read
+                    # and interpreted without error.
+                    native_risk_read_ok = True
                 except Exception as exc:
                     intent.gates["risk_approved"] = GateResult(
                         "risk_approved", None,

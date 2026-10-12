@@ -85,6 +85,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # Research-only diagnostics: count actual M5 evaluations and failed
         # gates; no virtual orders, fills or portfolio are inferred.
         self._m5_bars_seen = 0
+        self._m5_input_rejections = Counter()
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()

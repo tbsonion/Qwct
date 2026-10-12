@@ -221,6 +221,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "session_levels": None,
             "bsu_link": None,
             "tvx_sec_window": None,
+            "bsu_tvx_evidence": None,
             "breakout_retest": None,
             "focus_level": None,
             "setup_trace": None,
@@ -340,6 +341,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             state["session_levels"] = None
             state["bsu_link"] = None
             state["tvx_sec_window"] = None
+            state["bsu_tvx_evidence"] = None
             state["breakout_retest"] = None
             state["focus_level"] = None
             state["setup_trace"] = None

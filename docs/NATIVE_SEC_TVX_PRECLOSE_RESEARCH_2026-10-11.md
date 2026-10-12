@@ -216,3 +216,26 @@ post-event reconciliation and CANNOT be used as the original
 executable Gerchik limit-entry authorization without a separate
 as-of-preclose (risk, level, broker protection) approval stage.
 All Qwct order submission remains hard-disabled.
+
+
+## Native tick rounding audit
+
+A direct `0.2 * stop_distance` entry and `ATR * stop_buffer`
+stop need not land on any exchange price increment, even if the
+origin BSU is on the official native tick grid. Research-only
+`BsuDetector` now rounds the stop **outward** from the BSU origin
+(floor long, ceil short), recomputes the allowable 20% luft from
+that conservative actual stop distance, and rounds the theoretical
+limit to the nearest native tick. Both hypothetical limit and stop
+must lie on this grid for `BpuTvxEvidence.matches` to pass;
+the 20% equality is checked within half a native tick to allow
+unavoidable rounding error, not exactly one floating-point cent.
+Deterministic long/short tests include ATR=1.234, which previously
+produced a non-tradable fractional-cent stop/limit.
+
+**No price is represented as an actual executable broker quote**:
+native tick rounding is necessary but not sufficient; spread, bid/ask,
+venue tick rules, gaps, fills and Schwab stop protection remain
+unverified. As of this review, there is no standalone preclose
+eight-gate risk authorization at the original Gerchik TVX moment;
+the final bounce gate is only an M5 retrospective reconciliation.

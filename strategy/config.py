@@ -132,6 +132,12 @@ class StrategyConfig:
     # ---- Качество исполнения (исследование PR #3) ----
     max_spread_bps: float = 10.0        # макс. спред, б.п.
     max_entry_distance_atr: float = 0.3  # не гнаться: вход не дальше X ATR от уровня
+    # Breakout -> retest -> confirmation: adapted read-only phase study.
+    # Numeric thresholds are RESEARCH settings inspired by external
+    # setup state machines, not verified Gerchik course constants.
+    breakout_retest_max_bars: int = 8
+    breakout_retest_touch_atr: float = 0.2
+    breakout_retest_invalid_atr: float = 0.5
     limit_order_timeout_min: int = 30    # отмена устаревшего лимита
     max_attempts_per_level: int = 2      # макс. попыток входа на уровень в день
     reentry_cooldown_min: int = 30       # пауза перед повторным входом

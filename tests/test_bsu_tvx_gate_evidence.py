@@ -41,6 +41,8 @@ def good_evidence():
     return BpuTvxEvidence(
         symbol="NVDA", session=FINISH.date(), side="long",
         d1_level_price=100., native_origin_price=100.,
+        entry_price=100.10, stop_price=99.50,
+        preclose_last_price=100.06,
         bpu1_end=BPU1,
         preclose_at=FINISH-timedelta(seconds=30),
         bpu2_end=FINISH,
@@ -61,6 +63,9 @@ def test_verified_native_preclose_plus_later_m5_allows_only_readonly_bounce_gate
     decision, market = context(good_evidence())
     intent = build_intent(decision, market, FINISH, StrategyConfig())
     assert intent.gates["m5_confirmed"].passed is True
+    assert intent.limit_price == 100.10
+    assert intent.stop_price == 99.50
+    assert round(intent.risk_per_share, 3) == 0.6
     assert intent.gates["risk_approved"].passed is None
     assert intent.all_gates_passed is False
     assert market.bpu_tvx.can_submit is False
@@ -78,6 +83,9 @@ def test_mismatching_evidence_never_approves_wrong_symbol_session_side_or_level(
         replace(good, bpu2_end=FINISH+timedelta(minutes=5)),
         replace(good, origin_provenance="unknown"),
         replace(good, native_origin_price=float("nan")),
+        replace(good, entry_price=100.),
+        replace(good, stop_price=100.),
+        replace(good, preclose_last_price=float("nan")),
     ):
         decision, market = context(altered)
         assert build_intent(
@@ -90,3 +98,17 @@ def test_stale_reconciled_bpu2_is_not_replayable_in_later_m5():
     assert not good.matches(
         symbol="NVDA", session=FINISH.date(), side="long",
         level_price=100., observed_at=FINISH+timedelta(minutes=5))
+
+
+def test_post_bpu2_close_cannot_retroactively_replace_price_at_minus30s():
+    decision, market = context(good_evidence())
+    # A price surge in final 30s was not known when the TVX
+    # provisional signal was observed. No-chase uses the REAL
+    # SEC last trade price at -30s, not the later M5 close.
+    market.m5.loc[FINISH, ["open", "high", "low", "close"]] = [
+        100.10, 102.3, 100.0, 101.8]
+    intent = build_intent(decision, market, FINISH, StrategyConfig())
+    assert intent.gates["m5_confirmed"].passed is True
+    assert intent.limit_price == 100.10
+    assert intent.gates["risk_approved"].passed is None
+    assert intent.all_gates_passed is False

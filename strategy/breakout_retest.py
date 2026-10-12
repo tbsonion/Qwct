@@ -54,13 +54,11 @@ class BreakoutRetestObserver:
     candidate optimizer; a failed candidate is terminal for this session.
     """
 
-    RETEST_BARS = 8
-    RETEST_TOL_ATR = 0.20
-    INVALIDATION_ATR = 0.50
-
     def __init__(self, *, symbol: str, session: date, side: str,
                  level_price: float, atr_value: float,
-                 max_confirm_chase_atr: float):
+                 max_confirm_chase_atr: float, max_retest_bars: int = 8,
+                 retest_tolerance_atr: float = 0.20,
+                 invalidation_atr: float = 0.50):
         if not symbol or not isinstance(session, date) or side not in ("long", "short"):
             raise ValueError("confirmed symbol/session/side required")
         for name, value in (
@@ -70,6 +68,15 @@ class BreakoutRetestObserver:
             if (isinstance(value, bool) or
                     not isfinite(float(value)) or float(value) <= 0):
                 raise ValueError(f"{name} must be positive and finite")
+        if type(max_retest_bars) is not int or not (1 <= max_retest_bars <= 80):
+            raise ValueError("native M5 retest limit must be 1..80 bars")
+        for name, value in (("retest tolerance", retest_tolerance_atr),
+                            ("invalidation buffer", invalidation_atr)):
+            if isinstance(value, bool) or not isfinite(float(value)) or float(value) <= 0:
+                raise ValueError(f"{name} must be positive and finite")
+        self.retest_bars = max_retest_bars
+        self.retest_tolerance = float(retest_tolerance_atr)
+        self.invalidation = float(invalidation_atr)
         self.symbol = symbol
         self.session = session
         self.side = side
@@ -140,13 +147,13 @@ class BreakoutRetestObserver:
         if self.phase == "WAIT_RETEST":
             self._after_breakout += 1
             # Expiry is strictly time-bounded; no hidden infinite wait.
-            if self._after_breakout > self.RETEST_BARS:
-                return self._stop("EXPIRED", "RETEST_NOT_SEEN_WITHIN_EIGHT_M5")
-            if (bullish and c < level - self.INVALIDATION_ATR * self.atr
+            if self._after_breakout > self.retest_bars:
+                return self._stop("EXPIRED", "RETEST_NOT_SEEN_WITHIN_M5_WINDOW")
+            if (bullish and c < level - self.invalidation * self.atr
                     or not bullish and c > level + self.INVALIDATION_ATR * self.atr):
                 return self._stop("INVALIDATED", "CLOSED_BEYOND_LOSS_SIDE")
             close_holds = c >= level if bullish else c <= level
-            near = (l <= level + self.RETEST_TOL_ATR * self.atr if bullish
+            near = (l <= level + self.retest_tolerance * self.atr if bullish
                     else h >= level - self.RETEST_TOL_ATR * self.atr)
             if near and close_holds:
                 self.retest_at = at

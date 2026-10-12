@@ -48,15 +48,20 @@ members; **existing native** `self.consolidate(symbol, timedelta(minutes=5), ...
 produces completed M5 bars and `self.consolidate(symbol, Resolution.DAILY, ...)`
 produces D1. No second subscription for an already-subscribed symbol.
 
-**Cost warning:** this changes up to 50 universe equities to *second*
-resolution, not just the 10 selected after the 09:29 screening. That may
-be too many subscriptions/data points for a free Cloud backtest;
-reduce scope *explicitly* for research before increasing dates or
-running a full month. This is not yet measured. Never claim opt-in
-sec mode worked in Cloud without actual LEAN runtime validation.
-The manually subscribed clock ticker may retain its minute
-resolution even if separately selected by the universe; treat missing
-second provenance as UNKNOWN, not a passed TVX.
+**2026-10-11 documentation audit correction:** SEC mode now
+explicitly limits the native universe to the top
+`StrategyConfig.screener_watchlist_limit` (10) liquidity candidates
+rather than the usual 50-minute universe members, to bound Cloud load.
+**Trade-off:** narrowing from 50 to 10 BEFORE stage-2 D1 screening
+can miss valid setups further down the original candidate list. This is
+an opt-in research subset, not a like-for-like universe backtest.
+The manually subscribed clock symbol now ALSO requests
+`Resolution.SECOND` when SEC mode is enabled, avoiding an overlapping
+minute-only clock feed if the anchor belongs to the universe.
+Even ten symbols of SEC data may overwhelm Cloud Free, and historical
+SEC dataset subscription access/latency have not been validated in a
+native LEAN Cloud run. Do not claim 30-second signal detection is
+operational on actual market data until such a run passes.
 
 The `main.py::on_data(Slice)` handler calls
 `strategy/second_runtime.py::process_second_slice`. Only symbols
@@ -118,3 +123,56 @@ GitHub Python tests are deterministic fixtures, NOT a native LEAN
 Cloud run; a real SEC historical backtest on an explicitly limited
 universe/period is still required to validate data availability,
 timestamp conversions, BPU2 time, calendar and normalization.
+
+
+## Documentation-based audit corrections (2026-10-11)
+
+Official `get_parameter("tvx_seconds")` returns a string by default
+(https://www.quantconnect.com/docs/v2/writing-algorithms/optimization/parameters);
+`Slice.bars.items()` is the supported LEAN Python API
+(https://www.quantconnect.com/docs/v2/writing-algorithms/key-concepts/python-and-lean).
+The event ordering remains Schedule -> Consolidators -> OnData.
+A scheduled callback at `10:39:30` must NOT fetch the still-undelivered
+native 10:39:30 SEC candle. The SEC adapter uses actual OnData only.
+
+On a BPU2 M5 close with a missing exact -30s bar, the runtime now
+emits `SEC_PRECLOSE_CUTOFF_NOT_OBSERVED` and counts a failure,
+even if the preceding 269 seconds were complete. It never
+reconstructs the missing sample from full M5 future OHLC.
+Consecutive traded seconds are stricter than actual minimum necessary
+market observation and can produce false negatives when no real trade
+occurs in a one-second bucket. No 0-volume synthetic fillers allowed.
+
+**Full model versus legacy bounce gate:** `signals.py::_check_m5`
+still exposes the original two-bar *price-action proxy* for regression
+and other research. However a `bounce` trade intent's
+`m5_confirmed` gate may no longer use it to claim a complete Gerchik
+setup. `strategy/bpu_tvx_evidence.py::BpuTvxEvidence` binds **the
+same symbol, morning D1 level, session, long/short, BPU1 end, observed
+native SEC cutoff and subsequent reconciled BPU2 M5 end**. Without
+this exact proof, the eighth-gate strategy remains blocked.
+An existing `BsuResearchLink` with a historical swing origin is
+still explicitly *a proxy*, not a verified discretionary BSU.
+
+**Limit / stop pricing audit:** prior bounce intent calculation used
+the approximate D1 cluster median as entry price. The native
+BPU observer instead calculates the Gerchik limit offset of **20% of
+the origin-level-to-stop distance** from the actual source BPU level,
+for BOTH long and short. New native TVX evidence contains the
+observer's actual `entry_price`, `stop_price` and actual last
+observed **-30s SEC price**. Upon a matching M5-final-reconciled
+candidate, both `TradeIntent` sizing and the mechanical entry/stop/
+risk gates use those same evidenced prices; no-chase compares to the
+real last -30s SEC close, not the final BPU2 close 30 seconds later
+(which would be look-ahead for the proposed earlier limit entry).
+Any different `luft_pct_of_stop` configuration from 20% fails closed.
+
+**Risk and provenance still unresolved:** QuantConnect's
+`DataNormalizationMode.SPLIT_ADJUSTED` rewrites historical
+price scales; the native market's `minimum_price_variation` reflects
+the real tradable tick grid. Historical D1 origin and today M5 prices
+need a real LEAN test around splits and tick rounding before declaring
+the source BSU price reliable. The protective Schwab stop / actual fill
+availability is UNKNOWN, never approved. Research gate success is not
+proof of live entry, realized P&L or adherence to all discretionary
+Gerchik rules.

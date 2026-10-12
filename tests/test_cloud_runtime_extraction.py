@@ -54,6 +54,7 @@ def test_actual_runtime_reporting_function_emits_empty_research_statistics():
             self._bsu_proxy_armed_count = 0
             self._bsu_proxy_bpu2_count = 0
             self._m5_bars_seen = 0
+            self._m5_input_rejections = Counter()
             self._m5_checks = 0
             self._intent_missing_atr = 0
             self._setup_traces = []

@@ -156,3 +156,18 @@ def test_late_older_m5_bar_cannot_rewrite_bsu_trajectory():
     assert a._m5_input_rejections["M5_DUPLICATE_OR_OUT_OF_ORDER"] == 1
     assert a._bsu_bpu1_count == 0
     assert not a.records
+
+
+def test_native_m1_bar_ending_at_0935_does_not_pass_as_m5_bpu_touch():
+    a = AlgorithmHarness()
+    end = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
+    wrong_period = SimpleNamespace(
+        symbol="NVDA", end_time=end, time=end-timedelta(minutes=1),
+        period=timedelta(minutes=1), open=50., high=50.27,
+        low=49.9, close=50.08, volume=500)
+    process_m5(a, wrong_period, pd.Timestamp)
+    assert a._m5_input_rejections["M5_SOURCE_PERIOD_NOT_FIVE_MINUTES"] == 1
+    assert a._m5_bars_seen == 0
+    assert a._symbols["NVDA"]["touch_audit"].touches == 0
+    assert a._bsu_bpu1_count == 0
+    assert not a.records

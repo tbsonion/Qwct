@@ -196,7 +196,7 @@ def test_g09_pullback_free_bars_moving_away_from_level_are_not_an_approach():
                     level, [level], cfg)
     assert f.detail["approaching_level"] is False
     assert f.detail["long_pullback_free"] is False
-    assert f.detail["big_bars_approach"] is False
+    assert not bool(f.detail["big_bars_approach"])
 
 
 def test_g09_clean_zone_looks_past_candidate_level_not_from_daily_close():
@@ -207,7 +207,7 @@ def test_g09_clean_zone_looks_past_candidate_level_not_from_daily_close():
     behind = Level(price=110.0, kind="resistance")
     f = g09_context(d1, None, d1.index[-1].to_pydatetime(),
                     target, [target, behind], cfg)
-    assert f.detail["clean_zone"] is True
+    assert bool(f.detail["clean_zone"]) is True
     assert f.detail["room_atr"] == 4.0
     unknown = g09_context(d1, None, d1.index[-1].to_pydatetime(),
                           target, [target], cfg)

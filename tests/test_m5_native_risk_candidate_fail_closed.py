@@ -1,7 +1,7 @@
 """Real extracted M5 callback, fake native adapter results. No LEAN engine or fills."""
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -72,6 +72,7 @@ def deliver(a):
     at = datetime(2024, 1, 2, 10, 40, tzinfo=ET)
     b = SimpleNamespace(
         symbol=NVDA, end_time=at,
+        time=at - timedelta(minutes=5), period=timedelta(minutes=5),
         open=100., high=101., low=99., close=100., volume=100.)
     runtime.process_m5(a, b, pd.Timestamp)
 

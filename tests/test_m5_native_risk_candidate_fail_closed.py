@@ -36,6 +36,7 @@ def harness():
             "qualified_today": False, "session_levels": (),
         }}
     a._m5_bars_seen = 0
+    a._m5_input_rejections = Counter()
     a._m5_checks = 0
     a._intent_missing_atr = 0
     a._chart_symbol = "AAPL"

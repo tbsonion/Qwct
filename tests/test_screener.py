@@ -33,7 +33,7 @@ def candidate(symbol, price=20., volume=1_000_000., dollar_volume=40_000_000.,
                            has_fundamental_data)
 
 
-def test_native_universe_filter_uses_price_shares_and_daily_liquidity():
+def test_native_universe_filter_rejects_invalid_fields_but_not_single_day_volume_dip():
     cfg = StrategyConfig()
     records = [
         candidate("GOOD", 10, 500_000, 20_000_000),
@@ -45,7 +45,17 @@ def test_native_universe_filter_uses_price_shares_and_daily_liquidity():
         candidate("BAD_DOLLARS", 30, 1_000_000, nan),
     ]
     selected = select_liquid_fundamentals(records, cfg)
-    assert [s.value for s in selected] == ["GOOD"]
+    assert [s.value for s in selected] == ["LOW_SHARES", "GOOD"]
+    # The prior-day 499,999 share dip does not prove the 20-day SMA <500k.
+    # Stage-2 native D1 SMA must make that decision.
+
+
+def test_20_day_qualified_stock_survives_one_low_volume_day():
+    cfg = StrategyConfig()
+    item = candidate("SURVIVES", price=40, volume=100_000,
+                     dollar_volume=4_000_000)
+    assert select_liquid_fundamentals([item], cfg) == [item.symbol]
+    assert passes_gerchik_screener(40, 2.0, 650_000, cfg)
 
 
 def test_universe_prefilter_sorted_by_dollar_volume_and_capped():

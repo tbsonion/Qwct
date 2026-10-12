@@ -47,6 +47,18 @@ def write_reports(self):
         "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
     self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
     self.set_runtime_statistic(
+        "Qwct breakout retest confirmed",
+        self._breakout_retest_counts["CONFIRMED"])
+    self.set_runtime_statistic(
+        "Qwct breakout waiting retest",
+        self._breakout_retest_counts["WAIT_RETEST"])
+    self.set_runtime_statistic(
+        "Qwct breakout retest expired",
+        self._breakout_retest_counts["EXPIRED"])
+    self.set_runtime_statistic(
+        "Qwct breakout invalidated",
+        self._breakout_retest_counts["INVALIDATED"])
+    self.set_runtime_statistic(
         "Qwct M5 feed rejected", sum(self._m5_input_rejections.values()))
     self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
     self.set_runtime_statistic(
@@ -84,6 +96,8 @@ def write_reports(self):
               f"M5 bar checks={self._m5_checks}, "
               f"unready={self._intent_missing_atr}"
             + "; D1 models=" + str(dict(self._d1_models))
+            + "; breakout lifecycle=" +
+              str(dict(self._breakout_retest_counts))
             + "; BSU block reasons=" +
               str(dict(self._bsu_block_reasons.most_common(7)))
             + f"; native BPU1={self._bsu_bpu1_count}"

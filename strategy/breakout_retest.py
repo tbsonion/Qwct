@@ -154,7 +154,7 @@ class BreakoutRetestObserver:
                 return self._stop("INVALIDATED", "CLOSED_BEYOND_LOSS_SIDE")
             close_holds = c >= level if bullish else c <= level
             near = (l <= level + self.retest_tolerance * self.atr if bullish
-                    else h >= level - self.RETEST_TOL_ATR * self.atr)
+                    else h >= level - self.retest_tolerance * self.atr)
             if near and close_holds:
                 self.retest_at = at
                 self._retest_extreme = h if bullish else l

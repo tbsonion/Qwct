@@ -1,8 +1,8 @@
-"""Build Qwct's 25-file QuantConnect Free upload package from main sources.
+"""Build Qwct's 24-Python-file package, reserving the 25th Free-tier slot for research.ipynb.
 
 Never hand-edit a second copy of the strategy. Merge small pure modules
 only in this packaging step, preserving the canonical GitHub Python files
-and their normal tests. The ZIP contains exactly 25 files and no notebooks.
+and their normal tests. The ZIP contains exactly 24 Python files; keep the Cloud research.ipynb as file 25.
 """
 from __future__ import annotations
 
@@ -22,8 +22,9 @@ BUNDLED = {
     "strategy/focus.py",
     "strategy/screener.py",
     "strategy/native_m5_validation.py",
+    "strategy/runtime_reporting.py",
 }
-CLOUD_FILE_LIMIT = 25
+CLOUD_FILE_LIMIT = 24  # 24 .py + existing research.ipynb = Free quota of 25
 
 
 def _functions(source: str, names: tuple[str, ...], origin: str) -> str:
@@ -141,6 +142,21 @@ def build_sources(repo: Path) -> dict[str, str]:
         "from .native_second_tvx import _duration_seconds",
         "strategy/second_runtime.py")
 
+    # 4: keep the existing Cloud research.ipynb by bundling runtime
+    # reporting into the small reporting.py module (far below 32 KB).
+    # Preserve the exact canonical write_reports function body.
+    sources["strategy/reporting.py"] = (
+        sources["strategy/reporting.py"].rstrip()
+        + "\n\n# Cloud Free: include canonical end-of-backtest reporting.\n"
+        + "from collections import Counter\n\n"
+        + _functions(sources["strategy/runtime_reporting.py"],
+                     ("write_reports",), "strategy/runtime_reporting.py")
+        + "\n")
+    sources["main.py"] = _replace_once(
+        sources["main.py"],
+        "from strategy.runtime_reporting import write_reports",
+        "from strategy.reporting import write_reports", "main.py")
+
     for path in OPTIONAL_RESEARCH | BUNDLED:
         del sources[path]
 
@@ -167,7 +183,7 @@ def package_zip(sources: dict[str, str], output: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path,
-                        default=Path("dist/Qwct-QuantConnect-Free-25.zip"))
+                        default=Path("dist/Qwct-QuantConnect-Free-24py.zip"))
     args = parser.parse_args()
     package_zip(build_sources(Path(__file__).resolve().parents[1]), args.output)
 

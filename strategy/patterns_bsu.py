@@ -86,6 +86,10 @@ class BsuState:
     stop_price: float | None = None
     precision: str = "unverified"
     preclose_seen: bool = False
+    # Last 270s of BPU2 actually seen before 30-second preclose cutoff.
+    # Closed M5 must contain these extrema or source feeds disagree.
+    preclose_low: float | None = None
+    preclose_high: float | None = None
     reason: str = ""
     history: list[datetime] = field(default_factory=list)
 
@@ -239,6 +243,8 @@ class BsuDetector:
             return self._invalidate("BPU2 violates the level before close")
         st.phase = "preclose_candidate"
         st.preclose_seen = True
+        st.preclose_low = low
+        st.preclose_high = high
         st.entry_price = (
             st.level_price + st.luft if st.side == "long"
             else st.level_price - st.luft
@@ -283,6 +289,12 @@ class BsuDetector:
                     now != _aware("bpu1_ts", st.bpu1_ts) + self._period):
                 return self._invalidate(
                     "BPU2 not the immediate next completed candle")
+            if st.preclose_seen and (
+                    st.preclose_low is None or st.preclose_high is None
+                    or bar.low > st.preclose_low + self._tick_tol
+                    or bar.high < st.preclose_high - self._tick_tol):
+                return self._invalidate(
+                    "completed M5 BPU2 does not contain prior SEC preclose extremes")
             if self._pierced_bpu1(bar.low, bar.high):
                 return self._invalidate("BPU2 wick broke BPU1 extreme")
             if self._beyond_luft(bar.low, bar.high):

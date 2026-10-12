@@ -54,7 +54,7 @@ def intent(**kwargs):
 def test_actual_native_portfolio_fields_do_not_invent_period_trade_history(monkeypatch):
     algo, symbol, lookups, index = native_fixture(monkeypatch)
     r = review_native_lean_risk(
-        algo, symbol, intent(), datetime(2024, 1, 2, 14, tzinfo=timezone.utc), index)
+        algo, symbol, intent(), datetime(2024, 1, 2, 14, 35, tzinfo=timezone.utc), index)
     assert lookups == [(symbol, "Buy")]
     assert r.projected_stop_risk == 50.
     assert r.mechanical_pass is None
@@ -67,7 +67,7 @@ def test_native_buying_power_and_open_positions_are_mechanical_rejections(monkey
     algo, symbol, _, index = native_fixture(
         monkeypatch, buying_power=100, positions=3)
     r = review_native_lean_risk(
-        algo, symbol, intent(), datetime(2024, 1, 2, 14, tzinfo=timezone.utc), index)
+        algo, symbol, intent(), datetime(2024, 1, 2, 14, 35, tzinfo=timezone.utc), index)
     assert r.mechanical_pass is False
     assert any("buying-power" in b for b in r.blockers)
     assert any("max simultaneous" in b for b in r.blockers)
@@ -77,7 +77,7 @@ def test_native_buying_power_and_open_positions_are_mechanical_rejections(monkey
 def test_any_open_order_is_not_mislabeled_as_new_pending_entry(monkeypatch):
     algo, symbol, _, index = native_fixture(monkeypatch, orders=("EXIT_ORDER",))
     r = review_native_lean_risk(
-        algo, symbol, intent(), datetime(2024, 1, 2, 14, tzinfo=timezone.utc), index)
+        algo, symbol, intent(), datetime(2024, 1, 2, 14, 35, tzinfo=timezone.utc), index)
     assert r.mechanical_pass is None
     assert any("pending_entries" in b for b in r.blockers)
 
@@ -89,3 +89,12 @@ def test_no_broker_orders_added_to_m5_native_risk_gate():
     assert 'False if failed else None' in code
     assert "self.limit_order(" not in code
     assert "self.market_order(" not in code
+
+
+def test_native_portfolio_asof_cannot_reuse_later_data_for_earlier_m5(monkeypatch):
+    algo, symbol, _, index = native_fixture(monkeypatch)
+    with pytest.raises(ValueError, match="not aligned to completed M5"):
+        review_native_lean_risk(
+            algo, symbol, intent(),
+            datetime(2024, 1, 2, 14, 0, tzinfo=timezone.utc),
+            index)

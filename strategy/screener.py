@@ -15,7 +15,8 @@ def _positive(value) -> float | None:
     return n if isfinite(n) and n > 0 else None
 
 
-def select_liquid_fundamentals(fundamentals, cfg: StrategyConfig):
+def select_liquid_fundamentals(
+    fundamentals, cfg: StrategyConfig, max_results: int | None = None):
     """Stage 1: LEAN Fundamental universe. Uses prior-session daily fields.
 
     This is a candidate **prefilter**, not the 20-day-volume/ATR Gerchik
@@ -37,7 +38,12 @@ def select_liquid_fundamentals(fundamentals, cfg: StrategyConfig):
     # Stable order, including equally-liquid stocks across repeated runs.
     eligible.sort(key=lambda f: (
         -float(f.dollar_volume), f.symbol.value))
-    return [f.symbol for f in eligible[:cfg.screener_candidate_limit]]
+    limit = cfg.screener_candidate_limit
+    if max_results is not None:
+        if type(max_results) is not int or max_results <= 0:
+            raise ValueError("native universe SEC limit must be positive integer")
+        limit = min(limit, max_results)
+    return [f.symbol for f in eligible[:limit]]
 
 
 def passes_gerchik_screener(price, daily_atr, volume_sma, cfg: StrategyConfig) -> bool:

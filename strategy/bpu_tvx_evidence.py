@@ -17,6 +17,9 @@ class BpuTvxEvidence:
     side: str
     d1_level_price: float
     native_origin_price: float
+    entry_price: float
+    stop_price: float
+    preclose_last_price: float
     bpu1_end: datetime
     preclose_at: datetime
     bpu2_end: datetime
@@ -38,7 +41,19 @@ class BpuTvxEvidence:
                         and t.utcoffset() is not None for t in dates)
                 and all(isfinite(float(p)) and float(p) > 0
                         for p in (level_price, self.d1_level_price,
-                                  self.native_origin_price))
+                                  self.native_origin_price,
+                                  self.entry_price, self.stop_price,
+                                  self.preclose_last_price))
+                # Gerchik limit price is 20% of the level-to-stop
+                # distance, away from the originating BSU pivot.
+                and (self.stop_price < self.native_origin_price <
+                     self.entry_price if self.side == "long"
+                     else self.entry_price < self.native_origin_price <
+                     self.stop_price)
+                and abs(
+                    abs(self.entry_price - self.native_origin_price)
+                    - 0.2 * abs(self.native_origin_price - self.stop_price)
+                ) < 1e-7
                 and abs(self.d1_level_price - float(level_price)) < 1e-8
                 and self.bpu1_end + timedelta(minutes=5) == self.bpu2_end
                 and self.preclose_at == self.bpu2_end - timedelta(seconds=30)

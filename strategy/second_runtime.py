@@ -8,6 +8,7 @@ HH:MM:30 is complete; never use a prior Scheduled Event at that time.
 """
 from .native_second_tvx import NativeSecondTvxWindow
 from .preclose_review import review_preclose
+from .corporate_action_guard import split_research_blocked
 
 
 def process_second_slice(self, data, time_index):
@@ -21,7 +22,8 @@ def process_second_slice(self, data, time_index):
         if symbol not in self.screen_watchlist:
             continue
         state = self._symbols.get(symbol)
-        if state is None or state.get("bsu_link") is None:
+        if (state is None or state.get("bsu_link") is None
+                or split_research_blocked(state, self._session_date)):
             continue
         window = state.get("tvx_sec_window")
         if not isinstance(window, NativeSecondTvxWindow):

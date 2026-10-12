@@ -97,7 +97,9 @@ def g03_near_retest(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     w = cfg.retest_window
     if len(d1) < w + 1:
         return FeatureResult("g03_near_retest", None, reason="мало баров")
-    win = d1.iloc[-w - 1:-1]  # без текущего бара
+    # Caller supplies ONLY completed D1 bars before this trading session.
+    # The last row is yesterday's CLOSED D1 and must not be discarded.
+    win = d1.iloc[-w:]
     touched_idx = [i for i in range(len(win))
                    if win["low"].iloc[i] <= level.price <= win["high"].iloc[i]]
     touched = len(touched_idx) > 0
@@ -109,12 +111,12 @@ def g03_near_retest(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     gap = False
     if touched:
         for i in touched_idx:
-            gi = i + 1  # индекс в d1
-            prev_close = d1["close"].iloc[-w - 1 + i - 1] if i > 0 else None
-            if prev_close is not None:
-                if abs(win["open"].iloc[i] - prev_close) >= 0.5 * a:
-                    gap = True
-                    break
+            # We require w+1 history rows so even the first retest
+            # candle in the lookback has a known preceding D1 close.
+            prev_close = float(d1["close"].iloc[-w + i - 1])
+            if abs(win["open"].iloc[i] - prev_close) >= 0.5 * a:
+                gap = True
+                break
     v = touched and shallow
     return FeatureResult("g03_near_retest", v,
                          {"touched_in_window": touched, "shallow_pullback": shallow,

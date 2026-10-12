@@ -8,6 +8,18 @@ from datetime import datetime
 from math import isfinite
 
 
+def _duration_seconds(value):
+    """Accept native Python timedelta and pythonnet System.TimeSpan."""
+    if value is None:
+        return None
+    total = getattr(value, "total_seconds", None)
+    if total is None:
+        total = getattr(value, "TotalSeconds", None)
+    if total is None:
+        return None
+    return float(total() if callable(total) else total)
+
+
 def validate_m5_tradebar(bar, end_at: datetime) -> tuple[bool, str]:
     """Return (usable_for_pattern_research, reason) without substituting data.
 
@@ -28,13 +40,13 @@ def validate_m5_tradebar(bar, end_at: datetime) -> tuple[bool, str]:
         period = getattr(bar, "period", None)
         if period is None:
             return False, "M5_SOURCE_PERIOD_MISSING"
-        seconds = float(period.total_seconds())
-        if not isfinite(seconds) or seconds != 300:
+        seconds = _duration_seconds(period)
+        if seconds is None or not isfinite(seconds) or seconds != 300:
             return False, "M5_SOURCE_PERIOD_NOT_FIVE_MINUTES"
         source_start = getattr(bar, "time")
         source_end = getattr(bar, "end_time")
-        actual_seconds = float((source_end - source_start).total_seconds())
-        if not isfinite(actual_seconds) or actual_seconds != 300:
+        actual_seconds = _duration_seconds(source_end - source_start)
+        if actual_seconds is None or not isfinite(actual_seconds) or actual_seconds != 300:
             return False, "M5_SOURCE_START_END_INCONSISTENT"
     except (AttributeError, ValueError, TypeError, OverflowError):
         return False, "M5_SOURCE_PERIOD_OR_CHRONOLOGY_UNVERIFIED"

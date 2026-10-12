@@ -55,7 +55,7 @@ class BpuTvxEvidence:
                 and abs(
                     abs(self.entry_price - self.native_origin_price)
                     - 0.2 * abs(self.native_origin_price - self.stop_price)
-                ) < 1e-7
+                ) <= self.native_tick_size * 0.5 + 1e-8
                 and abs(self.d1_level_price - float(level_price)) < 1e-8
                 # The D1 cluster median and the exact origin pivot
                 # are distinct prices. Only the SAME native-tick
@@ -66,6 +66,11 @@ class BpuTvxEvidence:
                     round(self.native_origin_price / self.native_tick_size)
                     * self.native_tick_size - self.native_origin_price
                 ) <= self.native_tick_size * 1e-5
+                and all(
+                    abs(round(p / self.native_tick_size)
+                        * self.native_tick_size - p)
+                        <= self.native_tick_size * 1e-5
+                    for p in (self.entry_price, self.stop_price))
                 and self.bpu1_end + timedelta(minutes=5) == self.bpu2_end
                 and self.preclose_at == self.bpu2_end - timedelta(seconds=30)
                 and observed_at == self.bpu2_end

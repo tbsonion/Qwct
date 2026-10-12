@@ -174,15 +174,24 @@ real last -30s SEC close, not the final BPU2 close 30 seconds later
 (which would be look-ahead for the proposed earlier limit entry).
 Any different `luft_pct_of_stop` configuration from 20% fails closed.
 
-**Risk and provenance still unresolved:** QuantConnect's
-`DataNormalizationMode.SPLIT_ADJUSTED` rewrites historical
-price scales; the native market's `minimum_price_variation` reflects
-the real tradable tick grid. Historical D1 origin and today M5 prices
-need a real LEAN test around splits and tick rounding before declaring
-the source BSU price reliable. The protective Schwab stop / actual fill
-availability is UNKNOWN, never approved. Research gate success is not
-proof of live entry, realized P&L or adherence to all discretionary
-Gerchik rules.
+**Revised 2026-10-11 SEC normalization:** minute default continues
+`DataNormalizationMode.SPLIT_ADJUSTED` for compatibility. For
+`tvx_seconds=true`, **real tradable SEC/M5/D1 subscriptions** use
+`DataNormalizationMode.RAW`, while 180-day D1 warmup uses official
+`DataNormalizationMode.SCALED_RAW` so older pre-split bars are
+scaled to *the current algorithm date* (not future split factors).
+Actual LEAN `SplitType.SPLIT_OCCURRED` invalidates all old
+per-symbol BPU/TVX evidence. Before morning screening it removes
+existing native D1/M5 consolidators, reinstalls native ATR/SMA and
+consolidators and reloads native SCALED_RAW history; **the entire
+split session stays quarantined** to avoid accidental lookahead
+or stale states. Cloud validation of native historical split events,
+factor scaling and bar timing is still required; no fake split
+factor calculations are used.
+
+Schwab protective-stop and actual fills remain UNKNOWN. Research
+gate success is not live entry, realized P&L or adherence to all
+discretionary Gerchik rules.
 
 
 ## Critical second review: level identity and sparse feeds
@@ -197,24 +206,26 @@ native minimum price variation. A backtest must never call these
 different prices one valid BSU/BPU level merely because the D1
 clustering tolerance is 0.25 ATR.
 
-A historical D1 source extreme that does not fall on the current
-native tick grid also fails closed in the BSU bridge, to reduce false
-exact-touch claims in `SPLIT_ADJUSTED` history. This is a conservative
-partial safeguard only: a split-adjusted historical value can
-coincidentally land on the grid and STILL not represent an actual
-price that traded at the historical date. Full correct normalization
-requires a single as-of price basis through D1 history, streaming
-M5/SEC, and corporate-action changes, and a native Cloud trial.
-We have NOT quietly switched to `RAW`, which can make rolling D1
-ATR/trend history discontinuous across actual splits unless
-split handling/warmup resets are also implemented and validated.
+A historical source pivot that falls outside a current native-tick
+grid is rejected by the BSU bridge, even if adjusted history is
+otherwise smooth. The exact-source-price guarantee still requires
+a native Cloud check. SECOND research now uses native RAW streaming
+with SCALED_RAW history, plus SplitOccurred rewarm/quarantine as
+documented above. These controls deliberately cannot silently
+"verify" the full exchange/factor file history.
 
 The observed preclose candidate is available **before** BPU2 close,
-but the complete eight-gate `m5_confirmed` evidence is produced
-only at the subsequent BPU2 M5 close, **30 seconds later**. This is a
-post-event reconciliation and CANNOT be used as the original
-executable Gerchik limit-entry authorization without a separate
-as-of-preclose (risk, level, broker protection) approval stage.
+but the subsequent closed M5 `m5_confirmed` is produced
+only at BPU2 M5 close, **30 seconds later**. A NEW separate native
+`strategy/preclose_review.py` now evaluates frozen D1 and already
+closed BPU1 M5, actual SEC -30s sample, exact origin identity,
+D1 trend/ATR, native rounded entry and stop, frozen next-level 4R,
+3R target, no-chase, session clock and preliminary risk budget
+**at -30s**, before any full BPU2 M5 exists. Portfolio buying
+power, losses, reservations and Schwab protective bracket remain
+explicitly **UNKNOWN**, and `can_submit=False` always. Thus no
+retrospective future M5 prices authorize an earlier trade; the
+new provisional review is NOT a complete executable order approval.
 All Qwct order submission remains hard-disabled.
 
 
@@ -236,6 +247,24 @@ produced a non-tradable fractional-cent stop/limit.
 **No price is represented as an actual executable broker quote**:
 native tick rounding is necessary but not sufficient; spread, bid/ask,
 venue tick rules, gaps, fills and Schwab stop protection remain
-unverified. As of this review, there is no standalone preclose
-eight-gate risk authorization at the original Gerchik TVX moment;
+unverified. As of this review, the independent as-of-preclose
+observable check exists, but a full native broker-risk and protective
+order authorization at the Gerchik TVX moment is still unavailable;
 the final bounce gate is only an M5 retrospective reconciliation.
+
+
+## 2026-10-11 revision: late data and Cloud observability
+
+A native SEC candle may carry `EndTime=12:09:30` but reach LEAN
+`on_data` at a **later** algorithm time when there are sparse
+data streams. Qwct now requires `_time_index(self.time)` exactly
+equal to the *received* SEC `bar.end_time` for every observed SEC
+second. If not, it fails closed as `SEC_DELAYED_OR_FUTURE_SLICE`,
+rather than pretending that an entry decision existed earlier.
+
+Cloud runtime statistics now expose `Qwct native SEC feed bars`,
+`Qwct as-of TVX -30s reviews`, `Qwct as-of TVX observable`,
+and `Qwct split quarantine`. A zero TVX count cannot prove that
+native SEC subscriptions were ever delivered; check feed bars first.
+All code remains research-only. Native Cloud run and brokerage
+stop/partial-fill smoke still not performed.

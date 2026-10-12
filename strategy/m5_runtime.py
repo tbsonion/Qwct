@@ -7,6 +7,7 @@ from .lean_risk_observer import review_native_lean_risk
 from .protected_entry import review_schwab_protected_entry
 from .native_second_tvx import NativeSecondTvxWindow
 from .bpu_tvx_evidence import BpuTvxEvidence
+from .corporate_action_guard import split_research_blocked
 
 def process_m5(self, bar, time_index):
     symbol = bar.symbol
@@ -15,7 +16,7 @@ def process_m5(self, bar, time_index):
             time_index(bar.end_time).date() != self._session_date):
         return
     state = self._symbols.get(symbol)
-    if state is None:
+    if state is None or split_research_blocked(state, self._session_date):
         return
     # LEAN event callbacks can be repeated or delayed. A repeated
     # completed candle must never count as a second BPU or a new

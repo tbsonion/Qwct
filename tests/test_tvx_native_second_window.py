@@ -87,6 +87,29 @@ def test_wick_breaching_bpu1_extreme_in_270_second_preclose_is_invalidated():
     assert state.can_submit is False
 
 
+def test_m5_cannot_confirm_an_incompatible_sec_preclose_range():
+    detector, window = native_window()
+    start = detector.state.bpu1_ts
+    for k in range(1, 271):
+        window.on_second(sec(start + timedelta(seconds=k), high=99.99,
+                             low=99.90, close=99.95))
+    observed = detector.on_bar(Bar(
+        start + timedelta(minutes=5), 99.95, 99.96, 99.92,
+        99.95, "M5", 100.))
+    assert observed.phase == "invalidated"
+    assert "SEC preclose extremes" in observed.reason
+    assert observed.can_submit is False
+
+
+def test_sec_window_rejects_detector_state_changed_mid_bpu2():
+    detector, window = native_window()
+    start = detector.state.bpu1_ts
+    window.on_second(sec(start + timedelta(seconds=1)))
+    detector._invalidate("invalidated native upstream evidence")
+    with pytest.raises(ValueError, match="no longer active"):
+        window.on_second(sec(start + timedelta(seconds=2)))
+
+
 def test_out_of_order_duplicate_future_second_is_rejected():
     detector,window=native_window()
     start=detector.state.bpu1_ts

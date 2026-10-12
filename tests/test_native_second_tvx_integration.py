@@ -76,7 +76,8 @@ def sec_bar(n, *, volume=1, low=100.01, high=100.10, price=100.06,
         volume=volume, is_fill_forward=fill_forward)
 
 
-def on_sec(a, bar):
+def on_sec(a, bar, arrive_at=None):
+    a.time = arrive_at if arrive_at is not None else bar.end_time
     process_second_slice(
         a, SimpleNamespace(bars={bar.symbol: bar}), pd.Timestamp)
 
@@ -307,3 +308,26 @@ def test_missing_cutoff_second_gets_recorded_at_native_bpu2_close():
     # carries no verified -30s TVX evidence and no trade authorization.
     assert a._bsu_proxy_bpu2_count == 1
     assert "NO verified SEC -30s TVX" in a.records[-1][2]["reason"]
+
+
+def test_sec_retroactively_delivered_after_endtime_cannot_claim_tvx():
+    a = ResearchHarness()
+    arm(a)
+    # No time-travel: bar ending HH:MM:01 received one second later.
+    on_sec(a, sec_bar(1), arrive_at=AT+timedelta(seconds=2))
+    win = a._symbols["NVDA"]["tvx_sec_window"]
+    assert win.blocked_reason == "SEC_DELAYED_OR_FUTURE_SLICE"
+    assert a._tvx_preclose_count == 0
+    for n in range(2, 271):
+        on_sec(a, sec_bar(n))
+    assert a._tvx_preclose_count == 0
+    assert a._tvx_second_reasons["SEC_DELAYED_OR_FUTURE_SLICE"] == 1
+
+
+def test_sec_future_timestamp_cannot_claim_tvx_either():
+    a = ResearchHarness()
+    arm(a)
+    on_sec(a, sec_bar(1), arrive_at=AT)
+    assert a._symbols["NVDA"]["tvx_sec_window"].blocked_reason == (
+        "SEC_DELAYED_OR_FUTURE_SLICE")
+    assert a._tvx_preclose_count == 0

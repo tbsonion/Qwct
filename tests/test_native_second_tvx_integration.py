@@ -21,7 +21,7 @@ AT = datetime(2024, 1, 2, 10, 35, tzinfo=ET)
 
 
 class ResearchHarness:
-    def __init__(self, sec_on=True):
+    def __init__(self, sec_on=True, side="long"):
         self._signals_open = True
         self._tvx_seconds_enabled = sec_on
         self._session_date = AT.date()
@@ -42,7 +42,7 @@ class ResearchHarness:
             "touch_audit": None, "tvx_sec_window": None,
             "bsu_link": SimpleNamespace(
                 detector=BsuDetector(
-                    StrategyConfig(), 100., "long", atr_value=2.,
+                    StrategyConfig(), 100., side, atr_value=2.,
                     tick_size=0.01, bsu_ts=datetime(2023, 8, 24, 16, tzinfo=ET)),
                 provenance="D1_SWING_PROXY", origin_time=AT-timedelta(days=50))
         }}
@@ -55,10 +55,10 @@ class ResearchHarness:
         raise AssertionError(msg)
 
 
-def native_m5(end, low=100., high=100.25, close=100.08):
+def native_m5(end, low=100., high=100.25, close=100.08, open_price=100.08):
     return SimpleNamespace(
         symbol="NVDA", time=end-timedelta(minutes=5), end_time=end,
-        period=timedelta(minutes=5), open=100.08,
+        period=timedelta(minutes=5), open=open_price,
         high=high, low=low, close=close, volume=500)
 
 
@@ -219,3 +219,22 @@ def test_session_reset_drops_preclose_window_before_new_bpu1():
     a._symbols["NVDA"]["tvx_sec_window"] = None
     assert a._symbols["NVDA"]["tvx_sec_window"] is None
     assert win.count == 0
+
+
+def test_short_resistance_bpu_preclose_symmetric_and_m5_reconciled():
+    a = ResearchHarness(side="short")
+    t = AT
+    process_m5(
+        a, native_m5(t, low=99.75, high=100.,
+                     open_price=99.9, close=99.93), pd.Timestamp)
+    assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "bpu1"
+    for n in range(1, 271):
+        on_sec(a, sec_bar(n, low=99.90, high=99.99, price=99.94))
+    assert a._tvx_preclose_count == 1
+    assert a._symbols["NVDA"]["bsu_link"].detector.state.can_submit is False
+    process_m5(
+        a, native_m5(t+timedelta(minutes=5), low=99.85, high=99.99,
+                     open_price=99.94, close=99.93), pd.Timestamp)
+    assert a._bsu_proxy_bpu2_count == 1
+    assert a._tvx_preclose_reconciled == 1
+    assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "bpu2_confirmed"

@@ -7,6 +7,7 @@ before the following SEC TradeBars are delivered. A bar ENDING at
 HH:MM:30 is complete; never use a prior Scheduled Event at that time.
 """
 from .native_second_tvx import NativeSecondTvxWindow
+from .preclose_review import review_preclose
 
 
 def process_second_slice(self, data, time_index):
@@ -72,6 +73,45 @@ def process_second_slice(self, data, time_index):
                         f"BPU2 ends {sample.bpu2_end}; "
                         "risk/broker authorization UNKNOWN; "
                         "provisional only; NO ORDERS OR FILLS"))
+                # This independent checkpoint is evaluated NOW using
+                # frozen D1 and ALREADY CLOSED M5 through BPU1. The
+                # subsequent closed BPU2 cannot be used retroactively
+                # to approve a -30s risk or session decision.
+                try:
+                    decision = state.get("decision")
+                    if decision is None or not decision.accepted:
+                        raise ValueError("frozen accepted morning bounce missing")
+                    d1 = self._frame(state["daily_rows"])
+                    d1 = d1.loc[d1.index < sample.observed_at.replace(
+                        hour=0, minute=0, second=0, microsecond=0)]
+                    m5 = self._frame(state["m5_rows"])
+                    m5 = m5.loc[m5.index <= sample.observed_since]
+                    review = review_preclose(
+                        decision=decision, link=state["bsu_link"],
+                        detector_state=observed, sample=sample,
+                        d1=d1, closed_m5=m5,
+                        levels=state.get("session_levels"), cfg=self.cfg,
+                        equity=float(self.portfolio.total_portfolio_value),
+                        session_policy=self._session_policy)
+                    state["preclose_review"] = review
+                    status = ("OBSERVABLE_READY" if review.evidence_ready
+                              else "BLOCKED")
+                    self._record(
+                        symbol, "TVX_PRECLOSE_REVIEW", model="bounce",
+                        side=review.side, level=observed.level_price,
+                        entry=review.limit_price, stop=review.stop_price,
+                        risk=review.planned_risk_usd,
+                        reason=(f"{status} at {sample.observed_at}; "
+                                f"checks={dict(review.checks)}; "
+                                f"blockers={'; '.join(review.blockers)[:240]}; "
+                                "BROKER RISK UNKNOWN; NO ORDERS"))
+                except (ValueError, AttributeError, TypeError, KeyError,
+                        OverflowError, IndexError) as exc:
+                    state["preclose_review"] = None
+                    self._record(
+                        symbol, "TVX_PRECLOSE_REVIEW", model="bounce",
+                        reason="BLOCKED: unable to evaluate strictly as-of "
+                               + str(exc)[:160] + "; NO ORDERS")
             else:
                 self._tvx_second_reasons[observed.reason] += 1
                 self._record(

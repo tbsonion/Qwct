@@ -62,7 +62,7 @@ def write_reports(self):
         "Qwct M5 feed rejected", sum(self._m5_input_rejections.values()))
     self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
     self.set_runtime_statistic(
-        "Qwct M5 two-bar passes", sum(self._m5_true_by_model.values()))
+        "Qwct M5 gate passes", sum(self._m5_true_by_model.values()))
     self.set_runtime_statistic(
         "Qwct M5 pass models", str(dict(self._m5_true_by_model)))
     self.set_runtime_statistic(
@@ -108,7 +108,7 @@ def write_reports(self):
             + "; daily rejects=" + str(dict(reject_reasons))
             + "; failed M5 gates=" +
               str(dict(self._gate_failures.most_common(8)))
-            + "; M5 two-bar pass models=" + str(dict(self._m5_true_by_model))
+            + "; M5 gate pass models=" + str(dict(self._m5_true_by_model))
             + "; other gates when M5 passed=" +
               str(dict(self._m5_true_other_blockers.most_common(6)))
             + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."

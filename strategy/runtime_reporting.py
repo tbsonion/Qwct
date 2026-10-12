@@ -21,6 +21,17 @@ def write_reports(self):
                                sum(self._bsu_block_reasons.values()))
     self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
     self.set_runtime_statistic(
+        "Qwct SEC TVX -30s preliminary", self._tvx_preclose_count)
+    self.set_runtime_statistic(
+        "Qwct SEC TVX closed verified", self._tvx_preclose_reconciled)
+    self.set_runtime_statistic(
+        "Qwct SEC TVX rejected",
+        sum(self._tvx_second_reasons.values()))
+    self.set_runtime_statistic(
+        "Qwct SEC TVX mode",
+        "native SECOND enabled" if getattr(self, "_tvx_seconds_enabled", False)
+        else "minute mode / TVX unobserved")
+    self.set_runtime_statistic(
         "Qwct BPU invalidations", sum(self._bpu_invalid_reasons.values()))
     self.set_runtime_statistic(
         "Qwct chart focus", self._chart_symbol.value
@@ -101,6 +112,9 @@ def write_reports(self):
             + "; BSU block reasons=" +
               str(dict(self._bsu_block_reasons.most_common(7)))
             + f"; native BPU1={self._bsu_bpu1_count}"
+            + f"; TVX -30s SEC={self._tvx_preclose_count},"
+              f" verified={self._tvx_preclose_reconciled}"
+            + "; SEC rejects=" + str(dict(self._tvx_second_reasons.most_common(3)))
             + "; BPU invalid reasons=" +
               str(dict(self._bpu_invalid_reasons.most_common(5)))
             + f"; chart focus={self._chart_symbol.value if self._chart_symbol else 'none'}"

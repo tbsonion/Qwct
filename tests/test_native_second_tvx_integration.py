@@ -342,3 +342,55 @@ def test_native_sec_count_does_not_require_active_gerchik_bsu_setup():
     on_sec(a, sec_bar(1))
     assert a._native_sec_received == 1
     assert a._tvx_preclose_count == 0
+
+
+def test_end_to_end_actual_sec_handler_reviews_asof_before_bpu2_closes(monkeypatch):
+    # Shift this extracted runtime harness to Gerchik's bounce time.
+    import sys
+    module = sys.modules[__name__]
+    clock = datetime(2024, 1, 3, 12, 5, tzinfo=ET)
+    monkeypatch.setattr(module, "AT", clock)
+    from strategy.levels import Level
+    from strategy.scenarios import ScenarioDecision
+    from strategy.sessions import SessionPolicy
+
+    a = ResearchHarness()
+    a.cfg = StrategyConfig()
+    a._session_policy = SessionPolicy(a.cfg)
+    a.portfolio = SimpleNamespace(total_portfolio_value=25_000.)
+    a._frame = lambda rows: (
+        pd.DataFrame(rows).set_index("date").sort_index()
+        if rows else pd.DataFrame())
+    idx = pd.bdate_range(end="2024-01-02", periods=110, tz=ET)
+    closes = [80+0.2*i for i in range(len(idx))]
+    sma = pd.Series(closes).rolling(50, min_periods=1).mean().tolist()
+    state = a._symbols["NVDA"]
+    state["daily_rows"] = [
+        {"date": date, "open": price, "high": price+1.,
+         "low": price-1., "close": price, "atr14": 3.,
+         "sma50": ma, "volume": 1_000_000.}
+        for date, price, ma in zip(idx, closes, sma)]
+    support = Level(price=100., kind="support", touches=2, strength=3.,
+                    valid_from=clock.date())
+    resistance = Level(price=120., kind="resistance", touches=2, strength=3.,
+                       valid_from=clock.date())
+    state["session_levels"] = (support, resistance)
+    state["decision"] = ScenarioDecision(
+        "NVDA", clock.date(), clock.replace(hour=9, minute=29),
+        support, "bounce", "long", score=5)
+    arm(a)
+    for n in range(1, 271):
+        on_sec(a, sec_bar(n))
+    review = state["preclose_review"]
+    assert review is not None
+    assert review.observed_at == clock+timedelta(minutes=4, seconds=30)
+    assert review.evidence_ready is True
+    assert review.can_submit is False
+    assert dict(review.checks)["broker_protection"] is None
+    assert a._tvx_preclose_count == 1
+    assert a._bsu_proxy_bpu2_count == 0
+    asof_events = [v for v in a.records if v[1] == "TVX_PRECLOSE_REVIEW"]
+    assert len(asof_events) == 1
+    assert "OBSERVABLE_READY" in asof_events[0][2]["reason"]
+    assert "BROKER RISK UNKNOWN" in asof_events[0][2]["reason"]
+    assert a._native_sec_received == 270

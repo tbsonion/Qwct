@@ -117,8 +117,9 @@ class StrategyConfig:
     # ---- SessionPolicy (исследование PR #3, ET, "HH:MM") ----
     # Расписание Герчика для US-акций: 9:30-10:30 наблюдение без входов,
     # 10:30-12:00 пробои зеркальных, 12:00-13:30 отбои, 13:30-15:00
-    # продолжение, 15:00-16:00 наблюдение. ORB живёт по своим часам
-    # (модуль orb_stocks_in_play) и этим расписанием НЕ ограничивается.
+    # продолжение, 15:00-16:00 наблюдение. ORB / Stocks-in-Play
+    # execution module is NOT present in Qwct. The optional independent
+    # opening_volume_research.py is read-only and not a Gerchik gate.
     session_windows_breakout: tuple = (("10:30", "12:00"), ("13:30", "15:00"))
     session_windows_bounce: tuple = (("12:00", "13:30"),)
     session_windows_false_breakout: tuple = (("10:30", "15:00"),)

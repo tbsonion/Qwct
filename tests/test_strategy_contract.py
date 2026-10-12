@@ -9,7 +9,7 @@ import pytest
 
 from strategy.config import StrategyConfig
 from strategy.data import MarketData
-from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep, g09_context, g07_close_at_extreme, g08_small_bars_approach
+from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep, g09_context, g07_close_at_extreme, g08_small_bars_approach, g03_near_retest
 import strategy.scenarios as scenario_module
 from strategy.indicators import atr, global_trend, trend_direction
 from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
@@ -249,3 +249,42 @@ def test_g08_small_bars_moving_away_must_not_be_called_approach():
     assert bool(fr.detail["trending"])
     assert not bool(fr.detail["approaching_level"])
     assert not bool(fr.value)
+
+
+def test_g03_includes_yesterday_closed_d1_retest_and_real_previous_close_gap():
+    # The morning scanner passes only completed D1 candles. Excluding the
+    # final row would discard a real retest made on the last session.
+    cfg = StrategyConfig()
+    d1 = daily()
+    dates = d1.index[-11:]
+    d1.loc[dates, ["open", "high", "low", "close"]] = [
+        102.0, 102.4, 101.6, 102.0]
+    # Last CLOSED session crosses 100 and gaps down from yesterday's 102.
+    d1.loc[dates[-1], ["open", "high", "low", "close"]] = [
+        100.1, 100.5, 99.8, 100.2]
+    lvl = Level(price=100., kind="support")
+    result = g03_near_retest(
+        d1, None, dates[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert result.value is True
+    assert result.detail["touched_in_window"] is True
+    assert result.detail["three_bar_retest"] is True
+    assert result.detail["gap_retest"] is True
+
+
+def test_g03_first_lookback_bar_uses_prior_closed_bar_for_gap_check():
+    cfg = StrategyConfig()
+    d1 = daily()
+    dates = d1.index[-11:]
+    d1.loc[dates, ["open", "high", "low", "close"]] = [
+        102.0, 102.3, 101.7, 102.0]
+    # First bar in the 10-session window touches 100; its true previous
+    # D1 close is available immediately before the 10-bar window.
+    d1.loc[dates[0], ["open", "high", "low", "close"]] = [
+        104.0, 104.5, 103.5, 104.0]
+    d1.loc[dates[1], ["open", "high", "low", "close"]] = [
+        100.1, 100.5, 99.8, 100.2]
+    lvl = Level(price=100., kind="support")
+    result = g03_near_retest(
+        d1, None, dates[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert result.detail["gap_retest"] is True
+    assert result.detail["touched_in_window"] is True

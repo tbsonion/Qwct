@@ -39,6 +39,28 @@ def process_m5(self, bar, time_index):
         "low": float(bar.low), "close": float(bar.close),
         "volume": float(bar.volume)})
     state["m5_rows"] = state["m5_rows"][-80:]
+    breakout_observer = state.get("breakout_retest")
+    if breakout_observer is not None:
+        try:
+            phase_before = breakout_observer.phase
+            outcome = breakout_observer.on_m5(
+                at=native_end.to_pydatetime(),
+                open_price=float(bar.open), high=float(bar.high),
+                low=float(bar.low), close=float(bar.close),
+                volume=float(bar.volume))
+            if outcome.phase != phase_before:
+                self._breakout_retest_counts[outcome.phase] += 1
+                self._record(
+                    symbol, "BREAKOUT_STAGE", model="breakout",
+                    side=outcome.side, level=outcome.level_price,
+                    reason=outcome.reason + "; research only; NO ORDERS")
+        except Exception as exc:
+            # No observer evidence means the breakout M5 gate stays FALSE.
+            state["breakout_retest"] = None
+            self._record(
+                symbol, "ERROR", reason="Breakout M5 research error: "
+                + str(exc)[:200])
+            self.error(f"Breakout research error {symbol}: {exc}")
     focus_charted_this_bar = (
         symbol == self._chart_symbol and self._focus_m5_plotted < 3500)
     if focus_charted_this_bar:
@@ -111,7 +133,10 @@ def process_m5(self, bar, time_index):
     market = MarketData(
         symbol.value, self._frame(state["daily_rows"]),
         self._frame(state["m5_rows"]),
-        session_levels=state["session_levels"])
+        session_levels=state["session_levels"],
+        breakout_retest=(
+            state["breakout_retest"].evidence
+            if state.get("breakout_retest") is not None else None))
     try:
         self._m5_checks += 1
         intent = build_intent(

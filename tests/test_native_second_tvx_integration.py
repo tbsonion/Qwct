@@ -247,6 +247,13 @@ def test_short_resistance_bpu_preclose_symmetric_and_m5_reconciled():
                      open_price=99.94, close=99.93), pd.Timestamp)
     assert a._bsu_proxy_bpu2_count == 1
     assert a._tvx_preclose_reconciled == 1
+    evidence = a._symbols["NVDA"]["bsu_tvx_evidence"]
+    assert evidence is not None and evidence.can_submit is False
+    assert evidence.matches(
+        symbol="NVDA", session=AT.date(), side="short",
+        level_price=100., observed_at=AT+timedelta(minutes=5))
+    assert round(evidence.entry_price, 3) == 99.9
+    assert round(evidence.stop_price, 3) == 100.5
     assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "bpu2_confirmed"
 
 

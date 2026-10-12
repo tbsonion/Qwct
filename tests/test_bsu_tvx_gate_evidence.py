@@ -41,7 +41,7 @@ def good_evidence():
     return BpuTvxEvidence(
         symbol="NVDA", session=FINISH.date(), side="long",
         d1_level_price=100., native_origin_price=100.,
-        entry_price=100.10, stop_price=99.50,
+        native_tick_size=.01, entry_price=100.10, stop_price=99.50,
         preclose_last_price=100.06,
         bpu1_end=BPU1,
         preclose_at=FINISH-timedelta(seconds=30),
@@ -78,6 +78,9 @@ def test_mismatching_evidence_never_approves_wrong_symbol_session_side_or_level(
         replace(good, session=FINISH.date()-timedelta(days=1)),
         replace(good, side="short"),
         replace(good, d1_level_price=101.),
+        replace(good, native_origin_price=100.03),
+        replace(good, native_tick_size=float("nan")),
+        replace(good, native_tick_size=0.0),
         replace(good, preclose_at=FINISH-timedelta(seconds=31)),
         replace(good, bpu1_end=BPU1-timedelta(minutes=5)),
         replace(good, bpu2_end=FINISH+timedelta(minutes=5)),

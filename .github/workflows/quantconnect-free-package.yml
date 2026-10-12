@@ -1,0 +1,49 @@
+name: QuantConnect Free 25-file ZIP
+
+on:
+  push:
+    branches:
+      - 'feat/qwct-quantconnect-free-25file-package-20261011'
+      - main
+    paths:
+      - main.py
+      - 'strategy/**'
+      - 'tools/package_quantconnect_free.py'
+      - 'tests/test_quantconnect_free_package.py'
+      - '.github/workflows/quantconnect-free-package.yml'
+  pull_request:
+    paths:
+      - main.py
+      - 'strategy/**'
+      - 'tools/package_quantconnect_free.py'
+      - 'tests/test_quantconnect_free_package.py'
+      - '.github/workflows/quantconnect-free-package.yml'
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build and validate exact 25-file Cloud bundle
+        run: |
+          python tools/package_quantconnect_free.py --output dist/Qwct-QuantConnect-Free-25.zip
+          python - <<'PY'
+          from zipfile import ZipFile
+          archive = 'dist/Qwct-QuantConnect-Free-25.zip'
+          with ZipFile(archive) as z:
+              assert len(z.namelist()) == 25
+              assert all(p.endswith('.py') for p in z.namelist())
+              print('Cloud upload ZIP:', archive, '25 Python files')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Qwct-QuantConnect-Free-25
+          path: dist/Qwct-QuantConnect-Free-25.zip
+          if-no-files-found: error
+          retention-days: 30

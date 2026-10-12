@@ -1,6 +1,6 @@
 """Fixed native-shaped inputs only; this is NOT a LEAN Cloud backtest."""
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -14,8 +14,11 @@ ET = ZoneInfo("America/New_York")
 
 
 def bar(**changes):
+    at = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
     values = dict(open=100., high=100.5, low=99.5, close=100.1,
-                  volume=150., is_fill_forward=False)
+                  volume=150., is_fill_forward=False,
+                  time=at - timedelta(minutes=5), end_time=at,
+                  period=timedelta(minutes=5))
     values.update(changes)
     return SimpleNamespace(**values)
 

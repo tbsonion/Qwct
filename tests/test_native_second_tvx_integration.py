@@ -238,3 +238,27 @@ def test_short_resistance_bpu_preclose_symmetric_and_m5_reconciled():
     assert a._bsu_proxy_bpu2_count == 1
     assert a._tvx_preclose_reconciled == 1
     assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "bpu2_confirmed"
+
+
+def test_missing_cutoff_second_gets_recorded_at_native_bpu2_close():
+    a = ResearchHarness()
+    arm(a)
+    for n in range(1, 270):
+        on_sec(a, sec_bar(n))
+    assert a._tvx_preclose_count == 0
+    assert a._tvx_second_reasons["SEC_PRECLOSE_CUTOFF_NOT_OBSERVED"] == 0
+    # Cannot claim pre-close price after seeing a completed M5 candle:
+    # only log that actual cutoff SEC evidence was absent.
+    process_m5(a, native_m5(AT + timedelta(minutes=5),
+                             low=100.01, high=100.13),
+               pd.Timestamp)
+    assert a._tvx_preclose_count == 0
+    assert a._tvx_preclose_reconciled == 0
+    assert a._tvx_second_reasons["SEC_PRECLOSE_CUTOFF_NOT_OBSERVED"] == 1
+    assert [r[1] for r in a.records].count("TVX_SEC_BLOCKED") == 1
+    assert a._symbols["NVDA"]["tvx_sec_window"].blocked_reason == (
+        "SEC_PRECLOSE_CUTOFF_NOT_OBSERVED")
+    # A separate closed-M5 BPU proxy can still be observed, but it
+    # carries no verified -30s TVX evidence and no trade authorization.
+    assert a._bsu_proxy_bpu2_count == 1
+    assert "NO verified SEC -30s TVX" in a.records[-1][2]["reason"]

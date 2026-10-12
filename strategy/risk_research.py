@@ -67,19 +67,27 @@ class RiskSnapshot:
     exchange_close: datetime | None = None
 
     def __post_init__(self):
-        _money("equity", self.equity, strictly_positive=True)
+        # LEAN may expose monetary values as .NET Decimal; normalize once
+        # without ever replacing missing evidence with numeric zero.
+        object.__setattr__(
+            self, "equity", _money("equity", self.equity, strictly_positive=True))
         for name in ("daily_start_equity", "weekly_start_equity",
                      "monthly_start_equity"):
-            _money(name, getattr(self, name), strictly_positive=True)
-        if self.period_cashflows_verified not in (None, True, False):
+            object.__setattr__(
+                self, name, _money(
+                    name, getattr(self, name), strictly_positive=True))
+        if (self.period_cashflows_verified is not None
+                and type(self.period_cashflows_verified) is not bool):
             raise ValueError("period_cashflows_verified must be bool or None")
         for name in ("available_buying_power", "reserved_open_risk"):
             v = _money(name, getattr(self, name))
             if v is not None and v < 0:
                 raise ValueError(f"{name} must not be negative")
+            object.__setattr__(self, name, v)
         for name in ("daily_realized_pnl", "weekly_realized_pnl",
                      "monthly_realized_pnl"):
-            _money(name, getattr(self, name))
+            object.__setattr__(
+                self, name, _money(name, getattr(self, name)))
         for name in ("current_positions", "pending_entries",
                      "losing_trades_today", "entries_today",
                      "consecutive_losing_days", "pause_days_remaining",
@@ -184,11 +192,14 @@ def review_risk(snapshot: RiskSnapshot, *, side: str, shares: int,
     if snapshot.reserved_open_risk is not None and (
             snapshot.reserved_open_risk + risk > daily_budget + 1e-8):
         blockers.append("combined open and planned risk exceeds daily risk budget")
-    for interval, pnl, pct in (
-            ("daily", snapshot.daily_realized_pnl, cfg.max_daily_loss_pct),
-            ("weekly", snapshot.weekly_realized_pnl, cfg.max_weekly_loss_pct),
-            ("monthly", snapshot.monthly_realized_pnl, cfg.max_monthly_loss_pct)):
-        if pnl is not None and pnl <= -(snapshot.equity * pct / 100.0):
+    for interval, pnl, base, pct in (
+            ("daily", snapshot.daily_realized_pnl, snapshot.daily_start_equity,
+             cfg.max_daily_loss_pct),
+            ("weekly", snapshot.weekly_realized_pnl, snapshot.weekly_start_equity,
+             cfg.max_weekly_loss_pct),
+            ("monthly", snapshot.monthly_realized_pnl, snapshot.monthly_start_equity,
+             cfg.max_monthly_loss_pct)):
+        if pnl is not None and base is not None and pnl <= -(base * pct / 100.0):
             blockers.append(f"{interval} realized loss limit reached")
     if (snapshot.losing_trades_today is not None and
             snapshot.losing_trades_today >= cfg.max_losing_trades_per_day):

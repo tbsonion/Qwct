@@ -106,9 +106,9 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
         g = global_trend(d1, len(d1) - 1, cfg)
         l = trend_direction(d1, len(d1) - 1, cfg)
         gates["trend_aligned"] = _gate(
-            "trend_aligned", True,
-            f"контртренд-режим ВКЛЮЧЁН (эксперимент): global={g} local={l} "
-            f"side={side} [требует решения владельца]")
+            "trend_aligned", None,
+            f"UNVERIFIED countertrend experiment: global={g} local={l} "
+            f"side={side}; canonical mandatory trend alignment not met")
     else:
         g = global_trend(d1, len(d1) - 1, cfg)
         l = trend_direction(d1, len(d1) - 1, cfg)
@@ -200,16 +200,13 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             f"entry={limit:.2f} stop={stop:.2f} target={target:.2f} "
             f"TP={cfg.tp_r}R")
 
-    # 7. risk_approved — через RiskManager, если передан
+    # 7. risk_approved: no user-supplied/legacy manager may grant native
+    # LEAN broker authorization. The read-only M5 observer can later
+    # downgrade UNKNOWN to FALSE on verified native mechanical blockers.
     if risk_mgr is not None:
-        ok_day, why_day = risk_mgr.can_open(intent.session)
-        shares_rm, risk_usd = risk_mgr.position_size(intent.risk_per_share,
-                                                     intent.limit_price,
-                                                     intent.session)
-        passed = bool(ok_day and shares_rm > 0)
-        reason = (f"[risk-manager] {why_day}; {shares_rm} акций; "
-                  f"риск ${risk_usd:.0f}")
-        gates["risk_approved"] = _gate("risk_approved", passed, reason)
+        gates["risk_approved"] = _gate(
+            "risk_approved", None,
+            "UNVERIFIED external risk manager; only native LEAN evidence accepted")
     elif risk_ps and risk_ps > 0 and limit:
         risk_money = equity * cfg.risk_per_trade_pct / 100
         shares = int(risk_money // risk_ps)

@@ -109,3 +109,20 @@ def test_screener_only_uses_official_lean_market_and_indicator_apis():
     assert not any(x in src for x in (
         "self.market_order(", "self.limit_order(",
         "self.bracket_order(", "OrderManager("))
+
+
+def test_second_mode_cap_is_explicit_without_changing_default_screener():
+    cfg = StrategyConfig(screener_candidate_limit=50, screener_watchlist_limit=10)
+    records = [
+        candidate(f"T{i:02d}", dollar_volume=100_000_000 - i * 1_000)
+        for i in range(45)
+    ]
+    assert len(select_liquid_fundamentals(records, cfg)) == 45
+    assert len(select_liquid_fundamentals(
+        records, cfg, max_results=cfg.screener_watchlist_limit)) == 10
+    assert [s.value for s in select_liquid_fundamentals(
+        records, cfg, max_results=2)] == ["T00", "T01"]
+    for bad in (0, -1, True, 1.5):
+        import pytest
+        with pytest.raises(ValueError):
+            select_liquid_fundamentals(records, cfg, max_results=bad)

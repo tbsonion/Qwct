@@ -5,7 +5,7 @@ or change any Qwct signal gate. Missing native P&L/exposure/entry history
 remains UNKNOWN, never silently interpreted as zero.
 """
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import isfinite
 
 from .config import StrategyConfig
@@ -55,9 +55,24 @@ class RiskSnapshot:
     consecutive_losing_days: int | None
     pause_days_remaining: int | None
     asof: datetime
+    # Baselines must be sampled from native marked-to-market portfolio equity
+    # at each exchange-period start and adjusted for external cash flows.
+    # Missing anchor/cashflow provenance never means today's equity.
+    daily_start_equity: float | None = None
+    weekly_start_equity: float | None = None
+    monthly_start_equity: float | None = None
+    period_cashflows_verified: bool | None = None
+    winning_trades_today: int | None = None
+    # Must come from native LEAN exchange-hours calendar (early close/DST).
+    exchange_close: datetime | None = None
 
     def __post_init__(self):
         _money("equity", self.equity, strictly_positive=True)
+        for name in ("daily_start_equity", "weekly_start_equity",
+                     "monthly_start_equity"):
+            _money(name, getattr(self, name), strictly_positive=True)
+        if self.period_cashflows_verified not in (None, True, False):
+            raise ValueError("period_cashflows_verified must be bool or None")
         for name in ("available_buying_power", "reserved_open_risk"):
             v = _money(name, getattr(self, name))
             if v is not None and v < 0:
@@ -67,11 +82,17 @@ class RiskSnapshot:
             _money(name, getattr(self, name))
         for name in ("current_positions", "pending_entries",
                      "losing_trades_today", "entries_today",
-                     "consecutive_losing_days", "pause_days_remaining"):
+                     "consecutive_losing_days", "pause_days_remaining",
+                     "winning_trades_today"):
             _count(name, getattr(self, name))
         if (not isinstance(self.asof, datetime) or self.asof.tzinfo is None
                 or self.asof.utcoffset() is None):
             raise ValueError("native as-of risk snapshot requires aware datetime")
+        if self.exchange_close is not None and (
+                not isinstance(self.exchange_close, datetime)
+                or self.exchange_close.tzinfo is None
+                or self.exchange_close.utcoffset() is None):
+            raise ValueError("native exchange close must be timezone-aware")
 
 
 @dataclass(frozen=True)
@@ -106,7 +127,8 @@ def review_risk(snapshot: RiskSnapshot, *, side: str, shares: int,
     notional = shares * entry
     risk = shares * abs(entry - stop)
     budget = snapshot.equity * cfg.risk_per_trade_pct / 100.0
-    daily_budget = snapshot.equity * cfg.max_daily_risk_pct / 100.0
+    daily_budget = ((snapshot.daily_start_equity or snapshot.equity)
+                    * cfg.max_daily_risk_pct / 100.0)
     blockers = []
     unknown = []
 
@@ -124,10 +146,33 @@ def review_risk(snapshot: RiskSnapshot, *, side: str, shares: int,
         "entries_today": snapshot.entries_today,
         "consecutive_losing_days": snapshot.consecutive_losing_days,
         "pause_days_remaining": snapshot.pause_days_remaining,
+        "winning_trades_today": snapshot.winning_trades_today,
+        "daily_start_equity": snapshot.daily_start_equity,
+        "weekly_start_equity": snapshot.weekly_start_equity,
+        "monthly_start_equity": snapshot.monthly_start_equity,
+        "period_cashflows_verified": snapshot.period_cashflows_verified,
+        "exchange_close": snapshot.exchange_close,
     }
     for name, value in checks.items():
         if value is None:
             unknown.append(f"unknown native {name}; cannot assume zero")
+    if snapshot.period_cashflows_verified is False:
+        blockers.append("period start equity not adjusted for cashflows")
+    if snapshot.exchange_close is not None:
+        close = snapshot.exchange_close
+        # The source of this timestamp is LEAN's native exchange schedule.
+        # No hardcoded 16:00 close: half-days must be handled by caller.
+        if snapshot.asof.astimezone(close.tzinfo).date() != close.date():
+            blockers.append("risk snapshot is not for the native exchange session")
+        elif snapshot.asof >= close - timedelta(minutes=cfg.flatten_before_close_min):
+            blockers.append("new position disallowed at native EOD cutoff")
+    for period, base, limit in (
+            ("daily", snapshot.daily_start_equity, cfg.max_daily_loss_pct),
+            ("weekly", snapshot.weekly_start_equity, cfg.max_weekly_loss_pct),
+            ("monthly", snapshot.monthly_start_equity, cfg.max_monthly_loss_pct)):
+        if base is not None and snapshot.equity <= base * (1 - limit / 100.0):
+            blockers.append(
+                f"{period} marked-to-market equity drawdown limit reached")
     if snapshot.available_buying_power is not None and (
             notional > snapshot.available_buying_power + 1e-8):
         blockers.append("planned gross notional exceeds supplied buying-power proxy")
@@ -148,6 +193,11 @@ def review_risk(snapshot: RiskSnapshot, *, side: str, shares: int,
     if (snapshot.losing_trades_today is not None and
             snapshot.losing_trades_today >= cfg.max_losing_trades_per_day):
         blockers.append("daily losing-trade limit reached")
+    if (snapshot.losing_trades_today is not None and
+            snapshot.winning_trades_today is not None and
+            snapshot.losing_trades_today >= 2 and
+            snapshot.winning_trades_today >= 1):
+        blockers.append("2 losing and 1 winning closed trades: trading day ended")
     if snapshot.entries_today is not None and (
             snapshot.entries_today >= cfg.max_trades_per_day):
         blockers.append("daily trade-count limit reached")

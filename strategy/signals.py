@@ -18,6 +18,7 @@ import pandas as pd
 from .config import StrategyConfig
 from .data import MarketData
 from .breakout_retest import BreakoutRetestEvidence
+from .bpu_tvx_evidence import BpuTvxEvidence
 from .indicators import global_trend, trend_direction
 from .levels import Level, next_level
 from .scenarios import ScenarioDecision
@@ -150,6 +151,29 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             "m5_confirmed", verified,
             "three distinct observed native closed M5 phases"
             if verified else "no matching closed breakout/retest/confirmation evidence")
+    elif model == "bounce":
+        # Prior two-M5 bounce is only a price-action proxy. It must
+        # NEVER make the full Gerchik M5 gate TRUE. Only reconciled
+        # BPU1 -> native SEC -30s -> final closed BPU2 evidence from
+        # the same morning D1 origin/level/session can satisfy it.
+        evidence = market.bpu_tvx
+        verified = (
+            type(evidence) is BpuTvxEvidence
+            and lvl is not None
+            and evidence.matches(
+                symbol=market.symbol, session=decision.session, side=side,
+                level_price=lvl.price, observed_at=ts)
+            and m5 is not None and len(m5) >= 2
+            and isinstance(m5.index, pd.DatetimeIndex)
+            and m5.index.tz is not None
+            and pd.Timestamp(m5.index[-1]) == pd.Timestamp(ts)
+            and pd.Timestamp(m5.index[-2]) == pd.Timestamp(
+                evidence.bpu1_end))
+        gates["m5_confirmed"] = _gate(
+            "m5_confirmed", verified,
+            "D1 swing proxy + exact BPU1 + native SEC -30s + closed BPU2"
+            if verified else
+            "two-bar bounce proxy is insufficient: missing native BPU/TVX")
     else:
         gates["m5_confirmed"] = _check_m5(m5, lvl, side, model, cfg, ts)
     # A confirmed close far beyond its D1 level is a chase, not an

@@ -292,8 +292,8 @@ def _atr(d1: pd.DataFrame, cfg: StrategyConfig) -> float | None:
     if d1 is None or d1.empty or len(d1) < cfg.atr_period + 1:
         return None
     v = atr(d1, cfg.atr_period).iloc[-1]
-    if pd.isna(v) or v <= 0:
-        return None  # No homemade ATR fallback
+    if pd.isna(v) or not isfinite(float(v)) or v <= 0:
+        return None  # No homemade ATR fallback, no infinity stop
     return float(v)
 
 

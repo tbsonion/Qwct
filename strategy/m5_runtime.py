@@ -15,11 +15,20 @@ def process_m5(self, bar, time_index):
     state = self._symbols.get(symbol)
     if state is None:
         return
+    # LEAN event callbacks can be repeated or delayed. A repeated
+    # completed candle must never count as a second BPU or a new
+    # research candidate (and delayed out-of-order evidence cannot
+    # rewrite earlier M5 state). This check precedes all pattern logic.
+    native_end = time_index(bar.end_time)
+    if (state["m5_rows"]
+            and native_end <= state["m5_rows"][-1]["date"]):
+        self._m5_input_rejections["M5_DUPLICATE_OR_OUT_OF_ORDER"] += 1
+        return
     # M5 OHLCV is real data evidence, never an interpolation. Reject a
     # zero-volume, fill-forward or malformed native candle BEFORE feeding
     # either BSU/BPU research or the regular two-bar signal proxy.
     valid_m5, rejection = validate_m5_tradebar(
-        bar, time_index(bar.end_time).to_pydatetime())
+        bar, native_end.to_pydatetime())
     if not valid_m5:
         self._m5_input_rejections[rejection] += 1
         return

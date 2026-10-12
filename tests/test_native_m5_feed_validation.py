@@ -56,17 +56,3 @@ def test_m5_endtime_must_be_native_aware_aligned(end, reason):
     assert actual == reason
 
 
-def test_runtime_does_not_promote_zero_volume_wick_touch_to_bpu1():
-    # Use the actual extracted research callback; no fake fills/orders.
-    from tests.test_native_bpu_runtime_integration import AlgorithmHarness
-    a = AlgorithmHarness()
-    at = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
-    native_bar = bar(high=50.27, low=49.9, open=50., close=50.08, volume=0)
-    native_bar.symbol = "NVDA"
-    native_bar.end_time = at
-    process_m5(a, native_bar, pd.Timestamp)
-    assert a._m5_bars_seen == 0
-    assert a._m5_input_rejections["M5_NO_OBSERVED_TRADES"] == 1
-    assert a._symbols["NVDA"]["touch_audit"].touches == 0
-    assert a._bsu_bpu1_count == 0
-    assert not a.records

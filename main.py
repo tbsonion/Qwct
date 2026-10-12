@@ -25,6 +25,8 @@ from strategy.reporting import native_order_event_row
 from strategy.runtime_reporting import write_reports
 from strategy.m5_runtime import process_m5
 from strategy.second_runtime import process_second_slice
+from strategy.corporate_action_guard import (
+    process_native_split_events, rewarm_split_symbols, split_research_blocked)
 
 
 ET = ZoneInfo("America/New_York")
@@ -223,6 +225,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "tvx_sec_window": None,
             "bsu_tvx_evidence": None,
             "preclose_review": None,
+            "split_blocked_date": None, "split_rewarm_pending": False,
             "breakout_retest": None,
             "focus_level": None,
             "setup_trace": None,
@@ -330,6 +333,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         if self.symbol in self._screen_ranks:
             if self._register_symbol(self.symbol):
                 self._warm_symbols([self.symbol])
+        rewarm_split_symbols(self)
         self._refresh_screen_watchlist()
         # Freeze the focus Symbol on the FIRST qualifying trading day.
         # Do not dynamically switch prices between TSLA/NVDA/etc. on
@@ -352,6 +356,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
         for symbol in self.screen_watchlist:
             state = self._symbols[symbol]
+            if split_research_blocked(state, self._session_date):
+                self._record(symbol, "REJECT",
+                             reason="corporate split day: native rewarm quarantine")
+                continue
             d1 = self._frame(state["daily_rows"])
             if not d1.empty:
                 d1 = d1.loc[d1.index < _time_index(self.time).normalize()]
@@ -486,6 +494,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 and self._symbols[symbol]["decision"].accepted))
 
     def on_data(self, data: Slice) -> None:
+        process_native_split_events(self, data, SplitType.SPLIT_OCCURRED)
         # No Scheduled Event lookahead; SEC on_data is after consolidators.
         process_second_slice(self, data, _time_index)
 

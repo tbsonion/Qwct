@@ -202,7 +202,12 @@ def g07_close_at_extreme(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult
     closed_high = b["close"] >= b["high"] - 0.15 * rng and up_tail <= cfg.tail_atr * a
     closed_low = b["close"] <= b["low"] + 0.15 * rng and dn_tail <= cfg.tail_atr * a
     impulse = rng >= cfg.big_bar_atr * a
-    v = near and (closed_high or closed_low)
+    # An upper-close only supports approach to an overhead level; a
+    # lower-close only supports approach to a level underneath. Ignoring
+    # direction awarded breakout points to bars closing AWAY from level.
+    approach_side = _dir_to_level(float(d1["close"].iloc[-2]), level.price)
+    v = near and ((approach_side > 0 and closed_high)
+                  or (approach_side < 0 and closed_low))
     return FeatureResult("g07_close_at_extreme", v,
                          {"near_level": near,
                           "closed_at_high": closed_high,
@@ -221,9 +226,12 @@ def g08_small_bars_approach(d1, m5, ts, level: Level, levels, cfg) -> FeatureRes
     small = avg_range <= cfg.small_bar_atr * a
     near = _dist(win["close"].iloc[-1], level.price, a) <= 1.0
     trending = abs(win["close"].iloc[-1] - win["close"].iloc[0]) > 0.5 * a
-    v = small and near and trending
+    approaching = (_dist(float(win["close"].iloc[-1]), level.price, a)
+                   < _dist(float(win["close"].iloc[0]), level.price, a))
+    v = small and near and trending and approaching
     return FeatureResult("g08_small_bars_approach", v,
                          {"small_bars": small, "near": near, "trending": trending,
+                          "approaching_level": approaching,
                           "avg_range_atr": round(avg_range / a, 2)})
 
 

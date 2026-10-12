@@ -378,6 +378,10 @@ def test_end_to_end_actual_sec_handler_reviews_asof_before_bpu2_closes(monkeypat
     state["decision"] = ScenarioDecision(
         "NVDA", clock.date(), clock.replace(hour=9, minute=29),
         support, "bounce", "long", score=5)
+    # Bypass the unrelated legacy post-M5 intent harness (its Symbol
+    # is a string rather than PythonNet LEAN Symbol); the independent
+    # BPU observer and REAL on_data preclose path still run normally.
+    state["qualified_today"] = True
     arm(a)
     for n in range(1, 271):
         on_sec(a, sec_bar(n))

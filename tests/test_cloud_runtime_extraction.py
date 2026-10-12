@@ -46,6 +46,9 @@ def test_actual_runtime_reporting_function_emits_empty_research_statistics():
             self._d1_models = Counter()
             self._bsu_block_reasons = Counter()
             self._bpu_invalid_reasons = Counter()
+            self._tvx_preclose_count = 0
+            self._tvx_preclose_reconciled = 0
+            self._tvx_second_reasons = Counter()
             self._breakout_retest_counts = Counter()
             self._gate_failures = Counter()
             self._m5_true_by_model = Counter()
@@ -74,5 +77,7 @@ def test_actual_runtime_reporting_function_emits_empty_research_statistics():
     assert algorithm.stats["Qwct D1 setups"] == 0
     assert algorithm.stats["Qwct M5 checks"] == 0
     assert algorithm.stats["Qwct breakout retest confirmed"] == 0
+    assert algorithm.stats["Qwct SEC TVX -30s preliminary"] == 0
+    assert algorithm.stats["Qwct SEC TVX closed verified"] == 0
     assert algorithm.stats["Qwct traced D1 setups"] == 0
     assert any("ObjectStore DISABLED" in s for s in algorithm.logs)

@@ -158,6 +158,7 @@ def process_m5(self, bar, time_index):
                             side=observed.side,
                             d1_level_price=link.cluster_price,
                             native_origin_price=link.origin_price,
+                            native_tick_size=link.tick_size,
                             entry_price=observed.entry_price,
                             stop_price=observed.stop_price,
                             preclose_last_price=win.last_price,

@@ -20,6 +20,24 @@ def validate_m5_tradebar(bar, end_at: datetime) -> tuple[bool, str]:
     if (end_at.second != 0 or end_at.microsecond != 0
             or end_at.minute % 5 != 0):
         return False, "M5_PERIOD_BOUNDARY_INVALID"
+    # Official LEAN TradeBar has start Time, EndTime and Period.
+    # An observed native M1 bar can also end at 09:35. The clock
+    # boundary alone is NOT evidence of an aggregated 5-minute bar.
+    # Strict validation needs both the declared Period and actual span.
+    try:
+        period = getattr(bar, "period", None)
+        if period is None:
+            return False, "M5_SOURCE_PERIOD_MISSING"
+        seconds = float(period.total_seconds())
+        if not isfinite(seconds) or seconds != 300:
+            return False, "M5_SOURCE_PERIOD_NOT_FIVE_MINUTES"
+        source_start = getattr(bar, "time")
+        source_end = getattr(bar, "end_time")
+        actual_seconds = float((source_end - source_start).total_seconds())
+        if not isfinite(actual_seconds) or actual_seconds != 300:
+            return False, "M5_SOURCE_START_END_INCONSISTENT"
+    except (AttributeError, ValueError, TypeError, OverflowError):
+        return False, "M5_SOURCE_PERIOD_OR_CHRONOLOGY_UNVERIFIED"
     try:
         o, h, lo, c, volume = (float(v) for v in (
             bar.open, bar.high, bar.low, bar.close, bar.volume))

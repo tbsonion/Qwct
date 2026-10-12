@@ -114,7 +114,13 @@ def g03_near_retest(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
             # We require w+1 history rows so even the first retest
             # candle in the lookback has a known preceding D1 close.
             prev_close = float(d1["close"].iloc[-w + i - 1])
-            if abs(win["open"].iloc[i] - prev_close) >= 0.5 * a:
+            opening = float(win["open"].iloc[i])
+            # A retest gap must move TOWARD the candidate D1 level.
+            # A large overnight gap AWAY, followed by an intraday
+            # wick back to the level, is not a "gap approach" bonus.
+            if (abs(opening - prev_close) >= 0.5 * a
+                    and abs(opening - level.price)
+                        < abs(prev_close - level.price)):
                 gap = True
                 break
     v = bool(touched and shallow)

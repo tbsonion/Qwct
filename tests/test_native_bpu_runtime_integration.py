@@ -55,6 +55,7 @@ def test_extracted_m5_callback_audits_all_76_candles_without_false_bpu():
         high = 49.0 + n*.01
         bar = SimpleNamespace(
             symbol="NVDA", end_time=time,
+            time=time-timedelta(minutes=5), period=timedelta(minutes=5),
             open=48.9, high=high, low=48.70,
             close=48.9, volume=500)
         process_m5(a, bar, pd.Timestamp)
@@ -73,6 +74,7 @@ def test_real_callback_and_audit_both_find_same_exact_pivot_touch():
     time = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
     bar = SimpleNamespace(
         symbol="NVDA", end_time=time,
+        time=time-timedelta(minutes=5), period=timedelta(minutes=5),
         open=50.0, high=50.27, low=49.9,
         close=50.08, volume=500)
     process_m5(a, bar, pd.Timestamp)
@@ -86,7 +88,9 @@ def test_zero_volume_native_m5_cannot_create_bpu1_research_evidence():
     a = AlgorithmHarness()
     at = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
     bar = SimpleNamespace(
-        symbol="NVDA", end_time=at, open=50., high=50.27, low=49.9,
+        symbol="NVDA", end_time=at,
+        time=at-timedelta(minutes=5), period=timedelta(minutes=5),
+        open=50., high=50.27, low=49.9,
         close=50.08, volume=0)
     process_m5(a, bar, pd.Timestamp)
     assert a._m5_bars_seen == 0
@@ -102,7 +106,9 @@ def test_missing_traded_intermediate_m5_invalidates_immediate_bpu2():
 
     def deliver(end, volume):
         process_m5(a, SimpleNamespace(
-            symbol="NVDA", end_time=end, open=50.0, high=50.27,
+            symbol="NVDA", end_time=end,
+            time=end-timedelta(minutes=5), period=timedelta(minutes=5),
+            open=50.0, high=50.27,
             low=49.9, close=50.08, volume=volume), pd.Timestamp)
 
     deliver(t, 500)  # True BPU1 native traded candle
@@ -119,7 +125,9 @@ def test_duplicate_native_m5_bar_cannot_count_two_bpu1_events():
     a = AlgorithmHarness()
     now = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
     candle = SimpleNamespace(
-        symbol="NVDA", end_time=now, open=50., high=50.27,
+        symbol="NVDA", end_time=now,
+        time=now-timedelta(minutes=5), period=timedelta(minutes=5),
+        open=50., high=50.27,
         low=49.9, close=50.08, volume=500)
     process_m5(a, candle, pd.Timestamp)
     process_m5(a, candle, pd.Timestamp)
@@ -134,10 +142,13 @@ def test_late_older_m5_bar_cannot_rewrite_bsu_trajectory():
     a = AlgorithmHarness()
     now = datetime(2024, 1, 2, 9, 40, tzinfo=ET)
     newest = SimpleNamespace(
-        symbol="NVDA", end_time=now, open=49., high=49.5,
+        symbol="NVDA", end_time=now,
+        time=now-timedelta(minutes=5), period=timedelta(minutes=5),
+        open=49., high=49.5,
         low=48.7, close=49., volume=400)
     older = SimpleNamespace(
         symbol="NVDA", end_time=now - timedelta(minutes=5),
+        time=now-timedelta(minutes=10), period=timedelta(minutes=5),
         open=50., high=50.27, low=49.9, close=50.08, volume=500)
     process_m5(a, newest, pd.Timestamp)
     process_m5(a, older, pd.Timestamp)

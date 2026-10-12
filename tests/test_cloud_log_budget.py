@@ -24,6 +24,9 @@ class FakeAlgorithm:
         self._d1_models = Counter({"bounce": n})
         self._bsu_block_reasons = Counter({"origin mismatch": n})
         self._bpu_invalid_reasons = Counter()
+        self._tvx_preclose_count = 0
+        self._tvx_preclose_reconciled = 0
+        self._tvx_second_reasons = Counter()
         self._breakout_retest_counts = Counter()
         self._gate_failures = Counter({"risk_approved": n})
         self._m5_true_by_model = Counter()

@@ -12,6 +12,7 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from .levels import Level
+    from .breakout_retest import BreakoutRetestEvidence
 
 ET = ZoneInfo("America/New_York")
 
@@ -35,6 +36,9 @@ class MarketData:
     # tuple (including empty) is the premarket snapshot and MUST be reused
     # unchanged throughout the trading day to avoid data revision/drift.
     session_levels: tuple["Level", ...] | None = None
+    # Per-symbol, per-session, bar-close-stamped breakout/retest evidence.
+    # Not a substitute for native portfolio/broker authorization.
+    breakout_retest: "BreakoutRetestEvidence | None" = None
 
     def d1_asof(self, ts: datetime) -> pd.DataFrame:
         current_day = _et(ts).normalize()

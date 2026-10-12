@@ -98,7 +98,9 @@ def test_screener_only_uses_official_lean_market_and_indicator_apis():
     assert "self.history[TradeBar](" in src
     assert "self._refresh_screen_watchlist()" in src
     assert "self.screen_watchlist = " in src
-    assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self.universe_settings.resolution = (" in src
+    assert "Resolution.SECOND if self._tvx_seconds_enabled" in src
+    assert "else Resolution.MINUTE" in src
     assert "anchor, Resolution.MINUTE, fill_forward=False," in src
     assert "data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED).symbol" in src
     assert "self._native_exit_enabled = False" in src

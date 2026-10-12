@@ -17,6 +17,7 @@ import pandas as pd
 
 from .config import StrategyConfig
 from .data import MarketData
+from .breakout_retest import BreakoutRetestEvidence
 from .indicators import global_trend, trend_direction
 from .levels import Level, next_level
 from .scenarios import ScenarioDecision
@@ -128,8 +129,29 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             "daily_level_valid", ok,
             f"strength={lvl.strength} touches={lvl.touches} valid_from={lvl.valid_from}")
 
-    # 3. m5_confirmed — FAIL CLOSED
-    gates["m5_confirmed"] = _check_m5(m5, lvl, side, model, cfg, ts)
+    # 3. m5_confirmed — FAIL CLOSED. The old two-M5 crossover
+    # function is a LEGACY PROXY, not a full Gerchik breakout setup.
+    # A genuine breakout must now carry the distinct subsequent retest
+    # and confirmation from a native M5 observer with matching as-of
+    # session, direction and level; no fallback to raw crossover.
+    if model == "breakout":
+        evidence = market.breakout_retest
+        verified = (
+            type(evidence) is BreakoutRetestEvidence
+            and lvl is not None
+            and evidence.matches(
+                symbol=market.symbol, session=decision.session, side=side,
+                level_price=lvl.price, observed_at=ts)
+            and m5 is not None and not m5.empty
+            and isinstance(m5.index, pd.DatetimeIndex)
+            and m5.index.tz is not None
+            and pd.Timestamp(m5.index[-1]) == pd.Timestamp(ts))
+        gates["m5_confirmed"] = _gate(
+            "m5_confirmed", verified,
+            "three distinct observed native closed M5 phases"
+            if verified else "no matching closed breakout/retest/confirmation evidence")
+    else:
+        gates["m5_confirmed"] = _check_m5(m5, lvl, side, model, cfg, ts)
     # A confirmed close far beyond its D1 level is a chase, not an
     # acceptable nearby-level entry. Use native D1 ATR only.
     if gates["m5_confirmed"].passed is True and lvl is not None:
@@ -232,7 +254,11 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
 
 def _check_m5(m5: pd.DataFrame, lvl: Level | None, side: str | None,
               model: str | None, cfg: StrategyConfig, ts: datetime) -> GateResult:
-    """Minimal two-bar closed M5 evidence. NOT full Gerchik BSU/TVX."""
+    """Legacy two-bar M5 proxy for bounce/false breakout and pure regressions.
+
+    For breakout the real runtime gate requires breakout/retest/confirmation
+    evidence and does NOT treat this historical two-bar proxy as approval.
+    """
     if m5 is None or len(m5) < 2 or lvl is None or side not in ("long", "short"):
         return _gate("m5_confirmed", False, "нужны две закрытые M5 свечи")
     if not isinstance(m5.index, pd.DatetimeIndex) or m5.index.tz is None:

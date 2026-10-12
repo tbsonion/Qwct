@@ -21,6 +21,19 @@ def write_reports(self):
                                sum(self._bsu_block_reasons.values()))
     self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
     self.set_runtime_statistic(
+        "Qwct native SEC feed bars", getattr(self, "_native_sec_received", 0))
+    preclose_reviews = [
+        row for row in self._signal_rows
+        if row["type"] == "TVX_PRECLOSE_REVIEW"]
+    self.set_runtime_statistic(
+        "Qwct as-of TVX -30s reviews", len(preclose_reviews))
+    self.set_runtime_statistic(
+        "Qwct as-of TVX observable",
+        sum(str(row["reason"]).startswith("OBSERVABLE_READY")
+            for row in preclose_reviews))
+    self.set_runtime_statistic(
+        "Qwct split quarantine", counts["SPLIT_RESEARCH_BLOCKED"])
+    self.set_runtime_statistic(
         "Qwct SEC TVX -30s preliminary", self._tvx_preclose_count)
     self.set_runtime_statistic(
         "Qwct SEC TVX closed verified", self._tvx_preclose_reconciled)

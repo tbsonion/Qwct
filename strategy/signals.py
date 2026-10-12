@@ -99,6 +99,11 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
     lvl = decision.level
     side, model = intent.side, intent.model
     dirn = _direction(side) if side else 0
+    native_bounce = (
+        model == "bounce" and type(market.bpu_tvx) is BpuTvxEvidence
+        and lvl is not None and market.bpu_tvx.matches(
+            symbol=market.symbol, session=decision.session,
+            side=side, level_price=lvl.price, observed_at=ts))
 
     # 1. trend_aligned — глобальный и локальный тренд совпадают с направлением.
     # allow_countertrend=False (по умолчанию): контртренд запрещён, LMS.
@@ -158,11 +163,7 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
         # the same morning D1 origin/level/session can satisfy it.
         evidence = market.bpu_tvx
         verified = (
-            type(evidence) is BpuTvxEvidence
-            and lvl is not None
-            and evidence.matches(
-                symbol=market.symbol, session=decision.session, side=side,
-                level_price=lvl.price, observed_at=ts)
+            native_bounce
             and m5 is not None and len(m5) >= 2
             and isinstance(m5.index, pd.DatetimeIndex)
             and m5.index.tz is not None
@@ -183,14 +184,20 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
         if native_a is None:
             gates["m5_confirmed"] = _gate(
                 "m5_confirmed", None, "native D1 ATR missing")
-        elif abs(float(m5["close"].iloc[-1]) - lvl.price) > (
+        elif abs((
+                market.bpu_tvx.preclose_last_price if native_bounce
+                else float(m5["close"].iloc[-1])) - lvl.price) > (
                 cfg.max_entry_distance_atr * native_a):
             gates["m5_confirmed"] = _gate(
                 "m5_confirmed", False, "M5 level proximity exceeded no-chase ATR limit")
 
     # 4/5/6 зависят от цен — считаем стоп и лимит
     stop, limit = None, None
-    if lvl is not None and dirn != 0:
+    if native_bounce:
+        # Actual Gerchik TVX price is at 20% stop luft from the
+        # SOURCE BSU swing pivot, not the median D1 cluster price.
+        stop, limit = market.bpu_tvx.stop_price, market.bpu_tvx.entry_price
+    elif lvl is not None and dirn != 0:
         a = _atr(d1, cfg)
         if a is None:
             # нет ATR — стоп не из чего строить, дальше только None-гейты
@@ -380,6 +387,12 @@ def build_intent(decision: ScenarioDecision, market: MarketData,
     stop = lvl.price - dirn * buf
     m5 = market.m5_asof(ts)
     limit = _limit_price(decision.model, decision.side, lvl, m5)
+    evidence = market.bpu_tvx
+    if (decision.model == "bounce" and type(evidence) is BpuTvxEvidence
+            and evidence.matches(
+                symbol=market.symbol, session=decision.session,
+                side=decision.side, level_price=lvl.price, observed_at=ts)):
+        limit, stop = evidence.entry_price, evidence.stop_price
     risk_ps = max(0.0, dirn * (limit - stop))
     risk_money = equity * cfg.risk_per_trade_pct / 100
     shares = int(risk_money // risk_ps) if risk_ps > 0 else 0

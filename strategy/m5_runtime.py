@@ -94,6 +94,21 @@ def process_m5(self, bar, time_index):
                         native_end.to_pydatetime() > sec_window.bpu2_end):
                     link.detector.reset()
                     state["tvx_sec_window"] = None
+            # LEAN supplies no TradeBar for a second without trades.
+            # If the exact -30s source candle never arrived, record
+            # that gap only when the genuine M5 BPU2 closes. Never
+            # reconstruct it using BPU2's future complete OHLC.
+            win = state.get("tvx_sec_window")
+            if (getattr(self, "_tvx_seconds_enabled", False)
+                    and isinstance(win, NativeSecondTvxWindow)
+                    and native_end.to_pydatetime() == win.bpu2_end
+                    and not win.complete and not win.blocked_reason
+                    and link.detector.state.phase == "bpu1"):
+                win.blocked_reason = "SEC_PRECLOSE_CUTOFF_NOT_OBSERVED"
+                self._tvx_second_reasons[win.blocked_reason] += 1
+                self._record(
+                    symbol, "TVX_SEC_BLOCKED", model="bounce",
+                    reason=win.blocked_reason + "; NO ORDERS")
             before_phase = link.detector.state.phase
             observed = link.detector.on_bar(ResearchBpuBar(
                 ts=time_index(bar.end_time).to_pydatetime(),

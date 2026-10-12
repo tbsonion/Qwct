@@ -25,6 +25,7 @@ class AlgorithmHarness:
         self._session_date = datetime(2024, 1, 2).date()
         self.screen_watchlist = ("NVDA",)
         self._m5_bars_seen = 0
+        self._m5_input_rejections = Counter()
         self._chart_symbol = "TSLA"
         self._focus_m5_plotted = 0
         self._bpu_invalid_reasons = Counter()

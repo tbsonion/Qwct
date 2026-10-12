@@ -46,7 +46,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # The anchor is a clock only. All actual Gerchik decisions use
         # independently warmed symbols selected by the native universe.
         anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
-        self.symbol = self.add_equity(anchor, Resolution.MINUTE).symbol
+        # The manually subscribed clock ticker may also be selected by
+        # the universe. Its own subscription MUST NOT forward-fill M5
+        # input regardless of UniverseSettings (which apply to universe
+        # subscriptions, not this already-added anchor).
+        self.symbol = self.add_equity(
+            anchor, Resolution.MINUTE, fill_forward=False,
+            data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED).symbol
         self.securities[self.symbol].set_data_normalization_mode(
             DataNormalizationMode.SPLIT_ADJUSTED)
 

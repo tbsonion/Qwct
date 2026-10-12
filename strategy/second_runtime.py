@@ -61,11 +61,16 @@ def process_second_slice(self, data, time_index):
                 self._record(
                     symbol, "TVX_SEC_PRE_CLOSE", model="bounce",
                     side=observed.side, level=observed.level_price,
+                    entry=observed.entry_price,
+                    stop=observed.stop_price,
+                    risk=abs(observed.entry_price - observed.stop_price),
                     reason=(
                         f"native {sample.observed_bars} traded SEC bars "
                         f"({sample.unobserved_seconds} seconds without a bar); "
+                        f"actual last SEC trade={sample.last_price}; "
                         f"real cutoff={sample.observed_at}; "
                         f"BPU2 ends {sample.bpu2_end}; "
+                        "risk/broker authorization UNKNOWN; "
                         "provisional only; NO ORDERS OR FILLS"))
             else:
                 self._tvx_second_reasons[observed.reason] += 1

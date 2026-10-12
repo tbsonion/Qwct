@@ -80,3 +80,17 @@ def test_real_callback_and_audit_both_find_same_exact_pivot_touch():
     assert a._bsu_bpu1_count == 1
     assert len(a.records) == 1
     assert a.records[0][1] == "BSU_PROXY_BPU1"
+
+
+def test_zero_volume_native_m5_cannot_create_bpu1_research_evidence():
+    a = AlgorithmHarness()
+    at = datetime(2024, 1, 2, 9, 35, tzinfo=ET)
+    bar = SimpleNamespace(
+        symbol="NVDA", end_time=at, open=50., high=50.27, low=49.9,
+        close=50.08, volume=0)
+    process_m5(a, bar, pd.Timestamp)
+    assert a._m5_bars_seen == 0
+    assert a._m5_input_rejections["M5_NO_OBSERVED_TRADES"] == 1
+    assert a._symbols["NVDA"]["touch_audit"].touches == 0
+    assert a._bsu_bpu1_count == 0
+    assert not a.records

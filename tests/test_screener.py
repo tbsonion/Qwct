@@ -104,10 +104,14 @@ def test_screener_only_uses_official_lean_market_and_indicator_apis():
     assert "anchor, (Resolution.SECOND if self._tvx_seconds_enabled" in src
     assert "else Resolution.MINUTE), fill_forward=False," in src
     assert "max_results=limit" in src
-    assert "DataNormalizationMode.RAW if self._tvx_seconds_enabled" in src
-    assert "DataNormalizationMode.SCALED_RAW" in src
-    assert "else DataNormalizationMode.SPLIT_ADJUSTED" in src
-    assert "data_normalization_mode=self._tvx_normalization_mode).symbol" in src
+    # Current native research basis: RAW subscriptions in BOTH Minute
+    # and Second modes, with SCALED_RAW as-of native D1 warmup.
+    # The previous SEC-only RAW branch was removed in the Oct-12 fix.
+    assert "self._equity_normalization_mode = DataNormalizationMode.RAW" in src
+    assert "data_normalization_mode=DataNormalizationMode.SCALED_RAW" in src
+    assert "self._tvx_normalization_mode" not in src
+    assert "else DataNormalizationMode.SPLIT_ADJUSTED" not in src
+    assert "data_normalization_mode=self._equity_normalization_mode).symbol" in src
     assert "self._native_exit_enabled = False" in src
     assert not any(x in src for x in (
         "self.market_order(", "self.limit_order(",

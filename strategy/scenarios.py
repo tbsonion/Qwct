@@ -12,6 +12,7 @@
 """
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from math import isfinite
 
 import pandas as pd
 
@@ -175,6 +176,6 @@ class ScenarioEvaluator:
 def _atr_value(d1: pd.DataFrame, cfg: StrategyConfig) -> float:
     from .indicators import atr
     v = atr(d1, cfg.atr_period).iloc[-1]
-    if pd.isna(v) or v <= 0:
+    if pd.isna(v) or not isfinite(float(v)) or v <= 0:
         raise ValueError("Native LEAN ATR is not ready")
     return float(v)

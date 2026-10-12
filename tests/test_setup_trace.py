@@ -207,19 +207,49 @@ def test_actual_strategy_signal_gates_feed_trace_not_fabricated_gate_values():
         "close": 99.9, "volume": 500000,
         "atr14": 2.0, "sma50": 99.5,
     }, index=idx)
+    from strategy.breakout_retest import BreakoutRetestObserver
     m5_idx = pd.DatetimeIndex([
         datetime(2024, 1, 3, 10, 35, tzinfo=ET),
-        datetime(2024, 1, 3, 10, 40, tzinfo=ET)])
+        datetime(2024, 1, 3, 10, 40, tzinfo=ET),
+        datetime(2024, 1, 3, 10, 45, tzinfo=ET),
+        datetime(2024, 1, 3, 10, 50, tzinfo=ET)])
     m5 = pd.DataFrame(
         [[99.6, 99.9, 99.3, 99.7],
-         [99.7, 100.3, 99.6, 100.2]],
+         [99.7, 100.3, 99.6, 100.2],
+         [100.2, 100.3, 99.9, 100.08],
+         [100.08, 100.5, 100.01, 100.42]],
         index=m5_idx,
         columns=["open", "high", "low", "close"])
     decision = accepted(model="breakout", side="long", level=100.)
     trace = SetupTrace.from_decision(decision, d1_close=99.9,
                                      native_atr=2.0, level_count=2)
     trace.set_bsu(False, "not eligible: model is not bounce")
-    market = MarketData("TSLA", d1, m5, session_levels=(decision.level,))
+    obs = BreakoutRetestObserver(
+        symbol="TSLA", session=decision.session, side="long",
+        level_price=100., atr_value=2., max_confirm_chase_atr=0.3)
+    # BEFORE confirmation, a plain closed M5 breakout must NOT satisfy
+    # the full same-level retest confirmation gate.
+    for i in range(2):
+        row = m5.iloc[i]
+        obs.on_m5(
+            at=m5_idx[i].to_pydatetime(), open_price=row.open,
+            high=row.high, low=row.low, close=row.close, volume=500)
+    early_market = MarketData(
+        "TSLA", d1, m5.iloc[:2], session_levels=(decision.level,),
+        breakout_retest=obs.evidence)
+    early_intent = build_intent(
+        decision, early_market, m5_idx[1].to_pydatetime(),
+        StrategyConfig(), equity=25000.)
+    assert early_intent.gates["m5_confirmed"].passed is False
+    for i in range(2, 4):
+        row = m5.iloc[i]
+        obs.on_m5(
+            at=m5_idx[i].to_pydatetime(), open_price=row.open,
+            high=row.high, low=row.low, close=row.close, volume=500)
+    assert obs.phase == "CONFIRMED"
+    market = MarketData(
+        "TSLA", d1, m5, session_levels=(decision.level,),
+        breakout_retest=obs.evidence)
     intent = build_intent(decision, market, m5_idx[-1].to_pydatetime(),
                           StrategyConfig(), equity=25000.)
     assert intent is not None

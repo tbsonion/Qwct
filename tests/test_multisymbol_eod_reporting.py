@@ -62,7 +62,9 @@ def test_closed_trade_data_comes_from_trade_builder_fields():
 
 def test_source_uses_actual_leans_native_multi_symbol_events():
     src = ("\n".join((Path(__file__).resolve().parents[1] / name).read_text() for name in ("main.py", "strategy/m5_runtime.py", "strategy/runtime_reporting.py")))
-    assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self.universe_settings.resolution = (" in src
+    assert "Resolution.SECOND if self._tvx_seconds_enabled" in src
+    assert "else Resolution.MINUTE" in src
     assert "self.universe_settings.fill_forward = False" in src
     assert "self._symbols[symbol] = state" in src
     assert "self.consolidate(" in src
@@ -160,7 +162,7 @@ def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
     assert 'self._chart_symbol' in src
     assert 'if self._chart_symbol is None:' in src
     assert 'selected = choose_focus(' in src
-    assert '"Qwct M5 two-bar passes"' in src
+    assert '"Qwct M5 gate passes"' in src
     assert 'symbol == self._chart_symbol and self._focus_m5_plotted < 3500)' in src
     assert 'if focus_charted_this_bar:' in src
     assert src.count('if focus_charted_this_bar:') == 3

@@ -24,6 +24,10 @@ class FakeAlgorithm:
         self._d1_models = Counter({"bounce": n})
         self._bsu_block_reasons = Counter({"origin mismatch": n})
         self._bpu_invalid_reasons = Counter()
+        self._tvx_preclose_count = 0
+        self._tvx_preclose_reconciled = 0
+        self._tvx_second_reasons = Counter()
+        self._breakout_retest_counts = Counter()
         self._gate_failures = Counter({"risk_approved": n})
         self._m5_true_by_model = Counter()
         self._m5_true_other_blockers = Counter()
@@ -33,6 +37,7 @@ class FakeAlgorithm:
         self._chart_symbol = SimpleNamespace(value="TSLA")
         self._focus_m5_plotted = 100
         self._m5_bars_seen = 200
+        self._m5_input_rejections = Counter()
         self._m5_checks = n * 2
         self._intent_missing_atr = 0
         self._setup_traces = [FakeTrace(i) for i in range(n)]

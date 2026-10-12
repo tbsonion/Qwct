@@ -21,6 +21,30 @@ def write_reports(self):
                                sum(self._bsu_block_reasons.values()))
     self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
     self.set_runtime_statistic(
+        "Qwct native SEC feed bars", getattr(self, "_native_sec_received", 0))
+    preclose_reviews = [
+        row for row in self._signal_rows
+        if row["type"] == "TVX_PRECLOSE_REVIEW"]
+    self.set_runtime_statistic(
+        "Qwct as-of TVX -30s reviews", len(preclose_reviews))
+    self.set_runtime_statistic(
+        "Qwct as-of TVX observable",
+        sum(str(row["reason"]).startswith("OBSERVABLE_READY")
+            for row in preclose_reviews))
+    self.set_runtime_statistic(
+        "Qwct split quarantine", counts["SPLIT_RESEARCH_BLOCKED"])
+    self.set_runtime_statistic(
+        "Qwct SEC TVX -30s preliminary", self._tvx_preclose_count)
+    self.set_runtime_statistic(
+        "Qwct SEC TVX closed verified", self._tvx_preclose_reconciled)
+    self.set_runtime_statistic(
+        "Qwct SEC TVX rejected",
+        sum(self._tvx_second_reasons.values()))
+    self.set_runtime_statistic(
+        "Qwct SEC TVX mode",
+        "native SECOND enabled" if getattr(self, "_tvx_seconds_enabled", False)
+        else "minute mode / TVX unobserved")
+    self.set_runtime_statistic(
         "Qwct BPU invalidations", sum(self._bpu_invalid_reasons.values()))
     self.set_runtime_statistic(
         "Qwct chart focus", self._chart_symbol.value
@@ -46,9 +70,23 @@ def write_reports(self):
     self.set_runtime_statistic(
         "Qwct closed M5 BPU2 proxies", self._bsu_proxy_bpu2_count)
     self.set_runtime_statistic("Qwct M5 bars", self._m5_bars_seen)
+    self.set_runtime_statistic(
+        "Qwct breakout retest confirmed",
+        self._breakout_retest_counts["CONFIRMED"])
+    self.set_runtime_statistic(
+        "Qwct breakout waiting retest",
+        self._breakout_retest_counts["WAIT_RETEST"])
+    self.set_runtime_statistic(
+        "Qwct breakout retest expired",
+        self._breakout_retest_counts["EXPIRED"])
+    self.set_runtime_statistic(
+        "Qwct breakout invalidated",
+        self._breakout_retest_counts["INVALIDATED"])
+    self.set_runtime_statistic(
+        "Qwct M5 feed rejected", sum(self._m5_input_rejections.values()))
     self.set_runtime_statistic("Qwct M5 checks", self._m5_checks)
     self.set_runtime_statistic(
-        "Qwct M5 two-bar passes", sum(self._m5_true_by_model.values()))
+        "Qwct M5 gate passes", sum(self._m5_true_by_model.values()))
     self.set_runtime_statistic(
         "Qwct M5 pass models", str(dict(self._m5_true_by_model)))
     self.set_runtime_statistic(
@@ -78,12 +116,18 @@ def write_reports(self):
                         ("SCENARIO", "RESEARCH_CANDIDATE", "INTENT",
                          "REJECT", "ERROR"))
             + f"; M5 bars={self._m5_bars_seen}, "
+              f"M5 feed rejects={dict(self._m5_input_rejections.most_common(3))}, "
               f"M5 bar checks={self._m5_checks}, "
               f"unready={self._intent_missing_atr}"
             + "; D1 models=" + str(dict(self._d1_models))
+            + "; breakout lifecycle=" +
+              str(dict(self._breakout_retest_counts))
             + "; BSU block reasons=" +
               str(dict(self._bsu_block_reasons.most_common(7)))
             + f"; native BPU1={self._bsu_bpu1_count}"
+            + f"; TVX -30s SEC={self._tvx_preclose_count},"
+              f" verified={self._tvx_preclose_reconciled}"
+            + "; SEC rejects=" + str(dict(self._tvx_second_reasons.most_common(3)))
             + "; BPU invalid reasons=" +
               str(dict(self._bpu_invalid_reasons.most_common(5)))
             + f"; chart focus={self._chart_symbol.value if self._chart_symbol else 'none'}"
@@ -91,7 +135,7 @@ def write_reports(self):
             + "; daily rejects=" + str(dict(reject_reasons))
             + "; failed M5 gates=" +
               str(dict(self._gate_failures.most_common(8)))
-            + "; M5 two-bar pass models=" + str(dict(self._m5_true_by_model))
+            + "; M5 gate pass models=" + str(dict(self._m5_true_by_model))
             + "; other gates when M5 passed=" +
               str(dict(self._m5_true_other_blockers.most_common(6)))
             + "; ObjectStore DISABLED: decision CSV/JSON NOT saved."

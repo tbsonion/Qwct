@@ -15,7 +15,7 @@ manage portfolio/broker state. It is not wired into the live Qwct main.py.
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from math import isfinite
+from math import isfinite, floor, ceil
 
 from .config import StrategyConfig
 
@@ -86,6 +86,10 @@ class BsuState:
     stop_price: float | None = None
     precision: str = "unverified"
     preclose_seen: bool = False
+    # Last 270s of BPU2 actually seen before 30-second preclose cutoff.
+    # Closed M5 must contain these extrema or source feeds disagree.
+    preclose_low: float | None = None
+    preclose_high: float | None = None
     reason: str = ""
     history: list[datetime] = field(default_factory=list)
 
@@ -126,7 +130,14 @@ class BsuDetector:
         if pct >= 100:
             raise ValueError("luft percentage must be less than 100")
         stop_distance = stop_factor * atr
-        stop = level - stop_distance if side == "long" else level + stop_distance
+        raw_stop = (
+            level - stop_distance if side == "long"
+            else level + stop_distance)
+        # Conservative native tick rounding AWAY from the source
+        # pivot, so protective stop risk is never understated.
+        stop = (floor(raw_stop / tick + 1e-8) * tick
+                if side == "long"
+                else ceil(raw_stop / tick - 1e-8) * tick)
         if stop <= 0:
             raise ValueError("derived stop must be positive")
 
@@ -144,7 +155,7 @@ class BsuDetector:
             side=side,
             bsu_ts=bsu_ts,
             stop_price=stop,
-            luft=stop_distance * pct / 100.0,
+            luft=abs(level - stop) * pct / 100.0,
         )
 
     @staticmethod
@@ -239,10 +250,13 @@ class BsuDetector:
             return self._invalidate("BPU2 violates the level before close")
         st.phase = "preclose_candidate"
         st.preclose_seen = True
-        st.entry_price = (
+        st.preclose_low = low
+        st.preclose_high = high
+        raw_entry = (
             st.level_price + st.luft if st.side == "long"
-            else st.level_price - st.luft
-        )
+            else st.level_price - st.luft)
+        # Read-only theoretical limit on actual executable tick grid.
+        st.entry_price = round(raw_entry / self._tick_size) * self._tick_size
         st.precision = source.lower() + "_preclose_observed"
         st.reason = (
             "30s preclose sample observed; BPU2 NOT yet closed or "
@@ -283,6 +297,12 @@ class BsuDetector:
                     now != _aware("bpu1_ts", st.bpu1_ts) + self._period):
                 return self._invalidate(
                     "BPU2 not the immediate next completed candle")
+            if st.preclose_seen and (
+                    st.preclose_low is None or st.preclose_high is None
+                    or bar.low > st.preclose_low + self._tick_tol
+                    or bar.high < st.preclose_high - self._tick_tol):
+                return self._invalidate(
+                    "completed M5 BPU2 does not contain prior SEC preclose extremes")
             if self._pierced_bpu1(bar.low, bar.high):
                 return self._invalidate("BPU2 wick broke BPU1 extreme")
             if self._beyond_luft(bar.low, bar.high):
@@ -290,9 +310,11 @@ class BsuDetector:
                     "BPU2 missed the level beyond permissible luft")
             st.phase = "bpu2_confirmed"
             if st.entry_price is None:
-                st.entry_price = (
+                raw_entry = (
                     st.level_price + st.luft if st.side == "long"
                     else st.level_price - st.luft)
+                st.entry_price = (
+                    round(raw_entry / self._tick_size) * self._tick_size)
             st.reason = (
                 "BPU2 confirmed on completed candle; "
                 + ("30s preclose sample was seen; " if st.preclose_seen

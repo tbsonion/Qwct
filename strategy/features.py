@@ -13,6 +13,7 @@ value: True / False / None (None = данных нет, явно указано 
 """
 from dataclasses import dataclass, field
 from datetime import datetime
+from math import isfinite
 
 import pandas as pd
 
@@ -34,7 +35,7 @@ class FeatureResult:
 
 def _a(d1: pd.DataFrame, cfg: StrategyConfig) -> float:
     v = atr(d1, cfg.atr_period).iloc[-1]
-    if pd.isna(v) or v <= 0:
+    if pd.isna(v) or not isfinite(float(v)) or v <= 0:
         raise ValueError("Native LEAN ATR is not ready; do not approximate it")
     return float(v)
 
@@ -97,7 +98,9 @@ def g03_near_retest(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     w = cfg.retest_window
     if len(d1) < w + 1:
         return FeatureResult("g03_near_retest", None, reason="мало баров")
-    win = d1.iloc[-w - 1:-1]  # без текущего бара
+    # Caller supplies ONLY completed D1 bars before this trading session.
+    # The last row is yesterday's CLOSED D1 and must not be discarded.
+    win = d1.iloc[-w:]
     touched_idx = [i for i in range(len(win))
                    if win["low"].iloc[i] <= level.price <= win["high"].iloc[i]]
     touched = len(touched_idx) > 0
@@ -109,13 +112,19 @@ def g03_near_retest(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     gap = False
     if touched:
         for i in touched_idx:
-            gi = i + 1  # индекс в d1
-            prev_close = d1["close"].iloc[-w - 1 + i - 1] if i > 0 else None
-            if prev_close is not None:
-                if abs(win["open"].iloc[i] - prev_close) >= 0.5 * a:
-                    gap = True
-                    break
-    v = touched and shallow
+            # We require w+1 history rows so even the first retest
+            # candle in the lookback has a known preceding D1 close.
+            prev_close = float(d1["close"].iloc[-w + i - 1])
+            opening = float(win["open"].iloc[i])
+            # A retest gap must move TOWARD the candidate D1 level.
+            # A large overnight gap AWAY, followed by an intraday
+            # wick back to the level, is not a "gap approach" bonus.
+            if (abs(opening - prev_close) >= 0.5 * a
+                    and abs(opening - level.price)
+                        < abs(prev_close - level.price)):
+                gap = True
+                break
+    v = bool(touched and shallow)
     return FeatureResult("g03_near_retest", v,
                          {"touched_in_window": touched, "shallow_pullback": shallow,
                           "three_bar_retest": three_bar, "gap_retest": gap,
@@ -202,7 +211,12 @@ def g07_close_at_extreme(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult
     closed_high = b["close"] >= b["high"] - 0.15 * rng and up_tail <= cfg.tail_atr * a
     closed_low = b["close"] <= b["low"] + 0.15 * rng and dn_tail <= cfg.tail_atr * a
     impulse = rng >= cfg.big_bar_atr * a
-    v = near and (closed_high or closed_low)
+    # An upper-close only supports approach to an overhead level; a
+    # lower-close only supports approach to a level underneath. Ignoring
+    # direction awarded breakout points to bars closing AWAY from level.
+    approach_side = _dir_to_level(float(d1["close"].iloc[-2]), level.price)
+    v = near and ((approach_side > 0 and closed_high)
+                  or (approach_side < 0 and closed_low))
     return FeatureResult("g07_close_at_extreme", v,
                          {"near_level": near,
                           "closed_at_high": closed_high,
@@ -221,9 +235,12 @@ def g08_small_bars_approach(d1, m5, ts, level: Level, levels, cfg) -> FeatureRes
     small = avg_range <= cfg.small_bar_atr * a
     near = _dist(win["close"].iloc[-1], level.price, a) <= 1.0
     trending = abs(win["close"].iloc[-1] - win["close"].iloc[0]) > 0.5 * a
-    v = small and near and trending
+    approaching = (_dist(float(win["close"].iloc[-1]), level.price, a)
+                   < _dist(float(win["close"].iloc[0]), level.price, a))
+    v = small and near and trending and approaching
     return FeatureResult("g08_small_bars_approach", v,
                          {"small_bars": small, "near": near, "trending": trending,
+                          "approaching_level": approaching,
                           "avg_range_atr": round(avg_range / a, 2)})
 
 
@@ -244,20 +261,33 @@ def g09_context(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     diffs = w["close"].diff().dropna()
     direction = 1 if diffs.sum() > 0 else -1
     pullbacks = sum(1 for x in diffs if x * direction < -cfg.max_pullback_atr * a)
-    long_pullback_free = pullbacks == 0 and \
-        _dist(w["close"].iloc[-1], level.price, a) <= 1.0
+    # Direction and narrowing distance must agree: an unbroken move AWAY
+    # from the level is not a Gerchik approach even if the last close
+    # remains inside the broad 1*ATR neighbourhood.
+    approaching_level = (
+        direction == _dir_to_level(float(w["close"].iloc[0]), level.price)
+        and _dist(float(w["close"].iloc[-1]), level.price, a)
+            < _dist(float(w["close"].iloc[0]), level.price, a))
+    long_pullback_free = (pullbacks == 0 and approaching_level
+                          and _dist(w["close"].iloc[-1], level.price, a) <= 1.0)
     # подход на больших барах (для отбоя)
     big = sum(1 for _, b in d1.iloc[-3:].iterrows()
               if (b["high"] - b["low"]) >= cfg.big_bar_atr * a)
-    big_bars_approach = big >= 3 and _dist(d1["close"].iloc[-1], level.price, a) <= 1.0
+    big_bars_approach = (
+        big >= 3 and
+        _dist(d1["close"].iloc[-1], level.price, a) <= 1.0 and
+        _dist(d1["close"].iloc[-1], level.price, a)
+        < _dist(d1["close"].iloc[-3], level.price, a))
     # пустота за уровнем
     from .levels import next_level as _next
     d = _dir_to_level(d1["close"].iloc[-1], level.price)
-    nl = _next(levels, d1["close"].iloc[-1], d)
-    clean_zone = True
-    if nl is not None:
-        clean_zone = abs(nl.price - level.price) > 2.0 * a
-    room_atr = abs(nl.price - level.price) / a if nl else None  # None = пустота
+    # The next level must lie *BEYOND THE CURRENT CANDIDATE*, not
+    # between the closing price and candidate itself. No next recorded
+    # level means UNKNOWN room, not proven 'clean-zone=True'.
+    nl = _next(levels, level.price, d)
+    clean_zone = (abs(nl.price - level.price) > 2.0 * a
+                  if nl is not None else None)
+    room_atr = abs(nl.price - level.price) / a if nl else None
     # тренды — значения как подпункты (гейт trend_aligned использует их же)
     gt = global_trend(d1, len(d1) - 1, cfg)
     lt = trend_direction(d1, len(d1) - 1, cfg)
@@ -266,6 +296,7 @@ def g09_context(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
                          {"no_along_level_trading": no_along_level_trading,
                           "fast_local_approach": fast_local_approach,
                           "long_pullback_free": long_pullback_free,
+                          "approaching_level": approaching_level,
                           "big_bars_approach": big_bars_approach,
                           "clean_zone": clean_zone,
                           "room_atr": round(room_atr, 2) if room_atr else None,

@@ -173,3 +173,93 @@ def test_m5_far_from_d1_level_rejects_no_chase_threshold():
     assert intent is not None
     # 1.9 USD chase / ATR 4 = 0.475 ATR; cfg allows <=0.3 ATR.
     assert intent.gates["m5_confirmed"].passed is False
+
+
+def test_external_permissive_risk_manager_cannot_bypass_native_gate():
+    d = daily()
+    at = (d.index[-1] + pd.Timedelta(days=1)).to_pydatetime()
+    lvl = Level(price=100, kind="support", touches=2, strength=3,
+                valid_from=date(2023, 8, 1))
+    decision = ScenarioDecision("AAPL", at.date(), at, lvl, "bounce", "long")
+
+    class PermissiveLegacyManager:
+        def can_open(self, *_args):
+            return True, "approved"
+        def position_size(self, *_args):
+            return 10, 50
+
+    intent = build_intent(
+        decision, MarketData("AAPL", d), at, StrategyConfig(),
+        risk_mgr=PermissiveLegacyManager())
+    assert intent is not None
+    assert intent.gates["risk_approved"].passed is None
+    assert intent.all_gates_passed is False
+
+
+def test_experimental_countertrend_flag_does_not_bypass_mandatory_trend():
+    from dataclasses import replace
+    d = daily()
+    at = (d.index[-1] + pd.Timedelta(days=1)).to_pydatetime()
+    lvl = Level(price=100, kind="support", touches=2, strength=3,
+                valid_from=date(2023, 8, 1))
+    decision = ScenarioDecision("AAPL", at.date(), at, lvl, "bounce", "long")
+    cfg = replace(StrategyConfig(), allow_countertrend=True)
+    intent = build_intent(decision, MarketData("AAPL", d), at, cfg)
+    assert intent is not None
+    assert intent.gates["trend_aligned"].passed is None
+    assert intent.all_gates_passed is False
+
+
+def test_mirror_cannot_use_breach_and_retest_before_swing_was_confirmed():
+    dates = pd.date_range("2024-01-01", periods=26, freq="B", tz=ET)
+    d = pd.DataFrame({"open": 100.7, "high": 101.2,
+                      "low": 99.8, "close": 100.8}, index=dates)
+    # Swing last observed at idx19; its k=3 confirmation happens idx22.
+    # These two candles are retrospective evidence BEFORE idx22 and
+    # must not turn a future-confirmed support into an old mirror.
+    d.loc[dates[20], ["open", "high", "low", "close"]] = [
+        100.3, 100.5, 99.3, 99.5]
+    d.loc[dates[21], ["open", "high", "low", "close"]] = [
+        99.4, 100.1, 99.0, 99.3]
+    valid = dates[22].date() + timedelta(days=1)
+    lvl = Level(price=100, kind="support", touches=2, first_idx=10,
+                last_idx=19, valid_from=valid)
+    _mark_mirror([lvl], d, StrategyConfig())
+    assert lvl.kind == "support"
+    assert lvl.valid_from == valid
+
+
+def test_mirror_confirmation_is_only_valid_after_completed_retest_bar():
+    dates = pd.date_range("2024-01-01", periods=29, freq="B", tz=ET)
+    d = pd.DataFrame({"open": 100.7, "high": 101.2,
+                      "low": 99.8, "close": 100.8}, index=dates)
+    confirmed_support = dates[22].date() + timedelta(days=1)
+    # Genuine breach and underside retest after confirmation.
+    d.loc[dates[24], ["open", "high", "low", "close"]] = [
+        100.3, 100.5, 99.3, 99.5]
+    d.loc[dates[25], ["open", "high", "low", "close"]] = [
+        99.4, 100.1, 99.0, 99.3]
+    lvl = Level(price=100, kind="support", touches=2,
+                first_idx=10, last_idx=19,
+                valid_from=confirmed_support)
+    _mark_mirror([lvl], d, StrategyConfig())
+    assert lvl.kind == "mirror"
+    assert lvl.valid_from == dates[25].date() + timedelta(days=1)
+    assert lvl.valid_from > confirmed_support
+    assert any("mirror confirmed" in note for note in lvl.notes)
+
+
+def test_resistance_mirror_requires_postconfirmation_upward_break_and_retest():
+    dates = pd.date_range("2024-01-01", periods=29, freq="B", tz=ET)
+    d = pd.DataFrame({"open": 99.3, "high": 100.2,
+                      "low": 98.9, "close": 99.5}, index=dates)
+    d.loc[dates[24], ["open", "high", "low", "close"]] = [
+        99.6, 100.8, 99.4, 100.6]
+    d.loc[dates[25], ["open", "high", "low", "close"]] = [
+        100.6, 100.8, 99.9, 100.4]
+    lvl = Level(price=100, kind="resistance", touches=2,
+                first_idx=10, last_idx=19,
+                valid_from=dates[22].date() + timedelta(days=1))
+    _mark_mirror([lvl], d, StrategyConfig())
+    assert lvl.kind == "mirror"
+    assert lvl.valid_from == dates[25].date() + timedelta(days=1)

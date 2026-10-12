@@ -177,9 +177,18 @@ def _mark_mirror(levels: list[Level], d1: pd.DataFrame,
     for lvl in levels:
         if lvl.kind not in ("support", "resistance"):
             continue
-        # Begin only AFTER the last originating swing, never reinterpret
-        # candles that created the original support/resistance as a retest.
-        start = max(lvl.last_idx + 1, len(d1) - cfg.mirror_lookback, 1)
+        # A k-right-bar pivot is not a confirmed level on its swing date.
+        # A breach/retest that happened BEFORE valid_from cannot validate a
+        # role reversal of a level the strategy did not know existed yet.
+        # Actual detect_levels() always provides valid_from. When callers
+        # construct a stand-alone Level without it, require at least the
+        # post-swing sequence (never infer an earlier confirmation date).
+        confirmed_idx = next(
+            (i for i, ts in enumerate(d1.index)
+             if ts.date() >= lvl.valid_from), len(d1)
+        ) if lvl.valid_from is not None else lvl.last_idx + 1
+        start = max(lvl.last_idx + 1, confirmed_idx,
+                    len(d1) - cfg.mirror_lookback, 1)
         if start >= len(d1) - 1:
             continue
         breached = False
@@ -188,17 +197,25 @@ def _mark_mirror(levels: list[Level], d1: pd.DataFrame,
             if lvl.kind == "support":
                 # Breach down, then separate later candle retests underside
                 # of the support level and closes underneath it.
-                if breached and b["high"] >= lvl.price and b["close"] < lvl.price:
-                    lvl.kind = "mirror"
-                    break
-                if b["close"] < lvl.price:
+                confirmed = (breached and b["high"] >= lvl.price
+                             and b["close"] < lvl.price)
+                if not confirmed and b["close"] < lvl.price:
                     breached = True
             else:
-                if breached and b["low"] <= lvl.price and b["close"] > lvl.price:
-                    lvl.kind = "mirror"
-                    break
-                if b["close"] > lvl.price:
+                confirmed = (breached and b["low"] <= lvl.price
+                             and b["close"] > lvl.price)
+                if not confirmed and b["close"] > lvl.price:
                     breached = True
+            if confirmed:
+                lvl.kind = "mirror"
+                # Mirror is a NEW observed role reversal. Its valid_from
+                # is after the completed confirming retest, never the
+                # original support/resistance confirmation date.
+                mirror_from = d1.index[i].date() + timedelta(days=1)
+                lvl.valid_from = max(lvl.valid_from, mirror_from) if (
+                    lvl.valid_from is not None) else mirror_from
+                lvl.notes.append("mirror confirmed after D1 breach and retest")
+                break
 
 
 def levels_for_session(d1_asof: pd.DataFrame, day: date,

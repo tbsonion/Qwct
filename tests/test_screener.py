@@ -33,7 +33,7 @@ def candidate(symbol, price=20., volume=1_000_000., dollar_volume=40_000_000.,
                            has_fundamental_data)
 
 
-def test_native_universe_filter_uses_price_shares_and_daily_liquidity():
+def test_native_universe_filter_rejects_invalid_fields_but_not_single_day_volume_dip():
     cfg = StrategyConfig()
     records = [
         candidate("GOOD", 10, 500_000, 20_000_000),
@@ -45,7 +45,17 @@ def test_native_universe_filter_uses_price_shares_and_daily_liquidity():
         candidate("BAD_DOLLARS", 30, 1_000_000, nan),
     ]
     selected = select_liquid_fundamentals(records, cfg)
-    assert [s.value for s in selected] == ["GOOD"]
+    assert [s.value for s in selected] == ["LOW_SHARES", "GOOD"]
+    # The prior-day 499,999 share dip does not prove the 20-day SMA <500k.
+    # Stage-2 native D1 SMA must make that decision.
+
+
+def test_20_day_qualified_stock_survives_one_low_volume_day():
+    cfg = StrategyConfig()
+    item = candidate("SURVIVES", price=40, volume=100_000,
+                     dollar_volume=4_000_000)
+    assert select_liquid_fundamentals([item], cfg) == [item.symbol]
+    assert passes_gerchik_screener(40, 2.0, 650_000, cfg)
 
 
 def test_universe_prefilter_sorted_by_dollar_volume_and_capped():
@@ -88,8 +98,34 @@ def test_screener_only_uses_official_lean_market_and_indicator_apis():
     assert "self.history[TradeBar](" in src
     assert "self._refresh_screen_watchlist()" in src
     assert "self.screen_watchlist = " in src
-    assert "self.universe_settings.resolution = Resolution.MINUTE" in src
+    assert "self.universe_settings.resolution = (" in src
+    assert "Resolution.SECOND if self._tvx_seconds_enabled" in src
+    assert "else Resolution.MINUTE" in src
+    assert "anchor, (Resolution.SECOND if self._tvx_seconds_enabled" in src
+    assert "else Resolution.MINUTE), fill_forward=False," in src
+    assert "max_results=limit" in src
+    assert "DataNormalizationMode.RAW if self._tvx_seconds_enabled" in src
+    assert "DataNormalizationMode.SCALED_RAW" in src
+    assert "else DataNormalizationMode.SPLIT_ADJUSTED" in src
+    assert "data_normalization_mode=self._tvx_normalization_mode).symbol" in src
     assert "self._native_exit_enabled = False" in src
     assert not any(x in src for x in (
         "self.market_order(", "self.limit_order(",
         "self.bracket_order(", "OrderManager("))
+
+
+def test_second_mode_cap_is_explicit_without_changing_default_screener():
+    cfg = StrategyConfig(screener_candidate_limit=50, screener_watchlist_limit=10)
+    records = [
+        candidate(f"T{i:02d}", dollar_volume=100_000_000 - i * 1_000)
+        for i in range(45)
+    ]
+    assert len(select_liquid_fundamentals(records, cfg)) == 45
+    assert len(select_liquid_fundamentals(
+        records, cfg, max_results=cfg.screener_watchlist_limit)) == 10
+    assert [s.value for s in select_liquid_fundamentals(
+        records, cfg, max_results=2)] == ["T00", "T01"]
+    for bad in (0, -1, True, 1.5):
+        import pytest
+        with pytest.raises(ValueError):
+            select_liquid_fundamentals(records, cfg, max_results=bad)

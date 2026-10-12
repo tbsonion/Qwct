@@ -16,6 +16,7 @@ from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
 from strategy.bsu_bridge import create_bsu_research_observer
+from strategy.breakout_retest import BreakoutRetestObserver
 from strategy.sessions import SessionPolicy
 from strategy.research_trace import SetupTrace, BpuTouchAudit
 from strategy.focus import choose_focus
@@ -23,6 +24,9 @@ from strategy.screener import select_liquid_fundamentals, passes_gerchik_screene
 from strategy.reporting import native_order_event_row
 from strategy.runtime_reporting import write_reports
 from strategy.m5_runtime import process_m5
+from strategy.second_runtime import process_second_slice
+from strategy.corporate_action_guard import (
+    process_native_split_events, rewarm_split_symbols, split_research_blocked)
 
 
 ET = ZoneInfo("America/New_York")
@@ -35,20 +39,31 @@ def _time_index(ts: datetime) -> pd.Timestamp:
 
 class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
-        # Reproduce the user-verified Jan/Feb 2024 Cloud Free smoke;
-        # don't silently expand chart or log volume to a year.
+        # Preserve user-verified Jan/Feb 2024 Cloud Free smoke.
         self.set_start_date(2024, 1, 1)
         self.set_end_date(2024, 2, 5)
         self.cfg = StrategyConfig()
+        # Opt-in SEC feed: tvx_seconds=true; high Cloud data cost.
+        self._tvx_seconds_enabled = (
+            (self.get_parameter("tvx_seconds") or "").strip().lower() == "true")
         self.set_cash(self.cfg.starting_equity)
         self.set_time_zone("America/New_York")
 
         # The anchor is a clock only. All actual Gerchik decisions use
         # independently warmed symbols selected by the native universe.
         anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
-        self.symbol = self.add_equity(anchor, Resolution.MINUTE).symbol
+        # RAW live-price SEC plus SCALED_RAW D1 warmup prevents
+        # look-ahead split adjustment; default MINUTE stays unchanged.
+        self._tvx_normalization_mode = (
+            DataNormalizationMode.RAW if self._tvx_seconds_enabled
+            else DataNormalizationMode.SPLIT_ADJUSTED)
+        # Anchor can be in universe: use SECOND here in SEC mode too.
+        self.symbol = self.add_equity(
+            anchor, (Resolution.SECOND if self._tvx_seconds_enabled
+                     else Resolution.MINUTE), fill_forward=False,
+            data_normalization_mode=self._tvx_normalization_mode).symbol
         self.securities[self.symbol].set_data_normalization_mode(
-            DataNormalizationMode.SPLIT_ADJUSTED)
+            self._tvx_normalization_mode)
 
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
@@ -62,16 +77,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._session_date = None
         self._signals_open = False
 
-        # NO runtime parameter can turn on trading. This is an explicit
-        # source-level kill switch until protective entries are independently
-        # verified with the LEAN/Schwab brokerage integration.
+        # Trading is hard-disabled regardless of parameters.
         self._native_exit_enabled = False
         # QuantConnect Cloud Free organizations cannot write ObjectStore.
         # Keep signal research usable without misleading export errors.
         # This is a SOURCE-LEVEL research setting, not a trading toggle.
         self._object_store_export_enabled = False
-        # LEAN defaults to FILL_TO_FILL, which is not a full position
-        # round-trip. Use its official FLAT_TO_FLAT TradeBuilder grouping.
+        # Native LEAN FLAT_TO_FLAT round-trip grouping.
         self.set_trade_builder(TradeBuilder(
             FillGroupingMethod.FLAT_TO_FLAT, FillMatchingMethod.FIFO))
         self._signal_rows = []
@@ -79,6 +91,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # Research-only diagnostics: count actual M5 evaluations and failed
         # gates; no virtual orders, fills or portfolio are inferred.
         self._m5_bars_seen = 0
+        self._m5_input_rejections = Counter()
         self._m5_checks = 0
         self._intent_missing_atr = 0
         self._gate_failures = Counter()
@@ -87,6 +100,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._d1_models = Counter()
         self._bsu_block_reasons = Counter()
         self._bpu_invalid_reasons = Counter()
+        self._breakout_retest_counts = Counter()
+        self._native_sec_received = 0
+        self._tvx_preclose_count = 0
+        self._tvx_preclose_reconciled = 0
+        self._tvx_second_reasons = Counter()
         # In-memory evidence of the first accepted D1 setups; stop
         # growing trace memory on 1-year Cloud Free research windows.
         self._setup_traces = []
@@ -95,10 +113,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
 
-        # A single fixed selected symbol, NOT mixed-ticker data on one
-        # price axis. One LEAN Focus chart = 4 series; Qwct Research = 5.
-        # Free Cloud quota: 10 series, 4,000 points/series. Only draw
-        # up to 3,500 M5 bars to avoid silently exceeding that limit.
+        # Stable chart symbol: never plot mixed-ticker price axes.
         self._chart_symbol = None
         # Optional QuantConnect parameter focuses a specific ticker if it
         # actually has a D1 setup. Otherwise prioritize first real bounce.
@@ -111,26 +126,24 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         focus_chart.add_series(Series("BPU2", SeriesType.SCATTER, 0))
         self.add_chart(focus_chart)
 
-        # Native Fundamental Universe owns stock membership and data feeds.
-        # Minute resolution is required for real M5 consolidators on *each*
-        # selected stock, not only on the anchor or first watchlist stock.
-        self.universe_settings.resolution = Resolution.MINUTE
+        # Official native feed; default MINUTE keeps Cloud smoke small.
+        self.universe_settings.resolution = (
+            Resolution.SECOND if self._tvx_seconds_enabled
+            else Resolution.MINUTE)
         # By default LEAN forward-fills bars when there are no trades.
         # Gerchik M5 confirmation must not be inferred from those
         # previously observed prices as if a real fresh bar arrived.
         self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
         self.universe_settings.data_normalization_mode = (
-            DataNormalizationMode.SPLIT_ADJUSTED)
+            self._tvx_normalization_mode)
         self._screen_universe = self.add_universe(self._select_screen_universe)
 
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_open(self.symbol, 1),
             self._prepare_session)
-        # Two-stage EOD is mandated by documented Schwab cancellation lag.
-        # First cancel broker orders, then check confirmed cancellations;
-        # never submit Liquidate while contingent orders remain pending.
+        # Schwab EOD: cancel orders, confirm cancellation, only then exit.
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_close(
@@ -152,7 +165,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.time_rules.after_market_close(self.symbol, 1),
             self._checkpoint_reports)
 
-        self.debug("Qwct: multi-symbol Gerchik signal-only; ALL ORDERS DISABLED")
+        self.debug(
+            "Qwct: signal-only; ALL ORDERS DISABLED; "
+            + ("native SEC TVX research ENABLED, high data volume"
+               if self._tvx_seconds_enabled else "native SEC TVX NOT ENABLED"))
 
     def _record(self, symbol, kind, model="", side="", level="",
                 score="", entry="", stop="", risk="", gates="", reason=""):
@@ -165,7 +181,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
     def _select_screen_universe(self, fundamentals):
         # Never call History/Portfolio/Transactions inside universe selection.
-        selected = select_liquid_fundamentals(fundamentals, self.cfg)
+        # Cap SECOND universe to watchlist capacity; MINUTE unchanged.
+        limit = (self.cfg.screener_watchlist_limit
+                 if self._tvx_seconds_enabled else None)
+        selected = select_liquid_fundamentals(
+            fundamentals, self.cfg, max_results=limit)
         self._screen_ranks = {symbol: i for i, symbol in enumerate(selected)}
         return selected
 
@@ -189,9 +209,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             symbol = security.symbol
             if symbol in self._screen_ranks and self._register_symbol(symbol):
                 new_symbols.append(symbol)
-        # Official LEAN performance guidance: batch symbols in ONE typed
-        # History[TradeBar] call. A typed multi-symbol enumerable yields bars,
-        # not a pandas DataFrame; avoid 50 separate history requests.
         self._warm_symbols(new_symbols)
 
     def _register_symbol(self, symbol) -> bool:
@@ -208,6 +225,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "decision": None, "qualified_today": False,
             "session_levels": None,
             "bsu_link": None,
+            "tvx_sec_window": None,
+            "bsu_tvx_evidence": None,
+            "preclose_review": None,
+            "split_blocked_date": None, "split_rewarm_pending": False,
+            "breakout_retest": None,
             "focus_level": None,
             "setup_trace": None,
             "touch_audit": None,
@@ -229,7 +251,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             # NOT one TradeBar per outer iteration.
             for bars in self.history[TradeBar](
                     symbols, 180, Resolution.DAILY,
-                    data_normalization_mode=DataNormalizationMode.SPLIT_ADJUSTED):
+                    data_normalization_mode=(
+                        DataNormalizationMode.SCALED_RAW
+                        if self._tvx_seconds_enabled
+                        else DataNormalizationMode.SPLIT_ADJUSTED)):
                 for symbol, bar in bars.items():
                     if _time_index(bar.end_time).date() < self.time.date():
                         self._append_daily(bar)
@@ -308,23 +333,20 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def _prepare_session(self) -> None:
         self._session_date = self.time.date()
         self._signals_open = True
-        # A manually subscribed clock stock may already exist before the
-        # fundamental universe selects it and won't necessarily appear in
-        # added_securities. Use the same native setup path, once.
         if self.symbol in self._screen_ranks:
             if self._register_symbol(self.symbol):
                 self._warm_symbols([self.symbol])
+        rewarm_split_symbols(self)
         self._refresh_screen_watchlist()
-        # Freeze the focus Symbol on the FIRST qualifying trading day.
-        # Do not dynamically switch prices between TSLA/NVDA/etc. on
-        # a single chart with a deceptive shared dollar-price axis.
-        # Do NOT freeze the chart to the top liquidity stock here.
-        # Wait until D1 decisions are known; never mix ticker prices.
         for state in self._symbols.values():
             state["qualified_today"] = False
             state["decision"] = None
             state["session_levels"] = None
             state["bsu_link"] = None
+            state["tvx_sec_window"] = None
+            state["bsu_tvx_evidence"] = None
+            state["preclose_review"] = None
+            state["breakout_retest"] = None
             state["focus_level"] = None
             state["setup_trace"] = None
             state["touch_audit"] = None
@@ -332,6 +354,10 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
         for symbol in self.screen_watchlist:
             state = self._symbols[symbol]
+            if split_research_blocked(state, self._session_date):
+                self._record(symbol, "REJECT",
+                             reason="corporate split day: native rewarm quarantine")
+                continue
             d1 = self._frame(state["daily_rows"])
             if not d1.empty:
                 d1 = d1.loc[d1.index < _time_index(self.time).normalize()]
@@ -372,11 +398,22 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                         trace.set_bsu(False, "not eligible: model is not bounce")
                     else:
                         self._setup_traces_omitted += 1
-                    # On the single-ticker plot, show the accepted
-                    # morning scenario level rather than an unrelated
-                    # nearby context level. No intraday recalculation.
                     if symbol == self._chart_symbol:
                         state["focus_level"] = float(decision.level.price)
+                if decision.accepted and decision.model == "breakout":
+                    # Research-only lifecycle: genuine D1 level from this
+                    # premarket snapshot; actual native completed M5 will
+                    # progress breakout -> retest -> confirmation. It can
+                    # never submit a broker order or replace Gerchik risk.
+                    state["breakout_retest"] = BreakoutRetestObserver(
+                        symbol=symbol.value, session=self._session_date,
+                        side=decision.side,
+                        level_price=float(decision.level.price),
+                        atr_value=float(d1[f"atr{self.cfg.atr_period}"].iloc[-1]),
+                        max_confirm_chase_atr=self.cfg.max_entry_distance_atr,
+                        max_retest_bars=self.cfg.breakout_retest_max_bars,
+                        retest_tolerance_atr=self.cfg.breakout_retest_touch_atr,
+                        invalidation_atr=self.cfg.breakout_retest_invalid_atr)
                 if decision.accepted and decision.model == "bounce":
                     # Native symbol properties (never a guessed USD 0.01)
                     # and actual as-of D1 origin are mandatory. A confirmed
@@ -450,6 +487,11 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             sum(1 for symbol in self.screen_watchlist
                 if self._symbols[symbol]["decision"] is not None
                 and self._symbols[symbol]["decision"].accepted))
+
+    def on_data(self, data: Slice) -> None:
+        process_native_split_events(self, data, SplitType.SPLIT_OCCURRED)
+        # No Scheduled Event lookahead; SEC on_data is after consolidators.
+        process_second_slice(self, data, _time_index)
 
     def _on_m5(self, bar: TradeBar) -> None:
         # LEAN consolidator callback. All checks still run on the same

@@ -186,3 +186,15 @@ def test_source_contract_main_connects_observer_without_imaginary_30s_data():
     assert '"bar_end": _time_index(bar.end_time)' in src
     assert "observe_preclose(" not in src
     assert "self._native_exit_enabled = False" in src
+
+
+def test_split_adjusted_historical_origin_off_real_native_tick_is_blocked():
+    # An old price divided by a later 10:1 split may be in 0.001
+    # increments, but today's native tick is $0.01. Reject exact
+    # Gerchik touch instead of pretending the fractional level trades.
+    decision, daily = evidence()
+    daily.loc[daily.index[10], "low"] = 100.003
+    link, why = create_bsu_research_observer(
+        decision, daily, native_tick_size=.01, cfg=StrategyConfig())
+    assert link is None
+    assert "tick grid" in why

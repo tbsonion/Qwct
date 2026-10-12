@@ -9,7 +9,7 @@ import pytest
 
 from strategy.config import StrategyConfig
 from strategy.data import MarketData
-from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep
+from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep, g09_context, g07_close_at_extreme, g08_small_bars_approach, g03_near_retest
 import strategy.scenarios as scenario_module
 from strategy.indicators import atr, global_trend, trend_direction
 from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
@@ -181,3 +181,174 @@ def test_no_shadow_oms_or_trading_in_lean_entrypoint():
         "OrderManager", "BrokerAdapter", "NativeBracketGateway",
         "self.market_order(", "self.limit_order(",
         "self.bracket_order("))
+
+
+def test_g09_pullback_free_bars_moving_away_from_level_are_not_an_approach():
+    cfg = StrategyConfig()
+    d1 = daily()
+    closes = [100.0, 100.4, 100.8, 101.2, 101.6]
+    for i, cl in enumerate(closes):
+        row = d1.index[-5+i]
+        d1.loc[row, ["open", "close", "high", "low"]] = [
+            cl, cl, cl + 2.3, cl - 2.3]
+    level = Level(price=100.0, kind="resistance")
+    f = g09_context(d1, None, d1.index[-1].to_pydatetime(),
+                    level, [level], cfg)
+    assert f.detail["approaching_level"] is False
+    assert f.detail["long_pullback_free"] is False
+    assert not bool(f.detail["big_bars_approach"])
+
+
+def test_g09_clean_zone_looks_past_candidate_level_not_from_daily_close():
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1.loc[d1.index[-1], "close"] = 98.
+    target = Level(price=100.0, kind="resistance")
+    behind = Level(price=110.0, kind="resistance")
+    f = g09_context(d1, None, d1.index[-1].to_pydatetime(),
+                    target, [target, behind], cfg)
+    assert bool(f.detail["clean_zone"]) is True
+    assert f.detail["room_atr"] == 4.0
+    unknown = g09_context(d1, None, d1.index[-1].to_pydatetime(),
+                          target, [target], cfg)
+    assert unknown.detail["clean_zone"] is None
+    assert unknown.detail["room_atr"] is None
+
+
+def test_g07_close_at_lower_extreme_cannot_support_breakout_above_last_close():
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1.loc[d1.index[-2], "close"] = 98.6
+    d1.loc[d1.index[-1], ["open", "high", "low", "close"]] = [
+        99.9, 100.3, 98.9, 99.0]
+    lvl = Level(price=100., kind="resistance")
+    observed = g07_close_at_extreme(
+        d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert not bool(observed.value)
+    assert bool(observed.detail["closed_at_low"])
+    # The same setup with a genuine close near the upper extreme may
+    # support an upward-breakout *feature*, not an executable order.
+    d1.loc[d1.index[-1], ["open", "high", "low", "close"]] = [
+        99.1, 100.1, 98.8, 100.0]
+    observed = g07_close_at_extreme(
+        d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert bool(observed.value)
+
+
+def test_g08_small_bars_moving_away_must_not_be_called_approach():
+    cfg = StrategyConfig()
+    d1 = daily()
+    closes = [100., 100.4, 100.8, 101.2, 101.4]
+    for j, cl in enumerate(closes):
+        d1.loc[d1.index[-5+j], ["open", "high", "low", "close"]] = [
+            cl, cl + .2, cl - .2, cl]
+    lvl = Level(price=100., kind="resistance")
+    fr = g08_small_bars_approach(
+        d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert bool(fr.detail["small_bars"])
+    assert bool(fr.detail["trending"])
+    assert not bool(fr.detail["approaching_level"])
+    assert not bool(fr.value)
+
+
+def test_g03_includes_yesterday_closed_d1_retest_and_real_previous_close_gap():
+    # The morning scanner passes only completed D1 candles. Excluding the
+    # final row would discard a real retest made on the last session.
+    cfg = StrategyConfig()
+    d1 = daily()
+    dates = d1.index[-11:]
+    d1.loc[dates, ["open", "high", "low", "close"]] = [
+        102.0, 102.4, 101.6, 102.0]
+    # Last CLOSED session crosses 100 and gaps down from yesterday's 102.
+    d1.loc[dates[-1], ["open", "high", "low", "close"]] = [
+        100.1, 100.5, 99.8, 100.2]
+    lvl = Level(price=100., kind="support")
+    result = g03_near_retest(
+        d1, None, dates[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert result.value is True
+    assert result.detail["touched_in_window"] is True
+    assert result.detail["three_bar_retest"] is True
+    assert result.detail["gap_retest"] is True
+
+
+def test_g03_first_lookback_bar_uses_prior_closed_bar_for_gap_check():
+    cfg = StrategyConfig()
+    d1 = daily()
+    dates = d1.index[-11:]
+    d1.loc[dates, ["open", "high", "low", "close"]] = [
+        102.0, 102.3, 101.7, 102.0]
+    # First bar in the 10-session window touches 100; its true previous
+    # D1 close is available immediately before the 10-bar window.
+    d1.loc[dates[0], ["open", "high", "low", "close"]] = [
+        104.0, 104.5, 103.5, 104.0]
+    d1.loc[dates[1], ["open", "high", "low", "close"]] = [
+        100.1, 100.5, 99.8, 100.2]
+    lvl = Level(price=100., kind="support")
+    result = g03_near_retest(
+        d1, None, dates[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert result.detail["gap_retest"] is True
+    assert result.detail["touched_in_window"] is True
+
+
+def test_g03_gap_retest_bonus_requires_gap_closer_to_daily_level():
+    cfg = StrategyConfig()
+    d1 = daily()
+    dates = d1.index[-11:]
+    # Prior close at 99 is already ONE dollar from level 100.
+    # Today opens at 102 (now TWO dollars from that level), then
+    # trades down through it. This is an intraday wick retest,
+    # but certainly not a gap TOWARD the level.
+    d1.loc[dates, ["open", "high", "low", "close"]] = [
+        102., 102.4, 101.6, 102.]
+    d1.loc[dates[-2], ["open", "high", "low", "close"]] = [
+        99., 99.5, 98.7, 99.]
+    d1.loc[dates[-1], ["open", "high", "low", "close"]] = [
+        102., 102.3, 99.8, 100.2]
+    lvl = Level(price=100., kind="support")
+    r = g03_near_retest(d1, None, dates[-1].to_pydatetime(),
+                        lvl, [lvl], cfg)
+    assert r.detail["touched_in_window"] is True
+    assert r.detail["gap_retest"] is False
+
+    # A genuine DOWNWARD gap TOWARD support does earn the bonus.
+    d1.loc[dates[-2], ["open", "high", "low", "close"]] = [
+        102., 102.4, 101.6, 102.]
+    d1.loc[dates[-1], ["open", "high", "low", "close"]] = [
+        100.1, 100.5, 99.8, 100.2]
+    r = g03_near_retest(d1, None, dates[-1].to_pydatetime(),
+                        lvl, [lvl], cfg)
+    assert r.detail["gap_retest"] is True
+
+
+@pytest.mark.parametrize("bad_atr", [float("inf"), float("-inf")])
+def test_infinite_daily_native_atr_never_becomes_feature_score_or_entry(bad_atr):
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1["atr14"] = bad_atr
+    current = d1.index[-1].to_pydatetime()
+    next_session = (d1.index[-1] + pd.Timedelta(days=1)).to_pydatetime()
+    lvl = Level(price=100.0, kind="support", touches=3, strength=4.0,
+                valid_from=d1.index[1].date())
+    features = evaluate_all(d1, None, current, lvl, [lvl], cfg)
+    assert all(fr.value is None for fr in features.values())
+    assert all("Native LEAN ATR" in fr.reason for fr in features.values())
+    with pytest.raises(ValueError, match="Native LEAN ATR"):
+        ScenarioEvaluator(cfg).evaluate(
+            "AAPL", next_session.date(), next_session, d1, None, [lvl])
+    decision = ScenarioDecision(
+        "AAPL", next_session.date(), next_session, lvl,
+        "bounce", "long")
+    assert build_intent(decision, MarketData("AAPL", d1),
+                        next_session, cfg) is None
+
+
+def test_nonfinite_native_d1_sma_or_close_never_confirms_trend():
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1.loc[d1.index[-1], "sma50"] = float("inf")
+    assert global_trend(d1, len(d1)-1, cfg) == 0
+    assert trend_direction(d1, len(d1)-1, cfg) == 0
+    d1 = daily()
+    d1.loc[d1.index[-1], "close"] = float("inf")
+    assert global_trend(d1, len(d1)-1, cfg) == 0
+    assert trend_direction(d1, len(d1)-1, cfg) == 0

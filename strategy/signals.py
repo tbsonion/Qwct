@@ -1,6 +1,7 @@
 """Восемь обязательных фильтров («идеальная сделка») + торговое намерение.
 
-ID гейтов — строго по контракту hybrid (orb_stocks_in_play/hybrid.py):
+ID гейтов — строго по исходной спецификации Gerchik из
+docs/strategy_spec.md. Legacy ORB/hybrid module is NOT part of Qwct:
     trend_aligned, daily_level_valid, m5_confirmed, stop_behind_d1_level,
     room_at_least_4r, target_at_least_3r, risk_approved, matching_trade_model
 
@@ -16,6 +17,8 @@ import pandas as pd
 
 from .config import StrategyConfig
 from .data import MarketData
+from .breakout_retest import BreakoutRetestEvidence
+from .bpu_tvx_evidence import BpuTvxEvidence
 from .indicators import global_trend, trend_direction
 from .levels import Level, next_level
 from .scenarios import ScenarioDecision
@@ -96,6 +99,11 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
     lvl = decision.level
     side, model = intent.side, intent.model
     dirn = _direction(side) if side else 0
+    native_bounce = (
+        model == "bounce" and type(market.bpu_tvx) is BpuTvxEvidence
+        and lvl is not None and market.bpu_tvx.matches(
+            symbol=market.symbol, session=decision.session,
+            side=side, level_price=lvl.price, observed_at=ts))
 
     # 1. trend_aligned — глобальный и локальный тренд совпадают с направлением.
     # allow_countertrend=False (по умолчанию): контртренд запрещён, LMS.
@@ -106,9 +114,9 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
         g = global_trend(d1, len(d1) - 1, cfg)
         l = trend_direction(d1, len(d1) - 1, cfg)
         gates["trend_aligned"] = _gate(
-            "trend_aligned", True,
-            f"контртренд-режим ВКЛЮЧЁН (эксперимент): global={g} local={l} "
-            f"side={side} [требует решения владельца]")
+            "trend_aligned", None,
+            f"UNVERIFIED countertrend experiment: global={g} local={l} "
+            f"side={side}; canonical mandatory trend alignment not met")
     else:
         g = global_trend(d1, len(d1) - 1, cfg)
         l = trend_direction(d1, len(d1) - 1, cfg)
@@ -127,8 +135,48 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             "daily_level_valid", ok,
             f"strength={lvl.strength} touches={lvl.touches} valid_from={lvl.valid_from}")
 
-    # 3. m5_confirmed — FAIL CLOSED
-    gates["m5_confirmed"] = _check_m5(m5, lvl, side, model, cfg, ts)
+    # 3. m5_confirmed — FAIL CLOSED. The old two-M5 crossover
+    # function is a LEGACY PROXY, not a full Gerchik breakout setup.
+    # A genuine breakout must now carry the distinct subsequent retest
+    # and confirmation from a native M5 observer with matching as-of
+    # session, direction and level; no fallback to raw crossover.
+    if model == "breakout":
+        evidence = market.breakout_retest
+        verified = (
+            type(evidence) is BreakoutRetestEvidence
+            and lvl is not None
+            and evidence.matches(
+                symbol=market.symbol, session=decision.session, side=side,
+                level_price=lvl.price, observed_at=ts)
+            and m5 is not None and not m5.empty
+            and isinstance(m5.index, pd.DatetimeIndex)
+            and m5.index.tz is not None
+            and pd.Timestamp(m5.index[-1]) == pd.Timestamp(ts))
+        gates["m5_confirmed"] = _gate(
+            "m5_confirmed", verified,
+            "three distinct observed native closed M5 phases"
+            if verified else "no matching closed breakout/retest/confirmation evidence")
+    elif model == "bounce":
+        # Prior two-M5 bounce is only a price-action proxy. It must
+        # NEVER make the full Gerchik M5 gate TRUE. Only reconciled
+        # BPU1 -> native SEC -30s -> final closed BPU2 evidence from
+        # the same morning D1 origin/level/session can satisfy it.
+        evidence = market.bpu_tvx
+        verified = (
+            native_bounce
+            and m5 is not None and len(m5) >= 2
+            and isinstance(m5.index, pd.DatetimeIndex)
+            and m5.index.tz is not None
+            and pd.Timestamp(m5.index[-1]) == pd.Timestamp(ts)
+            and pd.Timestamp(m5.index[-2]) == pd.Timestamp(
+                evidence.bpu1_end))
+        gates["m5_confirmed"] = _gate(
+            "m5_confirmed", verified,
+            "D1 swing proxy + exact BPU1 + native SEC -30s + closed BPU2"
+            if verified else
+            "two-bar bounce proxy is insufficient: missing native BPU/TVX")
+    else:
+        gates["m5_confirmed"] = _check_m5(m5, lvl, side, model, cfg, ts)
     # A confirmed close far beyond its D1 level is a chase, not an
     # acceptable nearby-level entry. Use native D1 ATR only.
     if gates["m5_confirmed"].passed is True and lvl is not None:
@@ -136,14 +184,20 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
         if native_a is None:
             gates["m5_confirmed"] = _gate(
                 "m5_confirmed", None, "native D1 ATR missing")
-        elif abs(float(m5["close"].iloc[-1]) - lvl.price) > (
+        elif abs((
+                market.bpu_tvx.preclose_last_price if native_bounce
+                else float(m5["close"].iloc[-1])) - lvl.price) > (
                 cfg.max_entry_distance_atr * native_a):
             gates["m5_confirmed"] = _gate(
                 "m5_confirmed", False, "M5 level proximity exceeded no-chase ATR limit")
 
     # 4/5/6 зависят от цен — считаем стоп и лимит
     stop, limit = None, None
-    if lvl is not None and dirn != 0:
+    if native_bounce:
+        # Actual Gerchik TVX price is at 20% stop luft from the
+        # SOURCE BSU swing pivot, not the median D1 cluster price.
+        stop, limit = market.bpu_tvx.stop_price, market.bpu_tvx.entry_price
+    elif lvl is not None and dirn != 0:
         a = _atr(d1, cfg)
         if a is None:
             # нет ATR — стоп не из чего строить, дальше только None-гейты
@@ -200,16 +254,13 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
             f"entry={limit:.2f} stop={stop:.2f} target={target:.2f} "
             f"TP={cfg.tp_r}R")
 
-    # 7. risk_approved — через RiskManager, если передан
+    # 7. risk_approved: no user-supplied/legacy manager may grant native
+    # LEAN broker authorization. The read-only M5 observer can later
+    # downgrade UNKNOWN to FALSE on verified native mechanical blockers.
     if risk_mgr is not None:
-        ok_day, why_day = risk_mgr.can_open(intent.session)
-        shares_rm, risk_usd = risk_mgr.position_size(intent.risk_per_share,
-                                                     intent.limit_price,
-                                                     intent.session)
-        passed = bool(ok_day and shares_rm > 0)
-        reason = (f"[risk-manager] {why_day}; {shares_rm} акций; "
-                  f"риск ${risk_usd:.0f}")
-        gates["risk_approved"] = _gate("risk_approved", passed, reason)
+        gates["risk_approved"] = _gate(
+            "risk_approved", None,
+            "UNVERIFIED external risk manager; only native LEAN evidence accepted")
     elif risk_ps and risk_ps > 0 and limit:
         risk_money = equity * cfg.risk_per_trade_pct / 100
         shares = int(risk_money // risk_ps)
@@ -234,7 +285,11 @@ def evaluate_gates(intent: TradeIntent, decision: ScenarioDecision,
 
 def _check_m5(m5: pd.DataFrame, lvl: Level | None, side: str | None,
               model: str | None, cfg: StrategyConfig, ts: datetime) -> GateResult:
-    """Minimal two-bar closed M5 evidence. NOT full Gerchik BSU/TVX."""
+    """Legacy two-bar M5 proxy for bounce/false breakout and pure regressions.
+
+    For breakout the real runtime gate requires breakout/retest/confirmation
+    evidence and does NOT treat this historical two-bar proxy as approval.
+    """
     if m5 is None or len(m5) < 2 or lvl is None or side not in ("long", "short"):
         return _gate("m5_confirmed", False, "нужны две закрытые M5 свечи")
     if not isinstance(m5.index, pd.DatetimeIndex) or m5.index.tz is None:
@@ -294,8 +349,8 @@ def _atr(d1: pd.DataFrame, cfg: StrategyConfig) -> float | None:
     if d1 is None or d1.empty or len(d1) < cfg.atr_period + 1:
         return None
     v = atr(d1, cfg.atr_period).iloc[-1]
-    if pd.isna(v) or v <= 0:
-        return None  # No homemade ATR fallback
+    if pd.isna(v) or not isfinite(float(v)) or v <= 0:
+        return None  # No homemade ATR fallback, no infinity stop
     return float(v)
 
 
@@ -332,6 +387,12 @@ def build_intent(decision: ScenarioDecision, market: MarketData,
     stop = lvl.price - dirn * buf
     m5 = market.m5_asof(ts)
     limit = _limit_price(decision.model, decision.side, lvl, m5)
+    evidence = market.bpu_tvx
+    if (decision.model == "bounce" and type(evidence) is BpuTvxEvidence
+            and evidence.matches(
+                symbol=market.symbol, session=decision.session,
+                side=decision.side, level_price=lvl.price, observed_at=ts)):
+        limit, stop = evidence.entry_price, evidence.stop_price
     risk_ps = max(0.0, dirn * (limit - stop))
     risk_money = equity * cfg.risk_per_trade_pct / 100
     shares = int(risk_money // risk_ps) if risk_ps > 0 else 0

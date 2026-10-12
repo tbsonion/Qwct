@@ -62,7 +62,9 @@ def process_second_slice(self, data, time_index):
                     symbol, "TVX_SEC_PRE_CLOSE", model="bounce",
                     side=observed.side, level=observed.level_price,
                     reason=(
-                        f"native 270 contiguous SEC bars ending {sample.observed_at}; "
+                        f"native {sample.observed_bars} traded SEC bars "
+                        f"({sample.unobserved_seconds} seconds without a bar); "
+                        f"real cutoff={sample.observed_at}; "
                         f"BPU2 ends {sample.bpu2_end}; "
                         "provisional only; NO ORDERS OR FILLS"))
             else:

@@ -117,7 +117,7 @@ def g03_near_retest(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
             if abs(win["open"].iloc[i] - prev_close) >= 0.5 * a:
                 gap = True
                 break
-    v = touched and shallow
+    v = bool(touched and shallow)
     return FeatureResult("g03_near_retest", v,
                          {"touched_in_window": touched, "shallow_pullback": shallow,
                           "three_bar_retest": three_bar, "gap_retest": gap,

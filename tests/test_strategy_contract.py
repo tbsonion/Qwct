@@ -318,3 +318,37 @@ def test_g03_gap_retest_bonus_requires_gap_closer_to_daily_level():
     r = g03_near_retest(d1, None, dates[-1].to_pydatetime(),
                         lvl, [lvl], cfg)
     assert r.detail["gap_retest"] is True
+
+
+@pytest.mark.parametrize("bad_atr", [float("inf"), float("-inf")])
+def test_infinite_daily_native_atr_never_becomes_feature_score_or_entry(bad_atr):
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1["atr14"] = bad_atr
+    current = d1.index[-1].to_pydatetime()
+    next_session = (d1.index[-1] + pd.Timedelta(days=1)).to_pydatetime()
+    lvl = Level(price=100.0, kind="support", touches=3, strength=4.0,
+                valid_from=d1.index[1].date())
+    features = evaluate_all(d1, None, current, lvl, [lvl], cfg)
+    assert all(fr.value is None for fr in features.values())
+    assert all("Native LEAN ATR" in fr.reason for fr in features.values())
+    with pytest.raises(ValueError, match="Native LEAN ATR"):
+        ScenarioEvaluator(cfg).evaluate(
+            "AAPL", next_session.date(), next_session, d1, None, [lvl])
+    decision = ScenarioDecision(
+        "AAPL", next_session.date(), next_session, lvl,
+        "bounce", "long")
+    assert build_intent(decision, MarketData("AAPL", d1),
+                        next_session, cfg) is None
+
+
+def test_nonfinite_native_d1_sma_or_close_never_confirms_trend():
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1.loc[d1.index[-1], "sma50"] = float("inf")
+    assert global_trend(d1, len(d1)-1, cfg) == 0
+    assert trend_direction(d1, len(d1)-1, cfg) == 0
+    d1 = daily()
+    d1.loc[d1.index[-1], "close"] = float("inf")
+    assert global_trend(d1, len(d1)-1, cfg) == 0
+    assert trend_direction(d1, len(d1)-1, cfg) == 0

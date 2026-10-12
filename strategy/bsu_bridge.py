@@ -132,3 +132,65 @@ def create_bsu_research_observer(
         origin_price=origin_price,
     ), ("research-only D1 native pivot linked; cluster median distinct "
         "from pivot; NOT a canonical BSU or TVX")
+
+
+def audit_bsu_price_basis(decision, d1_asof, native_tick_size,
+                          raw_bars, time_index):
+    """Read-only comparison of the SAME pivot date in native RAW vs D1.
+
+    Never round/repair an input level, alter a detector, or fetch future data.
+    The caller explicitly supplies LEAN RAW daily history as-of the decision.
+    """
+    lvl = decision.level
+    tick = float(native_tick_size)
+    if (lvl is None or lvl.source != "swing_cluster" or
+            not isfinite(tick) or tick <= 0 or
+            lvl.first_idx < 0 or lvl.first_idx >= len(d1_asof)):
+        raise ValueError("no confirmed native pivot/tick to audit")
+    idx = lvl.first_idx
+    pivot_day = d1_asof.index[idx].date()
+    latest_day = d1_asof.index[-1].date()
+    side_field = "low" if lvl.kind == "support" else "high"
+    scaled_origin = float(d1_asof.iloc[idx][side_field])
+    scaled_latest = float(d1_asof.iloc[-1]["close"])
+    decision_at = pd.Timestamp(decision.decided_at)
+    scaled_end = pd.Timestamp(d1_asof.iloc[idx]["bar_end"])
+    if (decision_at.tzinfo is None or scaled_end.tzinfo is None or
+            not scaled_end < decision_at or
+            pivot_day >= decision.session or latest_day >= decision.session):
+        raise ValueError("D1/decision chronology cannot be proven")
+
+    native_pivot, native_latest, raw_count = [], [], 0
+    for bar in raw_bars:
+        day = pd.Timestamp(time_index(bar.time)).date()
+        end = pd.Timestamp(time_index(bar.end_time))
+        if end.tzinfo is None or not end < decision_at or day >= decision.session:
+            raise ValueError("RAW History contains unclosed/future D1 data")
+        if day == pivot_day:
+            if end != scaled_end:
+                raise ValueError("RAW and SCALED_RAW origin EndTime mismatch")
+            native_pivot.append(float(getattr(bar, side_field)))
+        if day == latest_day:
+            native_latest.append(float(bar.close))
+        raw_count += 1
+
+    if len(native_pivot) != 1 or len(native_latest) != 1:
+        raise ValueError("RAW origin/latest D1 missing or duplicated")
+    raw_origin, raw_close = native_pivot[0], native_latest[0]
+    if not all(isfinite(v) and v > 0 for v in
+               (raw_origin, raw_close, scaled_origin, scaled_latest)):
+        raise ValueError("nonpositive/nonfinite RAW or SCALED_RAW price")
+    def offset(price):
+        return abs(price - round(price / tick) * tick)
+    return (
+        f"QWCT BSU BASIS {decision.symbol} {decision.session} "
+        f"pivot_date={pivot_day} pivot_end={scaled_end.isoformat()} "
+        f"field={side_field} raw={raw_origin:.8f} "
+        f"scaled={scaled_origin:.8f} cluster={lvl.price:.8f} "
+        f"tick={tick:.6f} raw_off={offset(raw_origin):.8f} "
+        f"scaled_off={offset(scaled_origin):.8f} "
+        f"factor_scaled/raw={scaled_origin/raw_origin:.9f} "
+        f"last={latest_day} raw_close={raw_close:.6f} "
+        f"scaled_close={scaled_latest:.6f} bars={raw_count}; "
+        "OBSERVATION ONLY / NO ORDERS"
+    )

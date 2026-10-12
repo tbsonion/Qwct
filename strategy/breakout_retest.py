@@ -150,7 +150,7 @@ class BreakoutRetestObserver:
             if self._after_breakout > self.retest_bars:
                 return self._stop("EXPIRED", "RETEST_NOT_SEEN_WITHIN_M5_WINDOW")
             if (bullish and c < level - self.invalidation * self.atr
-                    or not bullish and c > level + self.INVALIDATION_ATR * self.atr):
+                    or not bullish and c > level + self.invalidation * self.atr):
                 return self._stop("INVALIDATED", "CLOSED_BEYOND_LOSS_SIDE")
             close_holds = c >= level if bullish else c <= level
             near = (l <= level + self.retest_tolerance * self.atr if bullish
@@ -165,8 +165,8 @@ class BreakoutRetestObserver:
             # No same-candle and no future-looking confirmation:
             # exactly the immediate NEXT completed native M5 must close
             # beyond the retest candle's directional extreme.
-            if (bullish and c < level - self.INVALIDATION_ATR * self.atr
-                    or not bullish and c > level + self.INVALIDATION_ATR * self.atr):
+            if (bullish and c < level - self.invalidation * self.atr
+                    or not bullish and c > level + self.invalidation * self.atr):
                 return self._stop("INVALIDATED", "CONFIRM_LOST_LEVEL")
             confirmed = (
                 (bullish and c > self._retest_extreme and c > o)

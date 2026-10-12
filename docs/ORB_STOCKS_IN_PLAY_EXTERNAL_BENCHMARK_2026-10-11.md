@@ -106,6 +106,12 @@ LEAN's native exchange calendar, **not** reconstructed here.
   only when the actual 09:35 bar is observed.
 - The 5-minute ORB opening range is **not** Gerchik's D1 level,
   BSU/BPU1/BPU2 30-second TVX entry; do not substitute one for the other.
+- **Safety fix learned from ORB discussion:** `strategy/m5_runtime.py`
+  now rejects duplicate and out-of-order completed M5 observations
+  before any per-bar BPU1/BPU2 state transition or research-candidate
+  bookkeeping. Test cases replay the same native-shaped M5 event and a
+  delayed prior event; both must fail closed. This is NOT a native
+  LEAN integration, broker order or partial-fill test.
 - Even two backtests on the 'same' ORB paper can differ by
   Python vs C# implementation, data normalization, daily ATR accidentally
   updated from intraday bars, warm-up, risk caps, fill handling, protective

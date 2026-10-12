@@ -19,9 +19,9 @@ def _function_ast(source, name):
     return ast.dump(function, include_attributes=False)
 
 
-def test_cloud_free_contains_exactly_25_verified_python_files():
+def test_cloud_free_reserves_research_notebook_as_file_25():
     files = build_sources(ROOT)
-    assert len(files) == CLOUD_FILE_LIMIT == 25
+    assert len(files) == CLOUD_FILE_LIMIT == 24  # research.ipynb is #25
     assert "main.py" in files
     assert "strategy/__init__.py" in files
     assert "strategy/native_second_tvx.py" in files
@@ -37,6 +37,10 @@ def test_cloud_free_contains_exactly_25_verified_python_files():
     assert "from .native_second_tvx import _duration_seconds" in (
         files["strategy/second_runtime.py"])
     assert "from .native_m5_validation import" not in "\n".join(files.values())
+    assert "from strategy.reporting import write_reports" in files["main.py"]
+    assert "strategy/runtime_reporting.py" not in files
+    assert len(files["strategy/reporting.py"].encode("utf-8")) < 32_000
+    assert len(files["main.py"].encode("utf-8")) < 32_000
     assert "_native_exit_enabled = False" in files["main.py"]
 
 
@@ -49,6 +53,8 @@ def test_cloud_free_uses_exact_main_source_function_bodies():
           "passes_gerchik_screener")),
         ("strategy/native_m5_validation.py", "strategy/native_second_tvx.py",
          ("_duration_seconds", "validate_m5_tradebar")),
+        ("strategy/runtime_reporting.py", "strategy/reporting.py",
+         ("write_reports",)),
     ):
         canonical = (ROOT/source_path).read_text(encoding="utf-8")
         bundled = files[dest]
@@ -58,7 +64,7 @@ def test_cloud_free_uses_exact_main_source_function_bodies():
 
 def test_cloud_free_zip_has_no_extra_notebooks_tests_or_external_files(tmp_path):
     sources = build_sources(ROOT)
-    output = tmp_path/"Qwct-QuantConnect-Free-25.zip"
+    output = tmp_path/"Qwct-QuantConnect-Free-24py.zip"
     package_zip(sources, output)
     with ZipFile(output) as archive:
         assert set(archive.namelist()) == set(sources)
@@ -84,6 +90,7 @@ from strategy.config import StrategyConfig
 from strategy.native_second_tvx import _duration_seconds, validate_m5_tradebar
 from strategy.second_runtime import process_second_slice
 from strategy.m5_runtime import process_m5
+from strategy.reporting import write_reports
 cfg = StrategyConfig()
 Symbol = namedtuple("Symbol", "value")
 a = SimpleNamespace(symbol=Symbol("AAA"),
@@ -100,7 +107,7 @@ b = SimpleNamespace(time=t, end_time=t+timedelta(minutes=5),
                     is_fill_forward=False)
 assert _duration_seconds(b.period) == 300.
 assert validate_m5_tradebar(b, b.end_time)[0] is True
-assert callable(process_second_slice) and callable(process_m5)
+assert callable(process_second_slice) and callable(process_m5) and callable(write_reports)
 """
     result = subprocess.run(
         [sys.executable, "-c", smoke], cwd=tmp_path,

@@ -50,9 +50,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # The anchor is a clock only. All actual Gerchik decisions use
         # independently warmed symbols selected by the native universe.
         anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
-        # A manually subscribed clock ticker can ALSO be selected by
-        # the Fundamental universe. In SEC mode its independent manual
-        # subscription MUST be SECOND, never an overlapping M1 source.
+        # Anchor can be in universe: use SECOND here in SEC mode too.
         self.symbol = self.add_equity(
             anchor, (Resolution.SECOND if self._tvx_seconds_enabled
                      else Resolution.MINUTE), fill_forward=False,
@@ -175,8 +173,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
     def _select_screen_universe(self, fundamentals):
         # Never call History/Portfolio/Transactions inside universe selection.
-        # SEC backtests use at most the 10 D1 screening slots, not
-        # 50 unneeded one-second streams. No effect in default MINUTE.
+        # Cap SECOND universe to watchlist capacity; MINUTE unchanged.
         limit = (self.cfg.screener_watchlist_limit
                  if self._tvx_seconds_enabled else None)
         selected = select_liquid_fundamentals(

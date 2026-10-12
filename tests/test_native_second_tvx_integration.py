@@ -40,11 +40,14 @@ class ResearchHarness:
             "m5_rows": [], "decision": None, "qualified_today": False,
             "focus_level": None, "setup_trace": None,
             "touch_audit": None, "tvx_sec_window": None,
+            "bsu_tvx_evidence": None,
             "bsu_link": SimpleNamespace(
                 detector=BsuDetector(
                     StrategyConfig(), 100., side, atr_value=2.,
                     tick_size=0.01, bsu_ts=datetime(2023, 8, 24, 16, tzinfo=ET)),
-                provenance="D1_SWING_PROXY", origin_time=AT-timedelta(days=50))
+                provenance="D1_CONFIRMED_SWING_PROXY_NOT_CANONICAL_BSU",
+                origin_time=AT-timedelta(days=50),
+                origin_price=100., cluster_price=100.)
         }}
         self.records = []
 
@@ -101,6 +104,7 @@ def test_complete_270_native_seconds_marks_preclose_then_m5_reconciles():
     assert st.phase == "preclose_candidate"
     assert st.preclose_seen is True
     assert st.can_submit is False
+    assert a._symbols["NVDA"]["bsu_tvx_evidence"] is None
     assert st.preclose_low == 100.01
     assert st.precision == "sec_preclose_observed"
     assert [x[1] for x in a.records].count("TVX_SEC_PRE_CLOSE") == 1
@@ -111,6 +115,12 @@ def test_complete_270_native_seconds_marks_preclose_then_m5_reconciles():
                pd.Timestamp)
     assert a._bsu_proxy_bpu2_count == 1
     assert a._tvx_preclose_reconciled == 1
+    evidence = a._symbols["NVDA"]["bsu_tvx_evidence"]
+    assert evidence is not None
+    assert evidence.can_submit is False
+    assert evidence.matches(
+        symbol="NVDA", session=AT.date(), side="long",
+        level_price=100., observed_at=AT+timedelta(minutes=5))
     assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "bpu2_confirmed"
     assert "RECONCILED" in a.records[-1][2]["reason"]
     assert "NO ORDERS OR FILLS" in a.records[-1][2]["reason"]

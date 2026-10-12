@@ -52,18 +52,19 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         # The anchor is a clock only. All actual Gerchik decisions use
         # independently warmed symbols selected by the native universe.
         anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
-        # RAW live-price SEC plus SCALED_RAW D1 warmup prevents
-        # look-ahead split adjustment; default MINUTE stays unchanged.
-        self._tvx_normalization_mode = (
-            DataNormalizationMode.RAW if self._tvx_seconds_enabled
-            else DataNormalizationMode.SPLIT_ADJUSTED)
+        # Use a single native as-of price basis: RAW TradeBars for both
+        # MINUTE and SECOND subscriptions. SPLIT_ADJUSTED uses the entire
+        # future split history, so 2024 NVDA can appear on a false 10:1
+        # post-2024 lattice. Historical D1 warmup uses official SCALED_RAW
+        # at the algorithm time, not an invented split factor.
+        self._equity_normalization_mode = DataNormalizationMode.RAW
         # Anchor can be in universe: use SECOND here in SEC mode too.
         self.symbol = self.add_equity(
             anchor, (Resolution.SECOND if self._tvx_seconds_enabled
                      else Resolution.MINUTE), fill_forward=False,
-            data_normalization_mode=self._tvx_normalization_mode).symbol
+            data_normalization_mode=self._equity_normalization_mode).symbol
         self.securities[self.symbol].set_data_normalization_mode(
-            self._tvx_normalization_mode)
+            self._equity_normalization_mode)
 
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
@@ -136,7 +137,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
         self.universe_settings.data_normalization_mode = (
-            self._tvx_normalization_mode)
+            self._equity_normalization_mode)
         self._screen_universe = self.add_universe(self._select_screen_universe)
 
         self.schedule.on(
@@ -166,7 +167,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self._checkpoint_reports)
 
         self.debug(
-            "Qwct: signal-only; ALL ORDERS DISABLED; "
+            "Qwct: signal-only; ALL ORDERS DISABLED; RAW as-of/SCALED_RAW D1; "
             + ("native SEC TVX research ENABLED, high data volume"
                if self._tvx_seconds_enabled else "native SEC TVX NOT ENABLED"))
 
@@ -251,10 +252,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             # NOT one TradeBar per outer iteration.
             for bars in self.history[TradeBar](
                     symbols, 180, Resolution.DAILY,
-                    data_normalization_mode=(
-                        DataNormalizationMode.SCALED_RAW
-                        if self._tvx_seconds_enabled
-                        else DataNormalizationMode.SPLIT_ADJUSTED)):
+                    data_normalization_mode=DataNormalizationMode.SCALED_RAW):
                 for symbol, bar in bars.items():
                     if _time_index(bar.end_time).date() < self.time.date():
                         self._append_daily(bar)

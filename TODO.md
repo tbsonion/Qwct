@@ -17,6 +17,17 @@
 
 **Reference:** [docs/NVDA_BSU_RAW_ASOF_2026-10-12.md](docs/NVDA_BSU_RAW_ASOF_2026-10-12.md), [docs/LEAN_CLOUD_TVX_30S_SMOKE_2026-10-11.md](docs/LEAN_CLOUD_TVX_30S_SMOKE_2026-10-11.md), [docs/QWCT_DEEP_IMPLEMENTATION_AUDIT_2026-10-11.md](docs/QWCT_DEEP_IMPLEMENTATION_AUDIT_2026-10-11.md).
 
+## Новое: готовые решения, найденные в official LEAN (Deep Research 2026-10-12)
+
+**Полный отчёт и ссылки на 18 первичных источников:** [docs/READY_BUILT_LEAN_RESEARCH_2026-10-12.md](docs/READY_BUILT_LEAN_RESEARCH_2026-10-12.md).
+
+- [x] **Найден** встроенный **`RelativeDailyVolume` / `rdv()`**. Прежде чем расширять `opening_volume_research.py`, сравнить нативный `rdv(symbol,14)` с first-5m RVOL именно на 09:35, используя закрытые 14 прошлых регулярных сессий. **НЕ подключён к Qwct и parity не выполнена.**
+- [x] **Найден** встроенный **`PivotPointsHighLow` / `pphl()`** и `DonchianChannel`. Применять как D1 baseline/comparator, **не объявлять эквивалентом авторских BSU/зеркал**.
+- [x] **Подтверждено**: LEAN `History[TradeBar]` поддерживает отдельные `RAW` и `SCALED_RAW` запросы; `SCALED_RAW` может переносить старый экстремум с реальной native ценовой сетки вследствие уже известных сплитов/дивидендов. **Диагностировать точный RAW pivot, не округлять и не переименовывать кластерный median в pivot**.
+- [x] **Подтверждено**: LEAN поддерживает `Resolution.SECOND`, `QuoteBar`, native `RiskManagementModel`, slippage/borrow providers, export Backtest Orders/Trades/Results; **поддержка API не является Cloud runtime proof в Qwct**.
+- [x] **Критическая готовая API-ограниченность**: LEAN `Bracket`/OTO активирует защиту **только при полном parent fill**; у Schwab нельзя обновлять contingent set и нет OUO. **Partial-fill protection не готова.**
+- [ ] **Следующий нативный эксперимент:** RAW D1 vs SCALED_RAW D1 для NVDA as-of 2024-01-02 с `origin_price`, `tick`, factor/split, ATR и RAW M5. Продолжать P0-01 без включения orders.
+
 ## 1. Технические задачи и критерии принятия
 
 | ID | Приоритет | Что работает | Что НЕ завершено / критерий готовности |

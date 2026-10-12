@@ -109,6 +109,13 @@ def test_complete_270_native_seconds_marks_preclose_then_m5_reconciles():
     assert st.preclose_low == 100.01
     assert st.precision == "sec_preclose_observed"
     assert [x[1] for x in a.records].count("TVX_SEC_PRE_CLOSE") == 1
+    observed_row = next(v[2] for v in a.records
+                        if v[1] == "TVX_SEC_PRE_CLOSE")
+    assert round(observed_row["entry"], 2) == 100.10
+    assert round(observed_row["stop"], 2) == 99.50
+    assert round(observed_row["risk"], 2) == 0.60
+    assert "actual last SEC trade=100.06" in observed_row["reason"]
+    assert "risk/broker authorization UNKNOWN" in observed_row["reason"]
     # Preclose is never a BPU2 close or a fill.
     assert a._bsu_proxy_bpu2_count == 0
     process_m5(a, native_m5(AT+timedelta(minutes=5),
@@ -257,6 +264,10 @@ def test_short_resistance_bpu_preclose_symmetric_and_m5_reconciled():
     for n in range(1, 271):
         on_sec(a, sec_bar(n, low=99.90, high=99.99, price=99.94))
     assert a._tvx_preclose_count == 1
+    observed_row = next(v[2] for v in a.records
+                        if v[1] == "TVX_SEC_PRE_CLOSE")
+    assert round(observed_row["entry"], 2) == 99.90
+    assert round(observed_row["stop"], 2) == 100.50
     assert a._symbols["NVDA"]["bsu_link"].detector.state.can_submit is False
     process_m5(
         a, native_m5(t+timedelta(minutes=5), low=99.85, high=99.99,

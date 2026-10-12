@@ -9,7 +9,7 @@ import pytest
 
 from strategy.config import StrategyConfig
 from strategy.data import MarketData
-from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep, g09_context
+from strategy.features import FeatureResult, evaluate_all, g14_liquidity_sweep, g09_context, g07_close_at_extreme, g08_small_bars_approach
 import strategy.scenarios as scenario_module
 from strategy.indicators import atr, global_trend, trend_direction
 from strategy.levels import Level, detect_levels, levels_for_session, _native_atr, _score_level
@@ -213,3 +213,39 @@ def test_g09_clean_zone_looks_past_candidate_level_not_from_daily_close():
                           target, [target], cfg)
     assert unknown.detail["clean_zone"] is None
     assert unknown.detail["room_atr"] is None
+
+
+def test_g07_close_at_lower_extreme_cannot_support_breakout_above_last_close():
+    cfg = StrategyConfig()
+    d1 = daily()
+    d1.loc[d1.index[-2], "close"] = 98.6
+    d1.loc[d1.index[-1], ["open", "high", "low", "close"]] = [
+        99.9, 100.3, 98.9, 99.0]
+    lvl = Level(price=100., kind="resistance")
+    observed = g07_close_at_extreme(
+        d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert not bool(observed.value)
+    assert bool(observed.detail["closed_at_low"])
+    # The same setup with a genuine close near the upper extreme may
+    # support an upward-breakout *feature*, not an executable order.
+    d1.loc[d1.index[-1], ["open", "high", "low", "close"]] = [
+        99.1, 100.1, 98.8, 100.0]
+    observed = g07_close_at_extreme(
+        d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert bool(observed.value)
+
+
+def test_g08_small_bars_moving_away_must_not_be_called_approach():
+    cfg = StrategyConfig()
+    d1 = daily()
+    closes = [100., 100.4, 100.8, 101.2, 101.4]
+    for j, cl in enumerate(closes):
+        d1.loc[d1.index[-5+j], ["open", "high", "low", "close"]] = [
+            cl, cl + .2, cl - .2, cl]
+    lvl = Level(price=100., kind="resistance")
+    fr = g08_small_bars_approach(
+        d1, None, d1.index[-1].to_pydatetime(), lvl, [lvl], cfg)
+    assert bool(fr.detail["small_bars"])
+    assert bool(fr.detail["trending"])
+    assert not bool(fr.detail["approaching_level"])
+    assert not bool(fr.value)

@@ -103,6 +103,11 @@ def create_bsu_research_observer(
         if (not isfinite(origin_price) or origin_price <= 0
                 or not isfinite(lvl.price) or lvl.price <= 0):
             return None, "swing origin price/cluster level is invalid"
+        # SPLIT_ADJUSTED may rescale historical raw cents to fractions
+        # of a current tick. Such an origin is not evidence of a
+        # directly tradable native BSU price: fail closed.
+        if abs(round(origin_price / tick) * tick - origin_price) > tick * 1e-5:
+            return None, "BSU historical origin off native tick grid; normalization unsafe"
         # Swing clustering is allowed to group nearby, but distinct,
         # native daily highs/lows. The *first actual pivot extreme* is a
         # traceable research origin; the cluster median cannot be called

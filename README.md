@@ -55,6 +55,7 @@ Deploy the *entire generated bundle* together when syncing a new Cloud project, 
 ## Documentation / next work
 
 - **[TODO.md](TODO.md)** — single current project plan and research questions.
+- **[Ready-made LEAN research](docs/READY_BUILT_LEAN_RESEARCH_2026-10-12.md)** — official native RDV, pivot points, RAW/SCALED_RAW diagnostic approach, seconds, risk, Schwab contingent-order constraints, and what NOT to rebuild.
 - [strategy specification](docs/strategy_spec.md)
 - [historical corporate-action/tick-grid investigation](docs/NVDA_BSU_RAW_ASOF_2026-10-12.md)
 - [native SEC -30s Cloud smoke protocol](docs/LEAN_CLOUD_TVX_30S_SMOKE_2026-10-11.md)

@@ -160,7 +160,7 @@ def test_chart_uses_native_candles_of_one_stable_symbol_not_mixed_tickers():
     assert 'self._chart_symbol' in src
     assert 'if self._chart_symbol is None:' in src
     assert 'selected = choose_focus(' in src
-    assert '"Qwct M5 two-bar passes"' in src
+    assert '"Qwct M5 gate passes"' in src
     assert 'symbol == self._chart_symbol and self._focus_m5_plotted < 3500)' in src
     assert 'if focus_charted_this_bar:' in src
     assert src.count('if focus_charted_this_bar:') == 3

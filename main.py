@@ -16,6 +16,7 @@ from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
 from strategy.bsu_bridge import create_bsu_research_observer
+from strategy.breakout_retest import BreakoutRetestObserver
 from strategy.sessions import SessionPolicy
 from strategy.research_trace import SetupTrace, BpuTouchAudit
 from strategy.focus import choose_focus
@@ -94,6 +95,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._d1_models = Counter()
         self._bsu_block_reasons = Counter()
         self._bpu_invalid_reasons = Counter()
+        self._breakout_retest_counts = Counter()
         # In-memory evidence of the first accepted D1 setups; stop
         # growing trace memory on 1-year Cloud Free research windows.
         self._setup_traces = []
@@ -215,6 +217,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "decision": None, "qualified_today": False,
             "session_levels": None,
             "bsu_link": None,
+            "breakout_retest": None,
             "focus_level": None,
             "setup_trace": None,
             "touch_audit": None,
@@ -332,6 +335,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             state["decision"] = None
             state["session_levels"] = None
             state["bsu_link"] = None
+            state["breakout_retest"] = None
             state["focus_level"] = None
             state["setup_trace"] = None
             state["touch_audit"] = None
@@ -384,6 +388,17 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     # nearby context level. No intraday recalculation.
                     if symbol == self._chart_symbol:
                         state["focus_level"] = float(decision.level.price)
+                if decision.accepted and decision.model == "breakout":
+                    # Research-only lifecycle: genuine D1 level from this
+                    # premarket snapshot; actual native completed M5 will
+                    # progress breakout -> retest -> confirmation. It can
+                    # never submit a broker order or replace Gerchik risk.
+                    state["breakout_retest"] = BreakoutRetestObserver(
+                        symbol=symbol.value, session=self._session_date,
+                        side=decision.side,
+                        level_price=float(decision.level.price),
+                        atr_value=float(d1[f"atr{self.cfg.atr_period}"].iloc[-1]),
+                        max_confirm_chase_atr=self.cfg.max_entry_distance_atr)
                 if decision.accepted and decision.model == "bounce":
                     # Native symbol properties (never a guessed USD 0.01)
                     # and actual as-of D1 origin are mandatory. A confirmed

@@ -173,3 +173,34 @@ def test_session_end_or_wrong_day_never_confirm():
         volume=1000)
     assert result.phase == "INVALIDATED"
     assert result.can_submit is False
+
+
+def test_configurable_retest_ttl_can_expire_in_two_bars():
+    obs = observer(max_retest_bars=2)
+    deliver(obs, 0, 99.8, 99.9, 99.6, 99.8)
+    deliver(obs, 5, 99.8, 100.4, 99.7, 100.2)
+    assert deliver(obs, 10, 100.6, 100.9, 100.5, 100.7).phase == "WAIT_RETEST"
+    assert deliver(obs, 15, 100.6, 100.9, 100.5, 100.7).phase == "WAIT_RETEST"
+    result = deliver(obs, 20, 100.6, 100.9, 100.5, 100.7)
+    assert result.phase == "EXPIRED"
+    assert result.reason == "RETEST_NOT_SEEN_WITHIN_M5_WINDOW"
+    assert result.can_submit is False
+
+
+def test_configured_retest_atr_changes_near_level_without_predicting_prices():
+    strict = observer(retest_tolerance_atr=0.1)
+    lenient = observer(retest_tolerance_atr=0.3)
+    for obs in (strict, lenient):
+        deliver(obs, 0, 99.8, 99.9, 99.6, 99.8)
+        deliver(obs, 5, 99.8, 100.6, 99.7, 100.2)
+    # Minimum at 100.4 = +0.2*ATR. Under strict 0.1 ATR this is
+    # not near enough; under lenient 0.3 ATR it is.
+    row = (100.5, 100.7, 100.4, 100.6)
+    assert deliver(strict, 10, *row).phase == "WAIT_RETEST"
+    assert deliver(lenient, 10, *row).phase == "WAIT_CONFIRMATION"
+
+
+@pytest.mark.parametrize("bad", [0, -1, 81, 2.5, True])
+def test_invalid_retest_lookback_is_rejected(bad):
+    with pytest.raises(ValueError, match="M5 retest limit"):
+        observer(max_retest_bars=bad)

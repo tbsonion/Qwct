@@ -88,6 +88,19 @@ def process_m5(self, bar, time_index):
                     time_index(bar.end_time).to_pydatetime(),
                     low=float(bar.low), high=float(bar.high),
                     close=float(bar.close))
+                if getattr(self, "_case_scan", False):
+                    # Bounded as-of scan ranking; uses only completed
+                    # native RAW M5 candles already passed to BPU.
+                    case = (abs(audit.closest_gap), symbol.value,
+                            str(self._session_date), audit.level,
+                            audit.closest_extreme, audit.closest_gap,
+                            audit.nearest_time[11:16], audit.touches)
+                    self._bsu_scan_best = sorted(
+                        (r for r in self._bsu_scan_best
+                         if r[1:3] != case[1:3]), key=lambda r: r[0])
+                    self._bsu_scan_best.append(case)
+                    self._bsu_scan_best.sort()
+                    self._bsu_scan_best = self._bsu_scan_best[:5]
             if link.detector.state.phase == "invalidated":
                 sec_window = state.get("tvx_sec_window")
                 # A failed pre-close SEC check must NOT be erased by a

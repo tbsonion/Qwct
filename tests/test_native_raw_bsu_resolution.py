@@ -108,6 +108,45 @@ def test_future_duplicate_timestamp_and_symbol_mismatch_block():
         confirm(decision, daily, bars)
 
 
+
+class LeanStyleSymbol:
+    """Mock an official LEAN Symbol with a ticker and a serialized SID."""
+    def __init__(self, ticker, sid="R735QTJ8XC9X"):
+        self.value = ticker
+        self.id = sid
+
+    def __str__(self):
+        return f"{self.value} {self.id}"
+
+
+def test_real_lean_symbol_value_used_instead_of_sid_string():
+    decision, daily, bars = sample()
+    for bar in bars:
+        bar.symbol = LeanStyleSymbol("AAPL")
+    # LEAN string repr may include SID even when .value matches the ticker.
+    assert str(bars[0].symbol) != decision.symbol
+    raw = confirm(decision, daily, bars)
+    assert raw.origin_price == pytest.approx(502.66)
+    link, why = create_bsu_research_observer(
+        decision, daily, .01, StrategyConfig(),
+        raw_evidence=raw, require_raw=True)
+    assert link is not None, why
+    assert link.detector.state.can_submit is False
+
+
+def test_lean_symbol_value_mismatch_still_blocks():
+    decision, daily, bars = sample()
+    bars[0].symbol = LeanStyleSymbol("MSFT")
+    with pytest.raises(ValueError, match="symbol mismatch"):
+        confirm(decision, daily, bars)
+
+
+def test_untyped_symbol_without_ticker_value_fails_closed():
+    decision, daily, bars = sample()
+    bars[0].symbol = SimpleNamespace(id="AAPL R735QTJ8XC9X")
+    with pytest.raises(ValueError, match="symbol mismatch"):
+        confirm(decision, daily, bars)
+
 def test_historical_split_sized_raw_pivot_is_not_silently_relabelled():
     decision, daily, bars = sample()
     bars[decision.level.first_idx].high = 5026.60

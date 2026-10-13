@@ -13,7 +13,7 @@ def test_exact_native_m5_touch_is_not_a_crossing_or_nearby_miss():
     audit = BpuTouchAudit("short", 502.66, .01)
     now = datetime(2024, 1, 2, 9, 35, tzinfo=ZoneInfo("America/New_York"))
     audit.observe(now, low=488., high=493., close=490.)
-    assert audit.touches == 0 and audit.closest_gap == -9.66
+    assert audit.touches == 0 and abs(audit.closest_gap + 9.66) < 1e-8
     audit.observe(now + timedelta(minutes=5), low=500., high=502.67, close=502.)
     assert audit.touches == 0 and audit.overshoots == 1
     audit.observe(now + timedelta(minutes=10), low=501., high=502.66, close=502.)

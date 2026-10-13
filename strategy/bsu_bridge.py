@@ -9,7 +9,7 @@ trader would identify the same BSU. Closed M5 BPU2 also cannot
 establish the original :30-before-close TVX limit entry.
 """
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from math import isfinite
 
 import pandas as pd
@@ -32,11 +32,114 @@ class BsuResearchLink:
     provenance: str = "D1_CONFIRMED_SWING_PROXY_NOT_CANONICAL_BSU"
 
 
+
+@dataclass(frozen=True)
+class RawBsuEvidence:
+    """As-of observed RAW D1 pivot, verified against SCALED_RAW provenance."""
+    pivot_date: date
+    pivot_end: datetime
+    latest_date: date
+    origin_price: float
+    scaled_origin: float
+    cluster_price: float
+    raw_close: float
+    scaled_close: float
+    tick: float
+    bar_count: int
+
+
+def resolve_raw_bsu_evidence(
+    decision, d1_asof, native_tick_size, raw_bars, time_index
+) -> RawBsuEvidence:
+    """Reconcile the SAME native daily swing and last closed day as of 09:29.
+
+    Never round historical levels, infer a split factor or mix price bases.
+    No M5 history is accessed; RAW minute subscription is required upstream.
+    """
+    lvl = decision.level
+    tick = float(native_tick_size)
+    if (lvl is None or lvl.source != "swing_cluster"
+            or not isfinite(tick) or tick <= 0
+            or d1_asof is None or d1_asof.empty
+            or not isinstance(d1_asof.index, pd.DatetimeIndex)
+            or d1_asof.index.tz is None
+            or not d1_asof.index.is_unique
+            or not d1_asof.index.is_monotonic_increasing
+            or "bar_end" not in d1_asof.columns
+            or lvl.first_idx < 0 or lvl.first_idx >= len(d1_asof)):
+        raise ValueError("RAW basis: missing confirmed D1 pivot, timestamps or tick")
+    idx = lvl.first_idx
+    pivot_date = d1_asof.index[idx].date()
+    latest_date = d1_asof.index[-1].date()
+    field = "low" if lvl.kind == "support" else "high"
+    if lvl.kind not in ("support", "resistance"):
+        raise ValueError("RAW basis: unsupported pivot direction")
+    decision_at = pd.Timestamp(decision.decided_at)
+    pivot_end = pd.Timestamp(d1_asof.iloc[idx]["bar_end"])
+    scaled_origin = float(d1_asof.iloc[idx][field])
+    scaled_close = float(d1_asof.iloc[-1]["close"])
+    if (decision_at.tzinfo is None or pivot_end.tzinfo is None
+            or pd.isna(pivot_end) or not pivot_end < decision_at
+            or pivot_date >= decision.session or latest_date >= decision.session):
+        raise ValueError("RAW basis: future or unclosed SCALED_RAW D1")
+
+    observed_pivot, observed_last = [], []
+    prev_date = None
+    count = 0
+    for bar in raw_bars:
+        raw_start = pd.Timestamp(time_index(bar.time))
+        raw_end = pd.Timestamp(time_index(bar.end_time))
+        if (raw_start.tzinfo is None or raw_end.tzinfo is None
+                or pd.isna(raw_start) or pd.isna(raw_end)
+                or raw_end <= raw_start or raw_end >= decision_at
+                or raw_start.date() >= decision.session):
+            raise ValueError("RAW History contains unclosed/future D1 data")
+        day = raw_start.date()
+        if prev_date is not None and day <= prev_date:
+            raise ValueError("RAW basis: duplicate or unordered D1 dates")
+        prev_date = day
+        if getattr(bar, "symbol", None) is not None and (
+                str(bar.symbol) != str(decision.symbol)):
+            raise ValueError("RAW basis: symbol mismatch")
+        if day == pivot_date:
+            if raw_end != pivot_end:
+                raise ValueError("RAW and SCALED_RAW origin EndTime mismatch")
+            observed_pivot.append(float(getattr(bar, field)))
+        if day == latest_date:
+            scaled_last_end = pd.Timestamp(d1_asof.iloc[-1]["bar_end"])
+            if raw_end != scaled_last_end:
+                raise ValueError("RAW and SCALED_RAW latest EndTime mismatch")
+            observed_last.append(float(bar.close))
+        count += 1
+
+    if len(observed_pivot) != 1 or len(observed_last) != 1:
+        raise ValueError("RAW origin/latest D1 missing or duplicated")
+    origin, raw_close = observed_pivot[0], observed_last[0]
+    if not all(isfinite(x) and x > 0 for x in (
+            origin, raw_close, scaled_origin, scaled_close)):
+        raise ValueError("RAW basis: invalid observed historical OHLC")
+    if abs(origin - round(origin / tick) * tick) > tick * 1e-5:
+        raise ValueError("RAW origin off native tick grid")
+    # The newest completed daily candle must be on the same price basis
+    # as live RAW M5. A large residual implies unverified normalization.
+    if abs(raw_close - scaled_close) > tick * 0.5 + tick * 1e-7:
+        raise ValueError("RAW/SCALED_RAW latest close price bases disagree")
+    # A historical corporate-action split can shift a pivot far away from
+    # the screened D1 cluster. Never silently use it as an exact BSU.
+    if not isfinite(float(lvl.price)) or float(lvl.price) <= 0:
+        raise ValueError("RAW basis: invalid screened cluster")
+    return RawBsuEvidence(
+        pivot_date, pivot_end.to_pydatetime(), latest_date, origin,
+        scaled_origin, float(lvl.price), raw_close, scaled_close, tick, count)
+
+
 def create_bsu_research_observer(
     decision: ScenarioDecision,
     d1_asof: pd.DataFrame,
     native_tick_size: float | None,
     cfg: StrategyConfig,
+    *, raw_evidence: RawBsuEvidence | None = None,
+    require_raw: bool = False,
 ) -> tuple[BsuResearchLink | None, str]:
     """Fail-closed creation for the bounce-only closed-M5 research observer.
 
@@ -95,17 +198,29 @@ def create_bsu_research_observer(
             return None, "native D1 source originates after morning decision"
         if d1_asof.index[lvl.first_idx].date() >= decision.session:
             return None, "historical origin not closed before session"
-        origin_price = float(d1_asof.iloc[lvl.first_idx][
+        scaled_origin = float(d1_asof.iloc[lvl.first_idx][
             "low" if lvl.kind == "support" else "high"])
+        if require_raw and raw_evidence is None:
+            return None, "native RAW D1 pivot evidence missing; fail closed"
+        if raw_evidence is not None:
+            if (raw_evidence.pivot_date != d1_asof.index[lvl.first_idx].date()
+                    or pd.Timestamp(raw_evidence.pivot_end) != origin_end
+                    or raw_evidence.latest_date != d1_asof.index[-1].date()
+                    or abs(raw_evidence.scaled_origin - scaled_origin) > tick * 1e-7
+                    or abs(raw_evidence.tick - tick) > tick * 1e-7):
+                return None, "native RAW D1 pivot provenance mismatch"
+            origin_price = raw_evidence.origin_price
+        else:
+            origin_price = scaled_origin
         atr_value = float(d1_asof.iloc[-1][f"atr{cfg.atr_period}"])
         if not isfinite(atr_value) or atr_value <= 0:
             return None, "native D1 ATR is not ready"
         if (not isfinite(origin_price) or origin_price <= 0
                 or not isfinite(lvl.price) or lvl.price <= 0):
             return None, "swing origin price/cluster level is invalid"
-        # SPLIT_ADJUSTED may rescale historical raw cents to fractions
-        # of a current tick. Such an origin is not evidence of a
-        # directly tradable native BSU price: fail closed.
+        # All exact-touch BSU comparisons must use a native tick-grid pivot.
+        # With RAW evidence, origin_price is the actual original D1 extreme;
+        # without it, preserve the original conservative research behavior.
         if abs(round(origin_price / tick) * tick - origin_price) > tick * 1e-5:
             return None, "BSU historical origin off native tick grid; normalization unsafe"
         # Swing clustering is allowed to group nearby, but distinct,
@@ -130,67 +245,28 @@ def create_bsu_research_observer(
         tick_size=tick,
         cluster_price=float(lvl.price),
         origin_price=origin_price,
-    ), ("research-only D1 native pivot linked; cluster median distinct "
-        "from pivot; NOT a canonical BSU or TVX")
+    ), (("native RAW D1 origin confirmed; " if raw_evidence is not None
+         else "research-only D1 native pivot linked; ")
+        + "cluster median distinct from pivot; NOT a canonical BSU or TVX")
 
 
 def audit_bsu_price_basis(decision, d1_asof, native_tick_size,
                           raw_bars, time_index):
-    """Read-only comparison of the SAME pivot date in native RAW vs D1.
-
-    Never round/repair an input level, alter a detector, or fetch future data.
-    The caller explicitly supplies LEAN RAW daily history as-of the decision.
-    """
-    lvl = decision.level
-    tick = float(native_tick_size)
-    if (lvl is None or lvl.source != "swing_cluster" or
-            not isfinite(tick) or tick <= 0 or
-            lvl.first_idx < 0 or lvl.first_idx >= len(d1_asof)):
-        raise ValueError("no confirmed native pivot/tick to audit")
-    idx = lvl.first_idx
-    pivot_day = d1_asof.index[idx].date()
-    latest_day = d1_asof.index[-1].date()
-    side_field = "low" if lvl.kind == "support" else "high"
-    scaled_origin = float(d1_asof.iloc[idx][side_field])
-    scaled_latest = float(d1_asof.iloc[-1]["close"])
-    decision_at = pd.Timestamp(decision.decided_at)
-    scaled_end = pd.Timestamp(d1_asof.iloc[idx]["bar_end"])
-    if (decision_at.tzinfo is None or scaled_end.tzinfo is None or
-            not scaled_end < decision_at or
-            pivot_day >= decision.session or latest_day >= decision.session):
-        raise ValueError("D1/decision chronology cannot be proven")
-
-    native_pivot, native_latest, raw_count = [], [], 0
-    for bar in raw_bars:
-        day = pd.Timestamp(time_index(bar.time)).date()
-        end = pd.Timestamp(time_index(bar.end_time))
-        if end.tzinfo is None or not end < decision_at or day >= decision.session:
-            raise ValueError("RAW History contains unclosed/future D1 data")
-        if day == pivot_day:
-            if end != scaled_end:
-                raise ValueError("RAW and SCALED_RAW origin EndTime mismatch")
-            native_pivot.append(float(getattr(bar, side_field)))
-        if day == latest_day:
-            native_latest.append(float(bar.close))
-        raw_count += 1
-
-    if len(native_pivot) != 1 or len(native_latest) != 1:
-        raise ValueError("RAW origin/latest D1 missing or duplicated")
-    raw_origin, raw_close = native_pivot[0], native_latest[0]
-    if not all(isfinite(v) and v > 0 for v in
-               (raw_origin, raw_close, scaled_origin, scaled_latest)):
-        raise ValueError("nonpositive/nonfinite RAW or SCALED_RAW price")
+    """Print the reconciled true pivot and cluster WITHOUT changing orders."""
+    e = resolve_raw_bsu_evidence(
+        decision, d1_asof, native_tick_size, raw_bars, time_index)
+    side_field = "low" if decision.level.kind == "support" else "high"
     def offset(price):
-        return abs(price - round(price / tick) * tick)
+        return abs(price - round(price / e.tick) * e.tick)
     return (
         f"QWCT BSU BASIS {decision.symbol} {decision.session} "
-        f"pivot_date={pivot_day} pivot_end={scaled_end.isoformat()} "
-        f"field={side_field} raw={raw_origin:.8f} "
-        f"scaled={scaled_origin:.8f} cluster={lvl.price:.8f} "
-        f"tick={tick:.6f} raw_off={offset(raw_origin):.8f} "
-        f"scaled_off={offset(scaled_origin):.8f} "
-        f"factor_scaled/raw={scaled_origin/raw_origin:.9f} "
-        f"last={latest_day} raw_close={raw_close:.6f} "
-        f"scaled_close={scaled_latest:.6f} bars={raw_count}; "
+        f"pivot_date={e.pivot_date} pivot_end={e.pivot_end.isoformat()} "
+        f"field={side_field} raw={e.origin_price:.8f} "
+        f"scaled={e.scaled_origin:.8f} cluster={e.cluster_price:.8f} "
+        f"tick={e.tick:.6f} raw_off={offset(e.origin_price):.8f} "
+        f"scaled_off={offset(e.scaled_origin):.8f} "
+        f"factor_scaled/raw={e.scaled_origin/e.origin_price:.9f} "
+        f"last={e.latest_date} raw_close={e.raw_close:.6f} "
+        f"scaled_close={e.scaled_close:.6f} bars={e.bar_count}; "
         "OBSERVATION ONLY / NO ORDERS"
     )

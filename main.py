@@ -12,7 +12,7 @@ import pandas as pd
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
 from strategy.scenarios import ScenarioEvaluator
-from strategy.bsu_bridge import create_bsu_research_observer, audit_bsu_price_basis
+from strategy.bsu_bridge import create_bsu_research_observer, audit_bsu_price_basis, resolve_raw_bsu_evidence
 from strategy.breakout_retest import BreakoutRetestObserver
 from strategy.sessions import SessionPolicy
 from strategy.research_trace import SetupTrace, BpuTouchAudit
@@ -53,7 +53,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self.set_cash(self.cfg.starting_equity)
         self.set_time_zone("America/New_York")
 
-        # The anchor is a clock only. All actual Gerchik decisions use
         # independently warmed symbols selected by the native universe.
         anchor = (self.get_parameter("clock_symbol") or "SPY").strip().upper()
         # RAW subscriptions; SCALED_RAW is used only to warm native D1.
@@ -69,7 +68,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._scenario_evaluator = ScenarioEvaluator(self.cfg)
         self._session_policy = SessionPolicy(self.cfg)
         self._screen_ranks = {}
-        # QuantConnect Free limits the entire backtest log to ~10 KB.
         # Don't exhaust it with daily ten-symbol universe detail.
         self._screen_logged = False
         self._bsu_blocks_logged = 0
@@ -80,17 +78,13 @@ class QwctGerchikAlgorithm(QCAlgorithm):
 
         # Trading is hard-disabled regardless of parameters.
         self._native_exit_enabled = False
-        # QuantConnect Cloud Free organizations cannot write ObjectStore.
-        # Keep signal research usable without misleading export errors.
-        # This is a SOURCE-LEVEL research setting, not a trading toggle.
+        # Cloud Free ObjectStore disabled.
         self._object_store_export_enabled = False
-        # Native LEAN FLAT_TO_FLAT round-trip grouping.
         self.set_trade_builder(TradeBuilder(
             FillGroupingMethod.FLAT_TO_FLAT, FillMatchingMethod.FIFO))
         self._signal_rows = []
         self._order_event_rows = []
-        # Research-only diagnostics: count actual M5 evaluations and failed
-        # gates; no virtual orders, fills or portfolio are inferred.
+        # Research counters only.
         self._m5_bars_seen = 0
         self._m5_input_rejections = Counter()
         self._m5_checks = 0
@@ -106,7 +100,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._tvx_preclose_count = 0
         self._tvx_preclose_reconciled = 0
         self._tvx_second_reasons = Counter()
-        # In-memory evidence of the first accepted D1 setups; stop
         # growing trace memory on 1-year Cloud Free research windows.
         self._setup_traces = []
         self._setup_traces_omitted = 0
@@ -114,10 +107,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._bsu_bpu1_count = 0
         self._bsu_proxy_bpu2_count = 0
 
-        # Stable chart symbol: never plot mixed-ticker price axes.
         self._chart_symbol = None
-        # Optional QuantConnect parameter focuses a specific ticker if it
-        # actually has a D1 setup. Otherwise prioritize first real bounce.
         self._focus_preference = (self.get_parameter("focus_symbol") or "").strip().upper()
         self._focus_m5_plotted = 0
         focus_chart = Chart("Qwct Focus")
@@ -131,9 +121,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self.universe_settings.resolution = (
             Resolution.SECOND if self._tvx_seconds_enabled
             else Resolution.MINUTE)
-        # By default LEAN forward-fills bars when there are no trades.
         # Gerchik M5 confirmation must not be inferred from those
-        # previously observed prices as if a real fresh bar arrived.
         self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
         self.universe_settings.data_normalization_mode = (
@@ -159,8 +147,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self.date_rules.every_day(self.symbol),
             self.time_rules.before_market_close(self.symbol, 1),
             self._verify_flat_before_close)
-        # Avoid the per-symbol OnEndOfDay callback for daily report
-        # checkpointing; run after the actual exchange close instead.
         self.schedule.on(
             self.date_rules.every_day(self.symbol),
             self.time_rules.after_market_close(self.symbol, 1),
@@ -236,7 +222,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             "touch_audit": None,
         }
         self._symbols[symbol] = state
-        # Native LEAN consolidators must be removed on universe removal.
+        # Consolidators removed on universe removal.
         state["daily_consolidator"] = self.consolidate(
             symbol, Resolution.DAILY, self._on_daily)
         state["m5_consolidator"] = self.consolidate(
@@ -382,7 +368,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                 state["decision"] = decision
                 if decision.accepted:
                     self._d1_models[decision.model] += 1
-                    # Bounded scenario trace for research only.
+                    # Bounded scenario trace.
                     if len(self._setup_traces) < 30:
                         trace = SetupTrace.from_decision(
                             decision, d1_close=float(d1["close"].iloc[-1]),
@@ -407,25 +393,35 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                         retest_tolerance_atr=self.cfg.breakout_retest_touch_atr,
                         invalidation_atr=self.cfg.breakout_retest_invalid_atr)
                 if decision.accepted and decision.model == "bounce":
-                    # The D1 pivot is a BSU research proxy, not canonical.
                     native_tick_size = float(
                         self.securities[symbol].symbol_properties.minimum_price_variation)
+                    raw, raw_evidence, raw_failure = [], None, ""
+                    # Match closed native RAW D1 with live RAW M5 basis.
+                    try:
+                        if self._equity_normalization_mode != DataNormalizationMode.RAW:
+                            raise ValueError("M5 subscription not RAW")
+                        raw = [
+                            bar for bars in self.history[TradeBar](
+                                [symbol], 180, Resolution.DAILY,
+                                fill_forward=False,
+                                data_normalization_mode=DataNormalizationMode.RAW)
+                            for key, bar in bars.items() if key == symbol]
+                        raw_evidence = resolve_raw_bsu_evidence(
+                            decision, d1, native_tick_size, raw, _time_index)
+                    except Exception as exc:
+                        raw_failure = str(exc)[:120]
                     link, why = create_bsu_research_observer(
-                        decision, d1, native_tick_size, self.cfg)
-
-                    # Diagnostic uses genuine RAW D1 on this one session only.
+                        decision, d1, native_tick_size, self.cfg,
+                        raw_evidence=raw_evidence, require_raw=True)
+                    if raw_failure:
+                        why += "; " + raw_failure
                     if (symbol.value == "NVDA" and
                             self._session_date.isoformat() == "2024-01-02"):
-                        try:
-                            raw = [
-                                bar for bars in self.history[TradeBar](
-                                    [symbol], 180, Resolution.DAILY,
-                                    data_normalization_mode=DataNormalizationMode.RAW)
-                                for key, bar in bars.items() if key == symbol]
+                        if raw_evidence is not None:
                             self.log(audit_bsu_price_basis(
                                 decision, d1, native_tick_size, raw, _time_index))
-                        except Exception as exc:
-                            self.log(f"QWCT BSU BASIS UNVERIFIED: {str(exc)[:190]}")
+                        else:
+                            self.log("QWCT BSU BASIS UNVERIFIED: " + raw_failure)
                     state["bsu_link"] = link
                     if state["setup_trace"] is not None:
                         state["setup_trace"].set_bsu(
@@ -481,7 +477,6 @@ class QwctGerchikAlgorithm(QCAlgorithm):
                     f"Qwct Focus locked to accepted D1 setup: "
                     f"{selected.value} {d.model}/{d.side} "
                     f"level={d.level.price:.4f}")
-        # One D1 snapshot per trading day. Makes accepted setups visible
         # even when free-plan logs are throttled.
         self.plot("Qwct Research", "Screener", len(self.screen_watchlist))
         self.plot(

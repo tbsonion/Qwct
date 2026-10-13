@@ -98,9 +98,18 @@ def resolve_raw_bsu_evidence(
         if prev_date is not None and day <= prev_date:
             raise ValueError("RAW origin/latest D1 missing or duplicated: unordered dates")
         prev_date = day
-        if getattr(bar, "symbol", None) is not None and (
-                str(bar.symbol) != str(decision.symbol)):
-            raise ValueError("RAW basis: symbol mismatch")
+        native_symbol = getattr(bar, "symbol", None)
+        if native_symbol is not None:
+            # LEAN Symbol has a stable ID and a point-in-time ticker
+            # in .value. str(Symbol) is not guaranteed to equal that
+            # ticker (especially for history / mapped symbols).
+            if isinstance(native_symbol, str):
+                bar_ticker = native_symbol
+            else:
+                bar_ticker = getattr(native_symbol, "value", None)
+            if not isinstance(bar_ticker, str) or (
+                    bar_ticker != str(decision.symbol)):
+                raise ValueError("RAW basis: symbol mismatch")
         if day == pivot_date:
             if raw_end != pivot_end:
                 raise ValueError("RAW and SCALED_RAW origin EndTime mismatch")

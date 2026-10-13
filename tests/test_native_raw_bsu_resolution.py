@@ -84,7 +84,8 @@ def test_cloud_path_never_falls_back_to_scaled_without_raw_proof():
 def test_raw_missing_origin_latest_mismatch_and_offgrid_are_blocked():
     decision, daily, bars = sample()
     with pytest.raises(ValueError, match="missing or duplicated"):
-        confirm(decision, daily, bars[1:])
+        confirm(decision, daily, [b for i, b in enumerate(bars)
+                                  if i != decision.level.first_idx])
     bars[-1].close += .02
     with pytest.raises(ValueError, match="latest close"):
         confirm(decision, daily, bars)

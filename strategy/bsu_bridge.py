@@ -109,7 +109,10 @@ def resolve_raw_bsu_evidence(
                 bar_ticker = getattr(native_symbol, "value", None)
             if not isinstance(bar_ticker, str) or (
                     bar_ticker != str(decision.symbol)):
-                raise ValueError("RAW basis: symbol mismatch")
+                raise ValueError(
+                    "RAW basis: symbol mismatch: "
+                    f"raw={str(bar_ticker)[:40]!r}, "
+                    f"decision={str(decision.symbol)[:40]!r}")
         if day == pivot_date:
             if raw_end != pivot_end:
                 raise ValueError("RAW and SCALED_RAW origin EndTime mismatch")

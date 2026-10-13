@@ -1,6 +1,7 @@
 """RAW D1 BSU reconciliation regression: read-only evidence, never orders."""
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
@@ -8,12 +9,26 @@ import pytest
 from strategy.bsu_bridge import (
     create_bsu_research_observer, resolve_raw_bsu_evidence)
 from strategy.config import StrategyConfig
-from tests.test_bsu_native_bridge import evidence
+from strategy.levels import Level
+from strategy.scenarios import ScenarioDecision
 
 
 def sample():
-    decision, daily = evidence(
-        kind="resistance", side="short", level_price=502.57439794)
+    et = ZoneInfo("America/New_York")
+    idx = pd.date_range("2024-01-01", periods=70, freq="B", tz=et)
+    daily = pd.DataFrame({
+        "high": 502.57439794, "low": 490.0,
+        "open": 495.0, "close": 495.22, "atr14": 12.02,
+        "bar_end": [x + pd.Timedelta(hours=16) for x in idx],
+    }, index=idx)
+    lvl = Level(price=502.57439794, kind="resistance", touches=2,
+                strength=3, first_idx=10, last_idx=20,
+                formed_at=idx[20].date(), valid_from=idx[24].date(),
+                source="swing_cluster")
+    decision = ScenarioDecision(
+        "AAPL", date(2024, 4, 15),
+        datetime(2024, 4, 15, 9, 29, tzinfo=et),
+        lvl, "bounce", "short", score=4)
     # NVDA 2024 shape: original raw swing 502.66, as-of scaled
     # swing 502.57439794, latest completed close equal on both bases.
     daily["high"] = 502.57439794

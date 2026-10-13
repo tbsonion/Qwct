@@ -43,9 +43,18 @@ def _time_index(ts: datetime) -> pd.Timestamp:
 
 class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
-        # Preserve user-verified Jan/Feb 2024 Cloud Free smoke.
-        self.set_start_date(2024, 1, 1)
-        self.set_end_date(2024, 2, 5)
+        # Optional bounded Cloud research window; default smoke unchanged.
+        start = datetime.strptime(
+            self.get_parameter("scan_start") or "2024-01-01", "%Y-%m-%d")
+        end = datetime.strptime(
+            self.get_parameter("scan_end") or "2024-02-05", "%Y-%m-%d")
+        if end < start or (end - start).days > 45:
+            raise ValueError("scan window must span 0-45 calendar days")
+        self.set_start_date(start.year, start.month, start.day)
+        self.set_end_date(end.year, end.month, end.day)
+        self._case_scan = bool(
+            self.get_parameter("scan_start") or self.get_parameter("scan_end"))
+        self._bsu_scan_best = []
         self.cfg = StrategyConfig()
         # Opt-in SEC feed: tvx_seconds=true; high Cloud data cost.
         self._tvx_seconds_enabled = (

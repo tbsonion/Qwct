@@ -1,6 +1,6 @@
 # Qwct — TODO / Deep Research Roadmap
 
-**Актуально:** 2026-10-12. **Ветка-источник:** `main`. **Режим:** `RESEARCH ONLY / ALL ORDERS DISABLED`.
+**Актуально:** 2026-10-13. **Ветка-источник:** `main`. **Режим:** `RESEARCH ONLY / ALL ORDERS DISABLED`.
 
 > Единый актуальный TODO проекта. Старые отчёты в `docs/` — исторические срезы; утверждения в них вроде «LEAN не запускался» устарели. Спецификация правил: [docs/strategy_spec.md](docs/strategy_spec.md). «Готово в коде» **не означает** «доказано на настоящем LEAN / соответствует Герчику / прибыльно / разрешено торговать».
 
@@ -26,13 +26,15 @@
 - [x] **Подтверждено**: LEAN `History[TradeBar]` поддерживает отдельные `RAW` и `SCALED_RAW` запросы; `SCALED_RAW` может переносить старый экстремум с реальной native ценовой сетки вследствие уже известных сплитов/дивидендов. **Диагностировать точный RAW pivot, не округлять и не переименовывать кластерный median в pivot**.
 - [x] **Подтверждено**: LEAN поддерживает `Resolution.SECOND`, `QuoteBar`, native `RiskManagementModel`, slippage/borrow providers, export Backtest Orders/Trades/Results; **поддержка API не является Cloud runtime proof в Qwct**.
 - [x] **Критическая готовая API-ограниченность**: LEAN `Bracket`/OTO активирует защиту **только при полном parent fill**; у Schwab нельзя обновлять contingent set и нет OUO. **Partial-fill protection не готова.**
-- [ ] **Следующий нативный эксперимент:** RAW D1 vs SCALED_RAW D1 для NVDA as-of 2024-01-02 с `origin_price`, `tick`, factor/split, ATR и RAW M5. Продолжать P0-01 без включения orders.
+- [x] **Cloud 2026-10-13:** NVDA 2024-01-02 RAW original pivot (2023-08-24) = **502.66**, SCALED_RAW = **502.57439794**, tick = **0.01**, scaled tick offset = **0.00439794**, RAW last close = SCALED_RAW last close = **495.22**. Это доказано native Cloud логом, но НЕ доказывает причинную структуру split/dividend factor.
+- [x] **Реализовано только в коде:** независимая проверка RAW original pivot/EndTime/as-of/latest-close/tick grid для каждого accepted bounce и передача RAW origin в read-only BPU; никаких ордеров. Pure CI зелёный; Free 24-file package проходит проверку.
+- [ ] **Следующий Cloud эксперимент:** обновить оба файла `main.py` и `strategy/bsu_bridge.py` вместе из актуальной Cloud Free сборки, убедиться в `QWCT BSU BASIS NVDA` и исчезновении normalization blocker без ошибок. BPU1 не должен появляться искусственно без точного касания M5.
 
 ## 1. Технические задачи и критерии принятия
 
 | ID | Приоритет | Что работает | Что НЕ завершено / критерий готовности |
 | --- | --- | --- | --- |
-| **P0-01 BSU price basis** | P0 | RAW + SCALED_RAW прошли cloud smoke; D1 niveau найден | [ ] Замерить **точную цену оригинального D1 pivot** (не путать с median кластера **502.5744**), его дату, native tick, источник, split/dividend factors и price basis M5. В одном as-of сеансе сравнить RAW D1 History и SCALED_RAW D1 History, контрольные OHLC/M5. Объяснить дробную цену на исходном pivot; доказать tick-consistency либо оставить блокировку. **Не округлять автоматически и не ослаблять exact-touch** ради сигналов. |
+| **P0-01 BSU price basis** | P0 | Native Cloud verified NVDA original RAW high **502.66** vs SCALED_RAW **502.57439794**; latest D1 closes align; code now resolves exact RAW pivot via fail-closed as-of evidence (CI green) | [ ] **New bridge still needs Cloud verification**: BPU observer arms using RAW 502.66, native M5 remains RAW, no false touch, no errors, orders disabled. Full split/factor and Gerchik validation remain open. |
 | **P0-02 D1 levels vs course** | P0 | Swing/mirror proxy и 14 groups | [ ] Собрать независимый набор размеченных вручную **положительных и отрицательных** случаев BSU, mirror, infected zone, accumulation, trend, 4R room, no-level; определить precision/recall по каждой модели и цену false positives. Сейчас статистики нет. |
 | **P0-03 BSU → BPU1 → BPU2** | P0 | Bounce-only native M5 observer, strict BPU source timestamp, BPU2 state | [ ] В real Cloud получить диагностируемые реальные M5 touch/under/over, BPU1+BPU2 или доказанное отсутствие события; проверить native end times и split day. Исторический swing pivot ≠ сертифицированный вручную BSU. Полный путь не готов. |
 | **P0-04 True TVX -30s** | P0 | Обработчик `Resolution.SECOND`/preclose + тесты, opt-in `tvx_seconds=true` | [ ] Отдельный, ограниченный по стоимости Cloud backtest: SEC feed **>0**, корректная native-second timestamp at true -30s, реальные interval extremes, gaps/no-trades, no fill forward, last trade vs limit; BPU2 reconciliation без будущих данных. Текущий Cloud тест SEC **OFF**. |

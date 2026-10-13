@@ -22,7 +22,7 @@ User-supplied QuantConnect Cloud signal-only backtest, LEAN 2.5.0.0.18178, 2024-
 
 The standard LEAN equity curve remains flat **because orders are intentionally disabled**. No win rate, Sharpe, expected monthly returns, or executable trade P&L has been established.
 
-**Known P0 blocker:** historical D1 BSU original pivot is rejected as off the native tick grid. RAW minute subscriptions plus as-of SCALED_RAW daily warmup produced a 2024-01-02 NVDA D1 **cluster median** of ~502.5744 versus ~50.2660 under SPLIT_ADJUSTED, but the bridge still rejects the **original pivot**. Those prices must not be conflated. Exact pivot, split factor, tick grid and M5 basis require a native audit before changing the detector.
+**BSU price-basis status (2026-10-13):** native Cloud (LEAN 2.5.0.0.18179) verified the 2024-01-02 NVDA D1 original pivot from 2023-08-24: **RAW high $502.66**, **SCALED_RAW high $502.57439794**, native tick **$0.01**; RAW offset = 0, scaled offset = $0.00439794, latest completed D1 closes agree ($495.22). The historical cluster median is distinct from the original pivot. The research bridge now uses a native RAW historical origin only after strict as-of pivot/latest-date, EndTime, symbol, tick and latest-close reconciliation, and always fails closed on missing evidence. This new bridge has passed **source CI tests but has NOT yet been run in LEAN Cloud**; prior 0-BPU1/0-intent results remain the only verified trading-pipeline baseline. NO ORDERS.
 
 ## Design constraints
 
@@ -62,4 +62,4 @@ Deploy the *entire generated bundle* together when syncing a new Cloud project, 
 - [deep source-vs-LEAN-vs-Gerchik audit](docs/QWCT_DEEP_IMPLEMENTATION_AUDIT_2026-10-11.md)
 - [native Schwab compatibility notes](docs/SCHWAB_LEAN_COMPATIBILITY_2026-10-09.md)
 
-**Immediate next deep research:** identify exact historical NVDA D1 **pivot** on the 2024-01-02 setup (not merely D1 cluster median), its contemporary tick lattice and split adjustment factors, and reconcile with native RAW M5 bars; preserve the strict exact-touch rule until the discrepancy is proved and fixed.
+**Immediate next Cloud run:** deploy BOTH updated `main.py` and `strategy/bsu_bridge.py` from the **same current 24-file Cloud Free package**. Re-run 2024-01-01–2024-02-05 with `tvx_seconds=false`; require `QWCT BSU BASIS NVDA ... raw=502.66000000` plus a positive RAW research link, no `QWCT BSU BLOCKED NVDA` due to normalization, unchanged NO ORDERS, and zero runtime errors. BPU1/BPU2 may still be zero if no exact M5 touch occurred. Native split/factor and annotated-Gerchik validation are still outstanding.

@@ -16,10 +16,17 @@ from strategy.bsu_bridge import create_bsu_research_observer, audit_bsu_price_ba
 from strategy.breakout_retest import BreakoutRetestObserver
 from strategy.sessions import SessionPolicy
 from strategy.research_trace import SetupTrace, BpuTouchAudit
-from strategy.focus import choose_focus
-from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.reporting import native_order_event_row
-from strategy.runtime_reporting import write_reports
+# QuantConnect Free bundles these modules into strategy and reporting.
+try:
+    from strategy.focus import choose_focus
+    from strategy.screener import select_liquid_fundamentals, passes_gerchik_screener
+    from strategy.runtime_reporting import write_reports
+except ModuleNotFoundError as exc:
+    if exc.name not in ("strategy.focus", "strategy.screener", "strategy.runtime_reporting"):
+        raise
+    from strategy import choose_focus, select_liquid_fundamentals, passes_gerchik_screener
+    from strategy.reporting import write_reports
 from strategy.m5_runtime import process_m5
 from strategy.second_runtime import process_second_slice
 from strategy.corporate_action_guard import (

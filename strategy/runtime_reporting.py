@@ -101,6 +101,23 @@ def write_reports(self):
         "Qwct traced setups without M5",
         sum(t.m5_checks == 0 for t in self._setup_traces))
     if not self._object_store_export_enabled:
+        if getattr(self, "_case_scan", False):
+            cases = getattr(self, "_bsu_scan_best", ())
+            self.log(f"QWCT SCAN completed: nearest={len(cases)} "
+                     f"BPU1={self._bsu_bpu1_count} "
+                     f"BPU2={self._bsu_proxy_bpu2_count}; NO ORDERS")
+            for _, ticker, day, level, extreme, gap, at, exact in cases:
+                self.log(f"QWCT SCAN NEAREST {ticker} {day} pivot={level:.4f} "
+                         f"M5={extreme:.4f} gap={gap:+.4f} "
+                         f"at={at} exact={exact}")
+            bpu_events = [r for r in self._signal_rows if r["type"] in
+                          ("BSU_PROXY_BPU1", "BSU_PROXY_BPU2_CLOSED")]
+            for row in bpu_events[:4]:
+                self.log(f"QWCT SCAN EVENT {row['type']} "
+                         f"{row['symbol']} {row['time_et']} "
+                         f"pivot={row['level']}; NO ORDERS")
+            if len(bpu_events) > 4:
+                self.log(f"QWCT SCAN more BPU events={len(bpu_events)-4}")
         # The Free cloud plan has no ObjectStore write permission.
         # Emit only a short end-of-run count; DO NOT claim the complete
         # decision journal was saved (it remains in-memory only).

@@ -96,7 +96,7 @@ def resolve_raw_bsu_evidence(
             raise ValueError("RAW History contains unclosed/future D1 data")
         day = raw_start.date()
         if prev_date is not None and day <= prev_date:
-            raise ValueError("RAW basis: duplicate or unordered D1 dates")
+            raise ValueError("RAW origin/latest D1 missing or duplicated: unordered dates")
         prev_date = day
         if getattr(bar, "symbol", None) is not None and (
                 str(bar.symbol) != str(decision.symbol)):

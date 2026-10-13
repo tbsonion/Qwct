@@ -17,6 +17,16 @@
 
 **Reference:** [docs/NVDA_BSU_RAW_ASOF_2026-10-12.md](docs/NVDA_BSU_RAW_ASOF_2026-10-12.md), [docs/LEAN_CLOUD_TVX_30S_SMOKE_2026-10-11.md](docs/LEAN_CLOUD_TVX_30S_SMOKE_2026-10-11.md), [docs/QWCT_DEEP_IMPLEMENTATION_AUDIT_2026-10-11.md](docs/QWCT_DEEP_IMPLEMENTATION_AUDIT_2026-10-11.md).
 
+## 2026-10-13: найденные ГОТОВЫЕ решения BSU/BPU и решение reuse-first
+
+**Новый сравнительный отчёт:** [READY_MADE_GERCHIK_BSU_BPU_SOLUTIONS_2026-10-13.md](docs/READY_MADE_GERCHIK_BSU_BPU_SOLUTIONS_2026-10-13.md). Исследованы MT4/MT5, TradingView, GitHub, native LEAN и первоисточник Герчика. **До внедрения новых функций сверяться с ним.**
+
+- [x] **FREE** готовый внешний индикатор с близкими именованными BSU/BPU1/BPU2: MQL5 **Trade by levels (MT4)** и **TBL for mt5** (Dmitriy Tyunin). Можно изучить как независимый **визуальный** comparator. Это **не** open-source LEAN Python, портабельный код/данные US equities не доказаны. Некоторые заявленные правила H1/люфт 2–3 points/вход на следующем баре отличаются от Qwct M5 и -30s TVX.
+- [x] Другие готовые коммерческие решения (VibeFox BSU BPU $30, TradingView invite-only GERCHIK+SMC) найдены; их логика широкой зоны/фракталов и доступ к закрытому исходнику не подтверждают соответствие строгому exact-touch Герчика. **Не покупать/не портировать вслепую.**
+- [x] LEAN **PPHL**, **RollingWindow/consolidator.Window**, нативные History/QuantBook/SEC/TradeBar уже доступны для поиска и сопоставления без самодельного feed/pivot/window. Официальный LEAN не содержит полного BPU1→BPU2→TVX детектора. В Qwct уже есть собственный read-only observer.
+- [ ] **Следующий P0 без нового ядра:** провести более длинные native **signal-only** Cloud backtests по частям, чтобы получить фактическое RAW M5 касание принятого D1 BSU; только после этого валидировать BPU1/BPU2. Для внешней визуальной проверки — TBL for mt5 (при наличии подходящей истории и сопоставления RAW). Если выборки мало, использовать уже готовый **QuantBook US equity minute History** как независимый *as-of* case search, не выдавая его post-factum результат за реальный backtest.
+- [ ] **Проверка перед любым новым кодом:** доказать, что конкретного наблюдения нельзя получить нынешним native M5 audit и QuantBook; только тогда добавить узкий read-only case-finder. NO ORDERS / не ослаблять tick/exact-touch.
+
 ## Новое: готовые решения, найденные в official LEAN (Deep Research 2026-10-12)
 
 **Полный отчёт и ссылки на 18 первичных источников:** [docs/READY_BUILT_LEAN_RESEARCH_2026-10-12.md](docs/READY_BUILT_LEAN_RESEARCH_2026-10-12.md).

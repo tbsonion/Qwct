@@ -63,7 +63,7 @@ def test_bpu2_proof_captures_two_real_closed_m5_candles_and_original_origin():
     assert "BSU RESEARCH PROOF" in source
     assert "BSU RESEARCH OHLC" in source
     assert "BSU RESEARCH ELIGIBILITY" in source
-    assert "time.fromisoformat(a) <= current.time()" in source
+    assert "time.fromisoformat(a) <= hypothetical_tvx" in source
     assert "for a, b in self.cfg.session_windows_bounce" in source
     assert "if in_bounce_window:" in source
     assert "bpu2_in_bounce_window" in source

@@ -1,8 +1,21 @@
 # Qwct — TODO / Deep Research Roadmap
 
-**Актуально:** 2026-10-13. **Ветка-источник:** `main`. **Режим:** `RESEARCH ONLY / ALL ORDERS DISABLED`.
+**Актуально:** 2026-10-14. **Ветка-источник:** `main`. **Режим:** `RESEARCH ONLY / ALL ORDERS DISABLED`.
 
 > Единый актуальный TODO проекта. Старые отчёты в `docs/` — исторические срезы; утверждения в них вроде «LEAN не запускался» устарели. Спецификация правил: [docs/strategy_spec.md](docs/strategy_spec.md). «Готово в коде» **не означает** «доказано на настоящем LEAN / соответствует Герчику / прибыльно / разрешено торговать».
+
+## Обязательное правило передачи изменений в QuantConnect LEAN Cloud
+
+**Каждый раз, когда Qwct меняется и пользователю требуется обновить QuantConnect LEAN Cloud, заканчивать ответ отдельным разделом «GitHub-ссылки для обновления LEAN».** Нужны **ссылки на GitHub**, а **не** sandbox-файлы, прикреплённые `.py`, локальные пути или предложение скачивать файлы из чата.
+
+1. Перечислить **каждый конкретный Cloud-путь**, который надо заменить, и дать отдельную **кликабельную GitHub-ссылку** на соответствующий код/готовый пакет. Если изменён один файл — показывать один файл, не предлагать переустановку проекта целиком.
+2. Для обычных несобираемых модулей давать прямую ссылку на актуальный исходник GitHub, например **[`main.py`](https://github.com/tbsonion/Qwct/blob/main/main.py)** или **[`strategy/m5_runtime.py`](https://github.com/tbsonion/Qwct/blob/main/strategy/m5_runtime.py)**. При необходимости добавлять ссылку на конкретный commit SHA, чтобы версия не менялась между открытием и копированием.
+3. **Критично для QuantConnect Free (24 Python + `research.ipynb`):** GitHub `strategy/reporting.py` **НЕ эквивалентен** Cloud `strategy/reporting.py`: упаковщик встраивает в него `strategy/runtime_reporting.py`. Также `strategy/focus.py`, `strategy/screener.py`, `strategy/native_m5_validation.py` объединены с другими Cloud-файлами. **Никогда не выдавать обычную ссылку на неполный исходник за готовый Cloud-файл.** Для таких изменений давать ссылку на **[GitHub Actions — QuantConnect Free 24-file package](https://github.com/tbsonion/Qwct/actions/workflows/quantconnect-free-package.yml)** (либо на конкретный успешный run/artifact) и **точно указывать путь файла внутри сборки**.
+4. Если нужный Cloud-ready файл доступен только внутри GitHub Actions ZIP, прямо писать: «Отдельной ссылки на Cloud-ready файл на GitHub нет; открой GitHub Actions artifact и возьми `<Cloud-path>`». **Не придумывать несуществующие ссылки** и не подменять ZIP сырой несовместимой версией.
+5. Указать в конце кратко: **что заменять, что НЕ заменять, состояние проверки GitHub CI / реального Cloud backtest**. Не называть результат Cloud-verified, если только GitHub CI прошёл.
+6. После каждого следующего изменения **обновлять список ссылок в ответе** под реальные затронутые Cloud-файлы, а не механически повторять старые три файла. Инструкция действует постоянно для всего проекта Qwct.
+
+**Пример для текущего Cloud scan:** GitHub [`main.py`](https://github.com/tbsonion/Qwct/blob/main/main.py), [`strategy/m5_runtime.py`](https://github.com/tbsonion/Qwct/blob/main/strategy/m5_runtime.py), и **`strategy/reporting.py` из [сгенерированной Cloud Free сборки на GitHub Actions](https://github.com/tbsonion/Qwct/actions/workflows/quantconnect-free-package.yml)**, НЕ исходный `strategy/reporting.py` напрямую. Исходные `main.py` и `strategy/m5_runtime.py` содержат импортные пути canonical-репозитория; при разнице импортов с Free-пакетом приоритет у соответствующего Cloud-ready варианта из ZIP.
 
 ## 0. Зафиксированная рабочая база
 

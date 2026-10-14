@@ -23,8 +23,8 @@ def test_exact_native_m5_touch_is_not_a_crossing_or_nearby_miss():
 
 def test_asof_cloud_scan_is_enabled_by_default_with_new_historical_window():
     main = (ROOT / "main.py").read_text(encoding="utf-8")
-    assert 'self.get_parameter("scan_start") or "2024-02-06"' in main
-    assert 'self.get_parameter("scan_end") or "2024-03-15"' in main
+    assert 'self.get_parameter("scan_start") or "2024-03-16"' in main
+    assert 'self.get_parameter("scan_end") or "2024-04-26"' in main
     assert '(end - start).days > 45' in main
     assert "self._case_scan = True" in main
     assert "QWCT SCAN ACTIVE" in main
@@ -49,6 +49,8 @@ def test_bpu_scan_ranks_only_observed_closed_m5_native_touch_audit():
     assert 'self._bsu_bpu1_count' in report
     assert 'self._bsu_proxy_bpu2_count' in report
     assert 'NO ORDERS' in report
+    assert 'QWCT D1 BOUNCE AUDIT' in report
+    assert 'self._scenario_evaluator.scan_model_audit' in report
 
 
 def test_existing_cloud_package_keeps_native_history_and_import_path():

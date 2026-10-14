@@ -12,13 +12,13 @@ We explicitly reuse the existing native LEAN universe, as-of D1 History, real RA
 
 | Parameter | Format | Meaning |
 | --- | --- | --- |
-| `scan_start` | `YYYY-MM-DD` | First LEAN backtest day; default `2024-01-01` |
-| `scan_end` | `YYYY-MM-DD` | Last LEAN backtest day; default `2024-02-05` |
+| `scan_start` | `YYYY-MM-DD` | First LEAN backtest day; default `2024-02-06` |
+| `scan_end` | `YYYY-MM-DD` | Last LEAN backtest day; default `2024-03-15` |
 | `tvx_seconds` | `false` | Keep SECOND data **disabled** while searching first for native M5 touches |
 
-A single run is limited to **45 calendar days** to protect Cloud Free backtest cost/log limits. `scan_start > scan_end`, invalid dates and larger periods fail at initialization; the Jan–Feb 2024 verified smoke remains the default when parameters are absent.
+A single run is limited to **45 calendar days** to protect Cloud Free backtest cost/log limits. `scan_start > scan_end`, invalid dates and larger periods fail at initialization; the **Feb 6–Mar 15, 2024 scan runs automatically** when parameters are absent; the verified Jan–Feb 2024 smoke can still be run by specifying both old dates explicitly.
 
-**Use this first next batch:** `scan_start=2024-02-06`, `scan_end=2024-03-15`, `tvx_seconds=false`.
+**Default next batch (no date parameters needed):** `2024-02-06` → `2024-03-15` with `tvx_seconds=false`. Confirm startup log `QWCT SCAN ACTIVE 2024-02-06..2024-03-15`. If the log still shows Jan–Feb 2024, Cloud has an older `main.py` or overrides these dates with saved project parameters.
 
 Optional subsequent batches, only after examining each previous native run:
 - `2024-03-16` → `2024-04-26`
@@ -42,6 +42,7 @@ Other 21 bundled source files can remain unchanged *only if* they are from the l
 
 ## Native evidence to read in the LEAN log
 
+- `QWCT SCAN ACTIVE START..END`: actual selected run window; prints during algorithm initialize so missing or overridden parameters are immediately visible.
 - `QWCT SCAN completed: nearest=N BPU1=N BPU2=N; NO ORDERS`.
 - `QWCT SCAN NEAREST SYMBOL SESSION pivot=P M5=H/L gap=+/-N at=HH:MM exact=N`. These are real *closed M5 extrema*, ranked across accepted D1 bounces. A nearest miss is **not** a BPU signal.
 - `QWCT SCAN EVENT BSU_PROXY_BPU1` or `BSU_PROXY_BPU2_CLOSED`: only from state transitions already observed by existing `BsuDetector`, never synthetic.

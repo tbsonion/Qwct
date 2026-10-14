@@ -82,6 +82,14 @@ To verify the reported BPU2 candidates without rewriting detection, update **onl
 
 This does not change detector logic, score, the universe, or orders. **The first proof-only version was successfully Cloud-tested. A newer strict-versus-half-tick summary version currently on GitHub still needs its own native Cloud test**. Re-run the same dates and share its log. Further native SEC preclose verification should only follow audit of the actual completed M5 evidence.
 
+## Native LEAN scan 2024-06-08..2024-07-19: observed
+
+Actual LEAN run completed without errors. MSFT/AMZN/AAPL, 445 level-days, 6,444 M5 bars, 34,134 checks; BPU1=0, BPU2=0, eligible=0, rejects={}. AAPL 2024-06-10 nearest BSU=192.94 high=192.93 (one tick short).
+
+Across the three completed windows, there were 9 strict BPU1 and 3 close-of-M5 BPU2 following a strict BPU1, but zero inside the original 12:00-13:30 ET time window. Two completed observations occurred at the same AAPL BSU on the same date. These are research observations, not trade signals.
+
+Pause date changes now. Next: compare independently labeled Gerchik examples to as-of native RAW swing origins, examine universe coverage and the session-time restriction. Leave all QuantConnect files unchanged.
+
 ## Native LEAN scan 2024-04-27 through 2024-06-07: verified
 
 Actual LEAN 2.5.0.0.18179 log confirmed `candidate_level_days=424`, `checks=33072`, `BPU1_detector=4`, `BPU1_strict=3`, `BPU1_half_tick=1`, `BPU2_detector=3`, `BPU2_with_strict_BPU1=2`, `strict_in_bounce_window=0`, `rejects={}`; all orders disabled.

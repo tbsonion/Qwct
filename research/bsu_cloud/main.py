@@ -1,0 +1,246 @@
+"""Qwct BSU-Research: structural levels / native RAW M5, no orders.
+
+Standalone QuantConnect Cloud research project; does not import or modify
+the main Qwct strategy. Reuses canonical strategy levels and BsuDetector.
+Results are hypotheses, NOT canonical Gerchik signals or a P&L backtest.
+"""
+from AlgorithmImports import *
+from collections import Counter
+from datetime import datetime, timedelta, time
+from math import isfinite
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+
+from strategy.config import StrategyConfig
+from strategy.levels import levels_for_session, native_cluster_tolerance
+from strategy.native_m5_validation import validate_m5_tradebar
+from strategy.patterns_bsu import Bar as ResearchBar, BsuDetector
+
+
+ET = ZoneInfo("America/New_York")
+
+
+def et(value):
+    """Interpret LEAN naive timestamps as exchange-local, never as UTC."""
+    t = pd.Timestamp(value)
+    return t.tz_localize(ET) if t.tzinfo is None else t.tz_convert(ET)
+
+
+class QwctBsuResearch(QCAlgorithm):
+    def initialize(self):
+        start = datetime.strptime(
+            self.get_parameter("scan_start") or "2024-03-16", "%Y-%m-%d")
+        end = datetime.strptime(
+            self.get_parameter("scan_end") or "2024-04-26", "%Y-%m-%d")
+        if end < start or (end - start).days > 45:
+            raise ValueError("Research scan requires a 0..45 day window")
+        self.set_start_date(start.year, start.month, start.day)
+        self.set_end_date(end.year, end.month, end.day)
+        self.set_time_zone("America/New_York")
+        self.set_cash(25_000)
+        self.cfg = StrategyConfig()
+        self.symbols_to_scan = ()
+        self.active = {}
+        self.case_nearest = {}
+        self.counts = Counter()
+        self.rejections = Counter()
+        self._quarantined = set()
+        self._events_logged = 0
+        # Deliberately fixed first test universe. This is NOT a marketwide
+        # point-in-time screener and does not certify other US equities.
+        for name in ("MSFT", "AMZN", "AAPL"):
+            sym = self.add_equity(
+                name, Resolution.MINUTE, fill_forward=False,
+                data_normalization_mode=DataNormalizationMode.RAW).symbol
+            self.securities[sym].set_data_normalization_mode(
+                DataNormalizationMode.RAW)
+            self.symbols_to_scan += (sym,)
+            # Native LEAN TimePeriod consolidator: no invented M5 prices.
+            self.consolidate(sym, timedelta(minutes=5), self._on_m5)
+
+        clock = self.symbols_to_scan[0]
+        self.schedule.on(
+            self.date_rules.every_day(clock),
+            self.time_rules.before_market_open(clock, 1),
+            self._prepare_session)
+        self.debug(
+            f"BSU RESEARCH ACTIVE {start.date()}..{end.date()} "
+            "MSFT,AMZN,AAPL; ALL ORDERS DISABLED; "
+            "RAW D1/RAW native M5; no Bounce Score; TVX NOT tested")
+
+    def _closed_daily(self, symbol):
+        raw = [
+            bar for packet in self.history[TradeBar](
+                [symbol], 180, Resolution.DAILY, fill_forward=False,
+                data_normalization_mode=DataNormalizationMode.RAW)
+            for key, bar in packet.items() if key == symbol
+        ]
+        if len(raw) < 60:
+            raise ValueError("not enough as-of native RAW daily bars")
+        native_atr = AverageTrueRange(
+            self.cfg.atr_period, MovingAverageType.WILDERS)
+        rows, days = [], []
+        prev_day = None
+        seen_at = et(self.time)
+        for bar in raw:
+            opened, closed = et(bar.time), et(bar.end_time)
+            day = opened.date()
+            if (day >= seen_at.date() or closed >= seen_at
+                    or closed <= opened or
+                    (prev_day is not None and day <= prev_day)):
+                raise ValueError("non-as-of, duplicate, or unordered RAW daily")
+            prev_day = day
+            native_atr.update(bar)
+            rows.append({
+                "open": float(bar.open), "high": float(bar.high),
+                "low": float(bar.low), "close": float(bar.close),
+                "volume": float(bar.volume),
+                "bar_end": closed,
+                "atr14": (float(native_atr.current.value)
+                          if native_atr.is_ready else float("nan")),
+            })
+            days.append(opened.normalize())
+        d1 = pd.DataFrame(rows, index=pd.DatetimeIndex(days))
+        if not d1.index.is_unique:
+            raise ValueError("RAW daily duplicate dates")
+        if not (isfinite(float(d1["atr14"].iloc[-1]))
+                and float(d1["atr14"].iloc[-1]) > 0):
+            raise ValueError("native daily ATR not ready")
+        return d1
+
+    def _prepare_session(self):
+        self.active.clear()
+        session = et(self.time).date()
+        count = 0
+        for sym in self.symbols_to_scan:
+            try:
+                d1 = self._closed_daily(sym)
+                tol = native_cluster_tolerance(d1, self.cfg)
+                tick = float(
+                    self.securities[sym].symbol_properties.minimum_price_variation)
+                if (tol is None or not isfinite(tick) or tick <= 0):
+                    raise ValueError("no native tick or ATR cluster tolerance")
+                levels = levels_for_session(d1, session, self.cfg)
+                states = []
+                for lvl in levels:
+                    if (lvl.source != "swing_cluster"
+                            or lvl.kind not in ("support", "resistance")
+                            or lvl.touches < self.cfg.min_touches
+                            or lvl.strength < self.cfg.min_level_strength
+                            or not 0 <= lvl.first_idx < len(d1)):
+                        continue
+                    origin = float(d1.iloc[lvl.first_idx][
+                        "low" if lvl.kind == "support" else "high"])
+                    origin_end = et(d1.iloc[lvl.first_idx]["bar_end"])
+                    if (not isfinite(origin) or origin <= 0
+                            or origin_end >= et(self.time)
+                            or abs(origin - round(origin/tick)*tick) > tick*1e-5
+                            or abs(origin-lvl.price) > tol + 1e-8):
+                        self.rejections["origin invalid RAW/tick/cluster"] += 1
+                        continue
+                    side = "long" if lvl.kind == "support" else "short"
+                    detector = BsuDetector(
+                        self.cfg, origin, side,
+                        atr_value=float(d1["atr14"].iloc[-1]),
+                        tick_size=tick, bsu_ts=origin_end.to_pydatetime())
+                    states.append({
+                        "detector": detector,
+                        "origin": origin, "tick": tick, "side": side,
+                        "session": session, "symbol": sym.value,
+                    })
+                self.active[sym] = states
+                count += len(states)
+                self.counts["symbols_warmed"] += 1
+            except Exception as exc:
+                # Fail closed for this symbol/day. Do not fabricate candles.
+                self.active[sym] = []
+                self.rejections[str(exc)[:75]] += 1
+        self.counts["bsu_observer_days"] += count
+
+    def on_data(self, data):
+        # A native split invalidates today's RAW pivot and M5 observation.
+        splits = getattr(data, "splits", None)
+        if splits is None:
+            return
+        for symbol, event in splits.items():
+            if (getattr(event, "type", None) == SplitType.SPLIT_OCCURRED
+                    and symbol in self.active):
+                self.active[symbol] = []
+                self._quarantined.add((symbol, et(self.time).date()))
+                self.rejections["LEAN split occurred: day quarantined"] += 1
+
+    def _on_m5(self, bar):
+        sym = bar.symbol
+        if sym not in self.active:
+            return
+        current = et(bar.end_time)
+        if ((sym, current.date()) in self._quarantined
+                or current.date() != et(self.time).date()
+                or not time(9, 35) <= current.time() <= time(16, 0)):
+            return
+        good, reason = validate_m5_tradebar(
+            bar, current.to_pydatetime())
+        if not good:
+            self.rejections[reason] += 1
+            return
+        self.counts["native_m5_bars"] += 1
+        for case in self.active[sym]:
+            detector = case["detector"]
+            if detector.state.phase in ("invalidated", "bpu2_confirmed"):
+                detector.reset()
+            pivot, tick, side = case["origin"], case["tick"], case["side"]
+            extreme = float(bar.low if side == "long" else bar.high)
+            gap = extreme - pivot
+            label = (case["symbol"], str(case["session"]), side,
+                     round(pivot / tick))
+            previous = self.case_nearest.get(label)
+            if previous is None or abs(gap) < abs(previous[0]):
+                self.case_nearest[label] = (
+                    gap, case["symbol"], str(case["session"]), side,
+                    pivot, extreme, current.strftime("%H:%M"), tick)
+            self.counts["native_m5_level_checks"] += 1
+            old = detector.state.phase
+            try:
+                result = detector.on_bar(ResearchBar(
+                    ts=current.to_pydatetime(),
+                    open=float(bar.open), high=float(bar.high),
+                    low=float(bar.low), close=float(bar.close),
+                    volume=float(bar.volume), timeframe="M5"))
+            except (ValueError, TypeError) as exc:
+                self.rejections["BPU bar invalid: "+str(exc)[:60]] += 1
+                continue
+            if result.phase == "bpu1" and old != "bpu1":
+                self.counts["native_bpu1"] += 1
+                if self._events_logged < 7:
+                    self.log(f"BSU RESEARCH BPU1 {case['symbol']} "
+                             f"{current:%Y-%m-%d %H:%M} "
+                             f"{side} exact={pivot:.4f}; NO ORDERS")
+                    self._events_logged += 1
+            elif result.phase == "bpu2_confirmed" and old != "bpu2_confirmed":
+                self.counts["closed_bpu2_proxy"] += 1
+                if self._events_logged < 7:
+                    self.log(f"BSU RESEARCH BPU2 {case['symbol']} "
+                             f"{current:%Y-%m-%d %H:%M} "
+                             f"{side} level={pivot:.4f}; "
+                             "NO -30s TVX PROOF / NO ORDERS")
+                    self._events_logged += 1
+            elif result.phase == "invalidated":
+                self.counts["invalid_bpu2_attempts"] += 1
+
+    def on_end_of_algorithm(self):
+        best = sorted(self.case_nearest.values(), key=lambda r: abs(r[0]))[:8]
+        self.log("BSU RESEARCH SUMMARY "
+                 f"symbols_warmed={self.counts['symbols_warmed']} "
+                 f"candidate_level_days={self.counts['bsu_observer_days']} "
+                 f"M5={self.counts['native_m5_bars']} "
+                 f"checks={self.counts['native_m5_level_checks']} "
+                 f"BPU1={self.counts['native_bpu1']} "
+                 f"BPU2_closed={self.counts['closed_bpu2_proxy']} "
+                 f"invalid={self.counts['invalid_bpu2_attempts']} "
+                 f"rejects={dict(self.rejections.most_common(3))}; NO ORDERS")
+        for gap, ticker, day, side, pivot, extreme, at, tick in best:
+            self.log(f"BSU RESEARCH NEAREST {ticker} {day} {side} "
+                     f"RAW_BSU={pivot:.4f} M5={extreme:.4f} "
+                     f"gap={gap:+.4f} ticks={abs(gap/tick):.1f} "
+                     f"at={at}; NOT necessarily BPU1")

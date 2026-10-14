@@ -26,6 +26,10 @@ def test_cloud_free_reserves_research_notebook_as_file_25():
     assert "strategy/__init__.py" in files
     assert "strategy/native_second_tvx.py" in files
     assert "strategy/preclose_review.py" in files
+    # LEAN Cloud import regression: its sessions.py must expose the real policy.
+    sessions = ast.parse(files["strategy/sessions.py"])
+    assert any(isinstance(node, ast.ClassDef) and node.name == "SessionPolicy"
+               for node in sessions.body)
     assert "strategy/risk_research.py" in files
     assert "strategy/corporate_action_guard.py" in files
     assert not (BUNDLED | OPTIONAL_RESEARCH) & set(files)
@@ -90,8 +94,10 @@ from strategy.config import StrategyConfig
 from strategy.native_second_tvx import _duration_seconds, validate_m5_tradebar
 from strategy.second_runtime import process_second_slice
 from strategy.m5_runtime import process_m5
+from strategy.sessions import SessionPolicy
 from strategy.reporting import write_reports
 cfg = StrategyConfig()
+assert SessionPolicy(cfg).describe()["bounce"]
 Symbol = namedtuple("Symbol", "value")
 a = SimpleNamespace(symbol=Symbol("AAA"),
                     price=50., volume=10., dollar_volume=500.,

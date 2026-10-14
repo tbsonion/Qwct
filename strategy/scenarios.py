@@ -10,6 +10,7 @@
 
 Скоринги — взвешенные эвристики с прозрачным provenance (не вероятности).
 """
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from math import isfinite
@@ -108,6 +109,8 @@ class ScenarioEvaluator:
 
     def __init__(self, cfg: StrategyConfig):
         self.cfg = cfg
+        # Research-only arbitration audit, independent of chosen model.
+        self.scan_model_audit = Counter()
 
     def evaluate(self, symbol: str, session: date, decided_at: datetime,
                  d1_asof: pd.DataFrame, m5_asof: pd.DataFrame | None,
@@ -120,9 +123,12 @@ class ScenarioEvaluator:
         a = _atr_value(d1_asof, cfg)
         cands = nearest_levels(levels, price, cfg.level_proximity_atr, a)
         if not cands:
+            self.scan_model_audit["no_nearby"] += 1
             return ScenarioDecision(symbol, session, decided_at, None, None, None,
                                     rejected_reasons=["нет уровней рядом с ценой"])
 
+        best_bounce = None
+        has_eligible_bsu_level = False
         best: ModelScore | None = None
         best_level: Level | None = None
         best_feats: dict[str, FeatureResult] = {}
@@ -148,6 +154,18 @@ class ScenarioEvaluator:
             # bounce (против уровня)
             s_bo, p_bo = _score_bounce(feats, cfg)
             side_bo = "short" if lvl.price >= price else "long"
+            # A shadow count only: never promote bounce over the winner.
+            # Ignore mirror/unconfirmed/weak levels for native BSU research.
+            if (lvl.kind in ("support", "resistance")
+                    and lvl.source == "swing_cluster"
+                    and lvl.valid_from is not None
+                    and lvl.valid_from <= session
+                    and lvl.formed_at is not None
+                    and lvl.touches >= cfg.min_touches
+                    and lvl.strength >= cfg.min_level_strength):
+                has_eligible_bsu_level = True
+                best_bounce = (s_bo if best_bounce is None
+                               else max(best_bounce, s_bo))
             # false breakout (против прокола)
             s_fp, p_fp = _score_false_breakout(feats, cfg)
             g14 = feats.get("g14")
@@ -165,6 +183,24 @@ class ScenarioEvaluator:
                     best_level = lvl
                     best_feats = feats
 
+        # Count original scoring decisions without changing acceptance,
+        # tie-breaking, or any BPU signal/entry condition.
+        audit = self.scan_model_audit
+        audit["nearby_evaluated"] += 1
+        if has_eligible_bsu_level:
+            audit["bsu_level_present"] += 1
+            if best_bounce is not None and best_bounce >= cfg.min_model_score:
+                audit["bounce_scored_eligible"] += 1
+                if best is not None and best.model != "bounce":
+                    audit["bounce_outscored"] += 1
+                    if abs(best.score - best_bounce) < 1e-8:
+                        audit["bounce_tie_lost"] += 1
+            else:
+                audit["bounce_below_threshold"] += 1
+        else:
+            audit["no_bsu_eligible_level"] += 1
+        if best is not None and best.model == "bounce":
+            audit["selected_bounce"] += 1
         if best is None or best_level is None:
             return ScenarioDecision(symbol, session, decided_at, None, None, None,
                                     features=best_feats, rejected_reasons=rejected)

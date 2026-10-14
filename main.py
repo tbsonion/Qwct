@@ -45,15 +45,14 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
         # Optional bounded Cloud research window; default smoke unchanged.
         start = datetime.strptime(
-            self.get_parameter("scan_start") or "2024-01-01", "%Y-%m-%d")
+            self.get_parameter("scan_start") or "2024-02-06", "%Y-%m-%d")
         end = datetime.strptime(
-            self.get_parameter("scan_end") or "2024-02-05", "%Y-%m-%d")
+            self.get_parameter("scan_end") or "2024-03-15", "%Y-%m-%d")
         if end < start or (end - start).days > 45:
             raise ValueError("scan window must span 0-45 calendar days")
         self.set_start_date(start.year, start.month, start.day)
         self.set_end_date(end.year, end.month, end.day)
-        self._case_scan = bool(
-            self.get_parameter("scan_start") or self.get_parameter("scan_end"))
+        self._case_scan = True
         self._bsu_scan_best = []
         self.cfg = StrategyConfig()
         # Opt-in SEC feed: tvx_seconds=true; high Cloud data cost.
@@ -162,7 +161,8 @@ class QwctGerchikAlgorithm(QCAlgorithm):
             self._checkpoint_reports)
 
         self.debug(
-            "Qwct: signal-only; ALL ORDERS DISABLED; RAW as-of/SCALED_RAW D1; "
+            f"QWCT SCAN ACTIVE {start.date()}..{end.date()}; "
+            "signal-only; ALL ORDERS DISABLED; RAW as-of/SCALED_RAW D1; "
             + ("native SEC TVX research ENABLED, high data volume"
                if self._tvx_seconds_enabled else "native SEC TVX NOT ENABLED"))
 

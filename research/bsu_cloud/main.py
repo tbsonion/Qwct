@@ -154,6 +154,7 @@ class QwctBsuResearch(QCAlgorithm):
                         "origin_time": origin_end.isoformat(),
                         "cluster": float(lvl.price),
                         "bpu1_bar": None,
+                        "bpu1_strict": False,
                     })
                 self.active[sym] = states
                 count += len(states)
@@ -196,6 +197,7 @@ class QwctBsuResearch(QCAlgorithm):
             if detector.state.phase in ("invalidated", "bpu2_confirmed"):
                 detector.reset()
                 case["bpu1_bar"] = None
+                case["bpu1_strict"] = False
             pivot, tick, side = case["origin"], case["tick"], case["side"]
             extreme = float(bar.low if side == "long" else bar.high)
             gap = extreme - pivot
@@ -225,11 +227,25 @@ class QwctBsuResearch(QCAlgorithm):
                     float(bar.open), float(bar.high),
                     float(bar.low), float(bar.close),
                     float(bar.volume))
+                # Detector admits <= half a reference tick (180.145 vs
+                # 180.140 on AMZN); that is NOT strict price equality.
+                # Keep its original observation count for comparability,
+                # but never call a half-tick proxy "exact" in the logs.
+                bpu1_delta = abs(extreme - pivot)
+                bpu1_strict = bpu1_delta <= tick * 1e-5
+                case["bpu1_strict"] = bpu1_strict
+                if bpu1_strict:
+                    self.counts["strict_bpu1"] += 1
+                else:
+                    self.counts["near_half_tick_bpu1"] += 1
                 self.counts["native_bpu1"] += 1
                 if self._events_logged < 7:
                     self.log(f"BSU RESEARCH BPU1 {case['symbol']} "
                              f"{current:%Y-%m-%d %H:%M} "
-                             f"{side} exact={pivot:.4f}; NO ORDERS")
+                             f"{side} pivot={pivot:.4f} "
+                             f"observed={extreme:.4f} "
+                             f"strict={'YES' if bpu1_strict else 'NO'}; "
+                             "NO ORDERS")
                     self._events_logged += 1
             elif result.phase == "bpu2_confirmed" and old != "bpu2_confirmed":
                 self.counts["closed_bpu2_proxy"] += 1
@@ -239,12 +255,23 @@ class QwctBsuResearch(QCAlgorithm):
                 else:
                     # This is only a *separate reporting flag*. It never
                     # gates/moves a detector event or authorizes a trade.
+                    # Actual TVX would be sampled 30s BEFORE BPU2 close.
+                    # Time eligibility is only a separate research flag;
+                    # SEC/TICK timing and order placement are NOT inferred.
+                    hypothetical_tvx = (
+                        current - pd.Timedelta(seconds=30)).time()
                     in_bounce_window = any(
-                        time.fromisoformat(a) <= current.time()
+                        time.fromisoformat(a) <= hypothetical_tvx
                         < time.fromisoformat(b)
                         for a, b in self.cfg.session_windows_bounce)
                     if in_bounce_window:
                         self.counts["bpu2_in_bounce_window"] += 1
+                    if case["bpu1_strict"]:
+                        self.counts["strict_bpu2_closed"] += 1
+                        if in_bounce_window:
+                            self.counts["strict_bpu2_in_window"] += 1
+                    else:
+                        self.counts["half_tick_predecessor_bpu2"] += 1
                     # Original on-grid BPU1 comparison is visible even
                     # when subsequent RAW TradeBar highs show subpennies.
                     first_extreme = first[3] if side == "long" else first[2]
@@ -260,7 +287,7 @@ class QwctBsuResearch(QCAlgorithm):
                                 float(bar.low), float(bar.close),
                                 float(bar.volume)),
                         first_diff_ticks, second_grid_offset,
-                        in_bounce_window,
+                        in_bounce_window, case["bpu1_strict"],
                         float(detector.state.luft),
                         float(detector.state.stop_price)))
                 if self._events_logged < 7:
@@ -290,11 +317,12 @@ class QwctBsuResearch(QCAlgorithm):
                      f"at={at}; NOT necessarily BPU1")
         # Every completed BPU2 gets an independently capped, native
         # M5 OHLC evidence pair, even if the first-7 event log filled up.
-        for ticker, at, side, pivot, origin, cluster, first, second, dist, grid, allowed, luft, stop in self._bpu2_proofs[:8]:
+        for ticker, at, side, pivot, origin, cluster, first, second, dist, grid, allowed, strict, luft, stop in self._bpu2_proofs[:8]:
             self.log(f"BSU RESEARCH PROOF {ticker} BPU2={at} {side} "
                      f"BSU={pivot:.4f} origin={origin[:16]} "
                      f"cluster={cluster:.4f} BPU1={first[0][-5:]} "
-                     f"dist_ticks={dist:.6f} bounce_window={'YES' if allowed else 'NO'}")
+                     f"dist_ticks={dist:.6f} BPU1_strict={'YES' if strict else 'NO'} "
+                     f"bounce_window={'YES' if allowed else 'NO'}")
             self.log(f"BSU RESEARCH OHLC {ticker} "
                      f"BPU1={first[1]:.4f}/{first[2]:.4f}/{first[3]:.4f}/{first[4]:.4f} "
                      f"BPU2={second[0]:.4f}/{second[1]:.4f}/{second[2]:.4f}/{second[3]:.4f} "
@@ -303,8 +331,12 @@ class QwctBsuResearch(QCAlgorithm):
         if len(self._bpu2_proofs) > 8:
             self.log(f"BSU RESEARCH PROOF omitted="
                      f"{len(self._bpu2_proofs)-8}; NO ORDERS")
-        self.log(f"BSU RESEARCH ELIGIBILITY BPU2_closed="
-                 f"{self.counts['closed_bpu2_proxy']} "
-                 f"within_bounce_session_window="
-                 f"{self.counts['bpu2_in_bounce_window']}; "
-                 "time window alone NEVER approves a trade")
+        self.log(f"BSU RESEARCH ELIGIBILITY BPU1_detector="
+                 f"{self.counts['native_bpu1']} "
+                 f"BPU1_strict={self.counts['strict_bpu1']} "
+                 f"BPU1_half_tick={self.counts['near_half_tick_bpu1']} "
+                 f"BPU2_detector={self.counts['closed_bpu2_proxy']} "
+                 f"BPU2_with_strict_BPU1={self.counts['strict_bpu2_closed']} "
+                 f"strict_in_bounce_window="
+                 f"{self.counts['strict_bpu2_in_window']}; "
+                 "NO SEC TVX / NO ORDERS")

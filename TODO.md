@@ -17,6 +17,15 @@
 
 **Последняя проверенная Cloud-сборка (март–апрель 2024) — код менять НЕ нужно. GitHub-ссылки остаются историческими ссылками для восстановления, а НЕ обязательным обновлением:** [`main.py`](https://github.com/tbsonion/Qwct/blob/main/deploy/quantconnect_free_20261014_bounce_audit/main.py), [`strategy/scenarios.py`](https://github.com/tbsonion/Qwct/blob/main/deploy/quantconnect_free_20261014_bounce_audit/strategy/scenarios.py), [`strategy/reporting.py`](https://github.com/tbsonion/Qwct/blob/main/deploy/quantconnect_free_20261014_bounce_audit/strategy/reporting.py). Это **Cloud-ready снимки**, особенно bundled `strategy/reporting.py`, а НЕ raw GitHub reporting.py. Заменить эти **три** существующих пути и оставить `strategy/m5_runtime.py` из уже работавшего скана без изменений. [Полная инструкция](deploy/quantconnect_free_20261014_bounce_audit/README.md). По следующим изменениям создавать НОВЫЕ verified GitHub-ссылки под действительно затронутые файлы.
 
+## 2026-10-14: LEAN Cloud BSU Research, 2024-04-27..2024-06-07
+
+- [x] Native LEAN 2.5.0.0.18179 confirmed: `symbols_warmed=87`, `candidate_level_days=424`, `M5=6786`, `checks=33072`, `BPU1_detector=4`, **`BPU1_strict=3`**, `BPU1_half_tick=1`, `BPU2_detector=3`, **`BPU2_with_strict_BPU1=2`**, `strict_in_bounce_window=0`, `invalid=1`, `rejects={}`, no orders.
+- [x] AAPL 2024-04-29 BSU 174.380: BPU1 14:15 -> BPU2 14:20 and BPU1 14:25 -> BPU2 14:30; both strict, **same swing and same trading day**, not two independent setup days. AAPL 2024-05-14 BSU 187.060: BPU1 11:10 high 187.065 (0.5 native tick) -> BPU2 11:15, not strict.
+- [x] All three BPU2 fell outside the current 12:00-13:30 ET research window. No native SEC TVX, no approved trading patterns, no P&L.
+- [x] Combined with 2024-03-16..2024-04-26: 840 candidate-level-days (not unique levels), 65520 M5 case checks, 12 detector BPU1 (9 strict), six closed BPU2 (three after strict BPU1), **zero strict+session cases**.
+- [x] Only new research `main.py` default dates changed to **2024-06-08..2024-07-19**. Other 6 research modules and primary Qwct project remain untouched.
+- [ ] Next Cloud run for 2024-06-08..2024-07-19. Do not infer performance or relax Gerchik rules from raw case counts; inspect symbol-level/day uniqueness before any generalization.
+
 ## 2026-10-14: третий native LEAN Cloud strict audit завершён; следующий исторический период готов
 
 - [x] **Нативный Cloud 2.5.0.0.18179, 2024-03-16..2024-04-26, run b24f6d74bf558d2d3fd2d8178c528de0** подтвердил полные research-only счётчики: `candidate_level_days=416`, `M5=6786`, `checks=32448`, `BPU1_detector=8`, **`BPU1_strict=6`**, **`BPU1_half_tick=2`**, `BPU2_detector=3`, **`BPU2_with_strict_BPU1=1`**, **`strict_in_bounce_window=0`**, `invalid=5`, `rejects={}`, ордера OFF. Эти 6 — события BPU1 из текущего research universe, **не 6 завершённых паттернов**. Имеется только одна закрытая BPU2 после strict BPU1 (AAPL 2024-04-10 11:20), также вне 12:00–13:30 ET. TVX SEC -30s отсутствует.

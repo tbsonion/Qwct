@@ -53,6 +53,32 @@ def test_bpu_scan_ranks_only_observed_closed_m5_native_touch_audit():
     assert 'self._scenario_evaluator.scan_model_audit' in report
 
 
+def test_cloud_reporting_and_scenarios_are_deployed_as_one_compatible_pair():
+    """A Cloud project with old scenarios.py + new reporting.py will crash at EOD.
+
+    Source/package CI cannot verify an independently hand-edited Cloud project;
+    this test guards the *built bundle* against that mismatch.
+    """
+    from strategy.config import StrategyConfig
+    from strategy.scenarios import ScenarioEvaluator
+    import ast
+
+    bundled = build_sources(ROOT)
+    assert "strategy/scenarios.py" in bundled
+    assert "strategy/reporting.py" in bundled
+    assert "scan_model_audit" in bundled["strategy/scenarios.py"]
+    assert "scan_model_audit" in bundled["strategy/reporting.py"]
+    evaluator = ScenarioEvaluator(StrategyConfig())
+    assert evaluator.scan_model_audit["selected_bounce"] == 0
+    parsed = ast.parse(bundled["strategy/scenarios.py"])
+    cls = next(n for n in parsed.body if
+               isinstance(n, ast.ClassDef) and n.name == "ScenarioEvaluator")
+    init = next(n for n in cls.body if
+                isinstance(n, ast.FunctionDef) and n.name == "__init__")
+    assert any(isinstance(n, ast.Attribute) and n.attr == "scan_model_audit"
+               for n in ast.walk(init))
+
+
 def test_existing_cloud_package_keeps_native_history_and_import_path():
     cloud = build_sources(ROOT)
     assert len(cloud["main.py"]) < 28_000

@@ -47,6 +47,9 @@ class QwctBsuResearch(QCAlgorithm):
         self.rejections = Counter()
         self._quarantined = set()
         self._events_logged = 0
+        # Keep genuine completed BPU2 candle evidence separate from
+        # the small real-time log budget; no reconstructed OHLC/fills.
+        self._bpu2_proofs = []
         # Deliberately fixed first test universe. This is NOT a marketwide
         # point-in-time screener and does not certify other US equities.
         for name in ("MSFT", "AMZN", "AAPL"):
@@ -148,6 +151,9 @@ class QwctBsuResearch(QCAlgorithm):
                         "detector": detector,
                         "origin": origin, "tick": tick, "side": side,
                         "session": session, "symbol": sym.value,
+                        "origin_time": origin_end.isoformat(),
+                        "cluster": float(lvl.price),
+                        "bpu1_bar": None,
                     })
                 self.active[sym] = states
                 count += len(states)
@@ -189,6 +195,7 @@ class QwctBsuResearch(QCAlgorithm):
             detector = case["detector"]
             if detector.state.phase in ("invalidated", "bpu2_confirmed"):
                 detector.reset()
+                case["bpu1_bar"] = None
             pivot, tick, side = case["origin"], case["tick"], case["side"]
             extreme = float(bar.low if side == "long" else bar.high)
             gap = extreme - pivot
@@ -211,6 +218,13 @@ class QwctBsuResearch(QCAlgorithm):
                 self.rejections["BPU bar invalid: "+str(exc)[:60]] += 1
                 continue
             if result.phase == "bpu1" and old != "bpu1":
+                # Actual completed native M5 candle, captured when BPU1
+                # appeared. Do not infer it from the later BPU2 candle.
+                case["bpu1_bar"] = (
+                    current.strftime("%Y-%m-%d %H:%M"),
+                    float(bar.open), float(bar.high),
+                    float(bar.low), float(bar.close),
+                    float(bar.volume))
                 self.counts["native_bpu1"] += 1
                 if self._events_logged < 7:
                     self.log(f"BSU RESEARCH BPU1 {case['symbol']} "
@@ -219,6 +233,36 @@ class QwctBsuResearch(QCAlgorithm):
                     self._events_logged += 1
             elif result.phase == "bpu2_confirmed" and old != "bpu2_confirmed":
                 self.counts["closed_bpu2_proxy"] += 1
+                first = case.get("bpu1_bar")
+                if first is None:
+                    self.rejections["BPU2 without retained BPU1 candle"] += 1
+                else:
+                    # This is only a *separate reporting flag*. It never
+                    # gates/moves a detector event or authorizes a trade.
+                    in_bounce_window = any(
+                        time.fromisoformat(a) <= current.time()
+                        < time.fromisoformat(b)
+                        for a, b in self.cfg.session_windows_bounce)
+                    if in_bounce_window:
+                        self.counts["bpu2_in_bounce_window"] += 1
+                    # Original on-grid BPU1 comparison is visible even
+                    # when subsequent RAW TradeBar highs show subpennies.
+                    first_extreme = first[3] if side == "long" else first[2]
+                    first_diff_ticks = abs(first_extreme - pivot) / tick
+                    second_extreme = (float(bar.low) if side == "long"
+                                      else float(bar.high))
+                    second_grid_offset = abs(
+                        second_extreme - round(second_extreme/tick)*tick)/tick
+                    self._bpu2_proofs.append((
+                        case["symbol"], current.strftime("%Y-%m-%d %H:%M"),
+                        side, pivot, case["origin_time"], case["cluster"],
+                        first, (float(bar.open), float(bar.high),
+                                float(bar.low), float(bar.close),
+                                float(bar.volume)),
+                        first_diff_ticks, second_grid_offset,
+                        in_bounce_window,
+                        float(detector.state.luft),
+                        float(detector.state.stop_price)))
                 if self._events_logged < 7:
                     self.log(f"BSU RESEARCH BPU2 {case['symbol']} "
                              f"{current:%Y-%m-%d %H:%M} "
@@ -244,3 +288,23 @@ class QwctBsuResearch(QCAlgorithm):
                      f"RAW_BSU={pivot:.4f} M5={extreme:.4f} "
                      f"gap={gap:+.4f} ticks={abs(gap/tick):.1f} "
                      f"at={at}; NOT necessarily BPU1")
+        # Every completed BPU2 gets an independently capped, native
+        # M5 OHLC evidence pair, even if the first-7 event log filled up.
+        for ticker, at, side, pivot, origin, cluster, first, second, dist, grid, allowed, luft, stop in self._bpu2_proofs[:8]:
+            self.log(f"BSU RESEARCH PROOF {ticker} BPU2={at} {side} "
+                     f"BSU={pivot:.4f} origin={origin[:16]} "
+                     f"cluster={cluster:.4f} BPU1={first[0][-5:]} "
+                     f"dist_ticks={dist:.6f} bounce_window={'YES' if allowed else 'NO'}")
+            self.log(f"BSU RESEARCH OHLC {ticker} "
+                     f"BPU1={first[1]:.4f}/{first[2]:.4f}/{first[3]:.4f}/{first[4]:.4f} "
+                     f"BPU2={second[0]:.4f}/{second[1]:.4f}/{second[2]:.4f}/{second[3]:.4f} "
+                     f"BPU2_ext_grid_off_ticks={grid:.3f} "
+                     f"stop={stop:.4f} luft={luft:.4f}; NO ORDERS")
+        if len(self._bpu2_proofs) > 8:
+            self.log(f"BSU RESEARCH PROOF omitted="
+                     f"{len(self._bpu2_proofs)-8}; NO ORDERS")
+        self.log(f"BSU RESEARCH ELIGIBILITY BPU2_closed="
+                 f"{self.counts['closed_bpu2_proxy']} "
+                 f"within_bounce_session_window="
+                 f"{self.counts['bpu2_in_bounce_window']}; "
+                 "time window alone NEVER approves a trade")

@@ -45,9 +45,9 @@ class QwctGerchikAlgorithm(QCAlgorithm):
     def initialize(self) -> None:
         # Optional bounded Cloud research window; default smoke unchanged.
         start = datetime.strptime(
-            self.get_parameter("scan_start") or "2024-02-06", "%Y-%m-%d")
+            self.get_parameter("scan_start") or "2024-03-16", "%Y-%m-%d")
         end = datetime.strptime(
-            self.get_parameter("scan_end") or "2024-03-15", "%Y-%m-%d")
+            self.get_parameter("scan_end") or "2024-04-26", "%Y-%m-%d")
         if end < start or (end - start).days > 45:
             raise ValueError("scan window must span 0-45 calendar days")
         self.set_start_date(start.year, start.month, start.day)

@@ -21,12 +21,13 @@ def test_exact_native_m5_touch_is_not_a_crossing_or_nearby_miss():
     assert audit.bars == 3
 
 
-def test_asof_cloud_scan_is_explicit_bounded_and_defaults_to_verified_smoke():
+def test_asof_cloud_scan_is_enabled_by_default_with_new_historical_window():
     main = (ROOT / "main.py").read_text(encoding="utf-8")
-    assert 'self.get_parameter("scan_start") or "2024-01-01"' in main
-    assert 'self.get_parameter("scan_end") or "2024-02-05"' in main
+    assert 'self.get_parameter("scan_start") or "2024-02-06"' in main
+    assert 'self.get_parameter("scan_end") or "2024-03-15"' in main
     assert '(end - start).days > 45' in main
-    assert 'self._case_scan = bool(' in main
+    assert "self._case_scan = True" in main
+    assert "QWCT SCAN ACTIVE" in main
     assert "self._bsu_scan_best = []" in main
     assert "self._native_exit_enabled = False" in main
     assert not any(token in main for token in

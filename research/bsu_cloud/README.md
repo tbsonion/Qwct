@@ -18,7 +18,7 @@ In the new **Qwct-BSU-Research** project, replace the default `main.py` and crea
 
 **Do not paste the old 24-file Cloud bundle into this new project**; it would run a different algorithm and consume unnecessary Free quota. New project uses only 7 files plus the editor's optional template `research.ipynb`.
 
-Once the seven paths are saved, run `Build → Backtest`. Default dates are **2024-03-16 through 2024-04-26**, three explicit symbols **MSFT / AMZN / AAPL**, no configuration UI needed. That initial small sample makes it possible to compare historical MSFT April 11 $427.83 pivot near-miss, but this scanner will also test **other** structural levels rather than just the chosen D1 bounce winner.
+After a successful native LEAN scan of **2024-03-16 through 2024-04-26** (verified below), the current **new-project** `research/bsu_cloud/main.py` now defaults to the **next nonoverlapping 2024-04-27 through 2024-06-07** window. It still scans only **MSFT / AMZN / AAPL**, and no parameter UI is necessary. If Cloud project parameters `scan_start` / `scan_end` are already set, they override these defaults. `Qwct-LEAN-Test` is unchanged.
 
 ## Research mechanics
 
@@ -81,6 +81,29 @@ To verify the reported BPU2 candidates without rewriting detection, update **onl
 - `BSU RESEARCH ELIGIBILITY`: how many observed BPU2 completions fell inside the original bounce session window. This is **not** risk approval or a TVX/entry signal.
 
 This does not change detector logic, score, the universe, or orders. **The first proof-only version was successfully Cloud-tested. A newer strict-versus-half-tick summary version currently on GitHub still needs its own native Cloud test**. Re-run the same dates and share its log. Further native SEC preclose verification should only follow audit of the actual completed M5 evidence.
+
+## 2026-10-14: Strict audit Cloud VERIFIED; next backtest configuration
+
+**Third native LEAN v2.5.0.0.18179 run, 2024-03-16 through 2024-04-26, succeeded.** Full log includes:
+
+```text
+BSU RESEARCH SUMMARY symbols_warmed=87 candidate_level_days=416 M5=6786 checks=32448 BPU1=8 BPU2_closed=3 invalid=5 rejects={}; NO ORDERS
+BSU RESEARCH ELIGIBILITY BPU1_detector=8 BPU1_strict=6 BPU1_half_tick=2 BPU2_detector=3 BPU2_with_strict_BPU1=1 strict_in_bounce_window=0; NO SEC TVX / NO ORDERS
+```
+
+- Six **strictly equal native BPU1 observations** versus eight original half-tick-detector observations; **two** AMZN BPU1 extrema were $180.145 against $180.140 and were not strict-equal.
+- One **strict-BPU1 → closed-M5 BPU2 pair**, AAPL 2024-04-10 at 11:15→11:20 ET. This occurred **outside** the strategy's 12:00–13:30 ET bounce window.
+- **Zero** qualified *strict pattern + hypothetical preclose session window* observations. **Zero** SEC -30s samples, actual orders, or P&L evidence.
+- AMZN 2024-03-25 14:25 also had **strict exact BPU1** $180.140, but did not produce a confirmed closed-BPU2; this is why **BPU1_strict=6** must not be reported as six completed patterns.
+
+**Next action:** paste **only** [new research `main.py`](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) into Cloud project `Qwct-BSU-Research/main.py` and rerun. The only source changes for the next test are the **default date strings**:
+
+```text
+scan_start = 2024-04-27
+scan_end = 2024-06-07
+```
+
+Expected: `BSU RESEARCH ACTIVE 2024-04-27..2024-06-07`, a new `BSU RESEARCH SUMMARY`, and a new `BSU RESEARCH ELIGIBILITY`. **No native Cloud results for this next window have been observed yet.** All six shared `strategy/` modules remain unchanged. No strategy rule or detector tolerance changed.
 
 ## What success looks like
 

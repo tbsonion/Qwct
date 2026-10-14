@@ -59,7 +59,20 @@ Three **reported completed-candle** pairs:
 
 Additional data-quality observation: AMZN M5 on 2024-03-26 at 11:55 has **high 180.135**, half a cent below 180.14 (0.5 of a $0.01 reference tick). This is the **BPU2 time**, not evidence that BPU1 occurred at 180.135. LEAN's RAW minute aggregates can contain such values; investigate provenance rather than rounding, labeling it exact, or altering detector tolerance.
 
-### Small proof-only improvement in the new research `main.py`
+### Native proof-log rerun now verified; next strict BPU audit
+
+A second real QuantConnect LEAN Cloud backtest of the original proof-log implementation **completed successfully** on 2024-03-16..2024-04-26 with all 3 `BSU RESEARCH PROOF` and `BSU RESEARCH OHLC` pairs. Same 8 detector BPU1 / 3 detector BPU2. Exact native BPU1 extreme comparison:
+- AMZN 2024-03-25, BPU1 15:00 resistance BSU 180.1400, actual M5 high **180.1450** = **+0.5 native tick**, *not strict equal*. BPU2 15:05 (outside allowed 12:00–13:30 ET window).
+- AMZN 2024-03-26, BPU1 11:50 resistance 180.1400, actual M5 high **180.1450** = **+0.5 native tick**, *not strict equal*. BPU2 11:55 (outside allowed window).
+- AAPL 2024-04-10, BPU1 11:15 support 167.6300, actual M5 low **167.6300** = **0 ticks**, strict equal. BPU2 11:20 (outside allowed window).
+
+The 180.145 AMZN candles pass `BsuDetector._touch_exact` because its original half-tick comparison is intentionally unchanged. They are genuine **detector observations** but not demonstrated *strict-equality* BPU1. Do **not** change detector threshold by editing the main production strategy or manufacture extra BPU2.
+
+**The current GitHub research `main.py` differs from the Cloud version used in that proof-log rerun.** It adds **read-only strict-vs-half-tick counters** `BPU1_detector`, `BPU1_strict`, `BPU1_half_tick`, `BPU2_detector`, `BPU2_with_strict_BPU1`, `strict_in_bounce_window` to the final `BSU RESEARCH ELIGIBILITY` line, and compares the bounce window to the **hypothetical 30-second-preclose clock**. It still does not enable native second data or orders. GitHub pure checks **336 passed** after a one-line regression test fix; this amended `main.py` **has not yet been verified in LEAN Cloud**.
+
+Replace **only** the new research project's `main.py` with the GitHub link in the first table, run the same dates, and paste the new `BSU RESEARCH ELIGIBILITY` line. Leave 6 shared `strategy/` modules and `Qwct-LEAN-Test` unchanged.
+
+### Historical proof-only implementation notes (now Cloud-verified)
 
 To verify the reported BPU2 candidates without rewriting detection, update **only new-project `main.py`** from the GitHub link above. The added end-of-run **read-only** logs show:
 
@@ -67,7 +80,7 @@ To verify the reported BPU2 candidates without rewriting detection, update **onl
 - `BSU RESEARCH OHLC`: observed closed-M5 BPU1 and BPU2 open/high/low/close, reported original stop/luft, and off-tick-grid distance of BPU2's relevant extreme.
 - `BSU RESEARCH ELIGIBILITY`: how many observed BPU2 completions fell inside the original bounce session window. This is **not** risk approval or a TVX/entry signal.
 
-This does not change detector logic, score, the universe, or orders. **New source-level GitHub tests passed, but the updated proof log itself still needs a native Cloud backtest**. Re-run the same dates and share its log. Further native SEC preclose verification should only follow audit of the actual completed M5 evidence.
+This does not change detector logic, score, the universe, or orders. **The first proof-only version was successfully Cloud-tested. A newer strict-versus-half-tick summary version currently on GitHub still needs its own native Cloud test**. Re-run the same dates and share its log. Further native SEC preclose verification should only follow audit of the actual completed M5 evidence.
 
 ## What success looks like
 

@@ -1,6 +1,6 @@
 # Qwct-BSU-Research — separate empty QuantConnect Cloud Python project
 
-**Status:** code prepared / GitHub pure tests only. **Native LEAN Cloud has NOT been run for this new project.** Preserve the existing `Qwct-LEAN-Test` unchanged.
+**Status (2026-10-14): first native LEAN Cloud smoke successful** on 2024-03-16–2024-04-26 with real M5 data. It observed **8 BPU1**, **3 closed-M5 BPU2**, **5 invalid BPU2 attempts**, **416 candidate level-days** across MSFT/AMZN/AAPL and **0 orders**. This does not prove -30s TVX, profitability, or a fully validated Gerchik setup. The main trading project `Qwct-LEAN-Test` remains unchanged.
 
 ## What to do in the empty project
 
@@ -30,6 +30,44 @@ Once the seven paths are saved, run `Build → Backtest`. Default dates are **20
 6. Print capped `BSU RESEARCH BPU1`, `BSU RESEARCH BPU2`, `BSU RESEARCH NEAREST` and `BSU RESEARCH SUMMARY` rows. This independent research project's BPU2 is **close-of-bar evidence only**: no pre-close -30s TVX validation, no risk approval or order execution.
 
 Native split events invalidate current day's observers. Historical price normalization/corporate actions are **not fully certified** by this first scan; cross-split cases require separate as-of factor-file validation. BPU1/BPU2 must not be treated as production signals or backtest trades.
+
+## First native Cloud results and next evidence gate
+
+**Verified from actual LEAN Engine 2.5.0.0.18179 output** for 2024-03-16..2024-04-26:
+
+| Item | Native result |
+|---|---|
+| Symbols | MSFT, AMZN, AAPL |
+| Symbol/day warmups | 87 |
+| Structural BSU level-days | 416 |
+| Native M5 consolidated bars | 6,786 |
+| M5 × BSU case checks | 32,448 |
+| Native BPU1 events | 8 |
+| Closed-M5 BPU2 proxy events | 3 |
+| Invalid subsequent attempts | 5 |
+| Native errors / rejects | No reported rejects; run completed |
+| TVX -30s | **Not tested** |
+| Trading orders | Disabled |
+
+Three **reported completed-candle** pairs:
+
+1. **AMZN 2024-03-25:** BPU1 **15:00 ET** → BPU2 closed **15:05 ET**, RAW original resistance BSU **180.14**.
+2. **AMZN 2024-03-26:** BPU1 **11:50 ET** → BPU2 closed **11:55 ET**, BSU **180.14**.
+3. **AAPL 2024-04-10:** BPU1 **11:15 ET** → BPU2 closed **11:20 ET**, RAW support BSU **167.63**.
+
+**Critical:** Qwct's current configurable Gerchik bounce session window is **12:00–13:30 ET**. All three BPU2 timestamps are **outside that window**. They are interesting *structural* BPU2 observations, **not tradable/eligible Qwct signals**. We must not override session rules to make trades.
+
+Additional data-quality observation: AMZN M5 on 2024-03-26 at 11:55 has **high 180.135**, half a cent below 180.14 (0.5 of a $0.01 reference tick). This is the **BPU2 time**, not evidence that BPU1 occurred at 180.135. LEAN's RAW minute aggregates can contain such values; investigate provenance rather than rounding, labeling it exact, or altering detector tolerance.
+
+### Small proof-only improvement in the new research `main.py`
+
+To verify the reported BPU2 candidates without rewriting detection, update **only new-project `main.py`** from the GitHub link above. The added end-of-run **read-only** logs show:
+
+- `BSU RESEARCH PROOF`: observed BPU1/BPU2 timestamps, actual historical RAW D1 origin date, cluster median vs original pivot, exact BPU1 distance in ticks, and whether BPU2 was within the **existing** bounce session window.
+- `BSU RESEARCH OHLC`: observed closed-M5 BPU1 and BPU2 open/high/low/close, reported original stop/luft, and off-tick-grid distance of BPU2's relevant extreme.
+- `BSU RESEARCH ELIGIBILITY`: how many observed BPU2 completions fell inside the original bounce session window. This is **not** risk approval or a TVX/entry signal.
+
+This does not change detector logic, score, the universe, or orders. **New source-level GitHub tests passed, but the updated proof log itself still needs a native Cloud backtest**. Re-run the same dates and share its log. Further native SEC preclose verification should only follow audit of the actual completed M5 evidence.
 
 ## What success looks like
 

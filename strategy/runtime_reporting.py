@@ -106,6 +106,18 @@ def write_reports(self):
             self.log(f"QWCT SCAN completed: nearest={len(cases)} "
                      f"BPU1={self._bsu_bpu1_count} "
                      f"BPU2={self._bsu_proxy_bpu2_count}; NO ORDERS")
+            a = self._scenario_evaluator.scan_model_audit
+            self.log(
+                "QWCT D1 BOUNCE AUDIT "
+                f"nearby={a['nearby_evaluated']} "
+                f"eligible_level={a['bsu_level_present']} "
+                f"scored_ge_threshold={a['bounce_scored_eligible']} "
+                f"below_threshold={a['bounce_below_threshold']} "
+                f"outscored={a['bounce_outscored']} "
+                f"tie_lost={a['bounce_tie_lost']} "
+                f"selected={a['selected_bounce']} "
+                f"no_eligible_level={a['no_bsu_eligible_level']}; "
+                "read-only / no selection change")
             for _, ticker, day, level, extreme, gap, at, exact in cases:
                 self.log(f"QWCT SCAN NEAREST {ticker} {day} pivot={level:.4f} "
                          f"M5={extreme:.4f} gap={gap:+.4f} "

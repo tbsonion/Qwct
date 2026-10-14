@@ -82,6 +82,16 @@ To verify the reported BPU2 candidates without rewriting detection, update **onl
 
 This does not change detector logic, score, the universe, or orders. **The first proof-only version was successfully Cloud-tested. A newer strict-versus-half-tick summary version currently on GitHub still needs its own native Cloud test**. Re-run the same dates and share its log. Further native SEC preclose verification should only follow audit of the actual completed M5 evidence.
 
+## Native LEAN scan 2024-04-27 through 2024-06-07: verified
+
+Actual LEAN 2.5.0.0.18179 log confirmed `candidate_level_days=424`, `checks=33072`, `BPU1_detector=4`, `BPU1_strict=3`, `BPU1_half_tick=1`, `BPU2_detector=3`, `BPU2_with_strict_BPU1=2`, `strict_in_bounce_window=0`, `rejects={}`; all orders disabled.
+
+Two strict BPU2 episodes **AAPL 2024-04-29 14:20 and 14:30 ET** use the **same** RAW origin `174.3800` from 2024-03-11. They are distinct observed M5 pairs but not independent level-days. The other BPU2, **AAPL 2024-05-14 11:15**, follows a half-tick BPU1 (`187.0650` versus `187.0600`). All three are outside the existing 12:00–13:30 ET bounce window.
+
+Combined two-window research, 2024-03-16 through 2024-06-07: **9 strict BPU1**, **3 closed BPU2 following strict BPU1**, and **zero strict BPU2 inside the configured bounce window**. No proof of SEC -30s, fills, or P&L.
+
+**Next Cloud date window: 2024-06-08 through 2024-07-19.** Update only new project `Qwct-BSU-Research/main.py` from the link above. The standalone source's **default dates** now reflect this next window; if Cloud `scan_start`/`scan_end` parameters exist, those take precedence. The six unchanged dependencies and main `Qwct-LEAN-Test` are not updated. New-window results are **not yet native LEAN-verified**.
+
 ## 2026-10-14: Strict audit Cloud VERIFIED; next backtest configuration
 
 **Third native LEAN v2.5.0.0.18179 run, 2024-03-16 through 2024-04-26, succeeded.** Full log includes:

@@ -43,7 +43,7 @@ def test_morning_frozen_fundamental_and_shadow_and_after_close_only():
         "self.universe_settings.resolution = Resolution.DAILY",
         "self.add_universe(self._select)",
         "self.time_rules.before_market_open(anchor, 1)",
-        "self.time_rules.after_market_close(anchor, 1)",
+        "self.time_rules.after_market_close(anchor, 0)",
         "self.callback_at[day] > et(self.time)",
         "NO_SAME_DAY_FUNDAMENTAL_CALLBACK",
         "Saturday never auto-carried",
@@ -64,6 +64,8 @@ def test_morning_frozen_fundamental_and_shadow_and_after_close_only():
     assert "consolidator.update(bar)" in s
     assert "validate_m5_tradebar(bar, at.to_pydatetime())" in s
     assert "self._observe(case, bar, at)" in s
+    assert "end = et(self.time).to_pydatetime()" in s  # early-close-aware
+    assert "after_market_close(anchor, 1)" not in s  # last day would be skipped
 
 
 def test_missing_and_split_days_never_fabricate_m5():

@@ -5,7 +5,7 @@ from math import isfinite
 import pandas as pd
 
 from strategy.indicators import global_trend, trend_direction
-from strategy.levels import levels_for_session, next_level
+from strategy.levels import levels_for_session, next_level, native_cluster_tolerance
 
 
 def _status(condition):
@@ -42,12 +42,14 @@ def evaluate_d1(d1, proof, cfg, et):
     if not isfinite(atr) or atr <= 0:
         raise ValueError("no as-of native D1 ATR")
     levels = levels_for_session(d1, day, cfg)
+    tol = native_cluster_tolerance(d1, cfg)
     kind = "support" if side == "long" else "resistance"
     baseline = any(
         l.source == "swing_cluster" and l.kind == kind
         and l.valid_from is not None and l.valid_from <= day
         and l.touches >= cfg.min_touches
         and l.strength >= cfg.min_level_strength
+        and tol is not None and abs(l.price-pivot) <= tol + 1e-8
         and 0 <= l.first_idx < len(d1)
         and et(d1.iloc[l.first_idx]["bar_end"]) == source_at
         and abs(float(d1.iloc[l.first_idx]["low" if side == "long" else "high"])

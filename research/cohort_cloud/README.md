@@ -31,7 +31,7 @@
 
 **Targeted research instrumentation now added to GitHub only:** `research/cohort_cloud/main.py` retains identical Fundamental/D1 origin/basis/Shadow/BPU1/BPU2 logic, but now includes `QWCT COHORT TAIL` for up to four actual symbol-days and summary counts `m1_tail_close`, `m1_tail_early`, `m5_tail_close`, `m5_tail_early`. They print true last native minute and true emitted native M5 timestamps vs exchange close — **without manually flushing, manufacturing missing bars, or relaxing any pattern rule**. This modified code is **NOT what produced the real May run**; these additional tail metrics are **native unverified** until a new backtest.
 
-**Next bounded action:** do **not** rerun the unchanged six April cases or claim "BPU detector broken". Check M1/M5 tail provenance first in any next independent monthly run (e.g. June 2024), so positive/negative signal counts carry valid coverage. Then separately design an explicit, causally safe weekend-callback→Monday effective-session policy if improving coverage is required. Do not fit a two-tick tolerance or use the cluster median as an exact BSU. Manual Gerchik BSU validation and actual -30s SEC/TICK TVX remain separate later gates.
+**Next bounded action:** do **not** rerun the unchanged six April cases or claim "BPU detector broken". Current updated code defaults to **June 2024**: check M1/M5 tail provenance first in that next independent monthly run, so positive/negative signal counts carry valid coverage. Then separately design an explicit, causally safe weekend-callback→Monday effective-session policy if improving coverage is required. Do not fit a two-tick tolerance or use the cluster median as an exact BSU. Manual Gerchik BSU validation and actual -30s SEC/TICK TVX remain separate later gates.
 
 
 **Status:** One real May 2024 native QuantConnect 2.6 run completed; see evidence above. Later tail-diagnostic code revision is not yet native-tested. No trading orders, SEC/TICK data, backtested fills, or claimed profitability.
@@ -60,7 +60,7 @@ Project: **`Qwct-M5-Cohort-Research`**. Do not modify or replace `Qwct-LEAN-Test
 
 **IMPORTANT:** The bundled Universe selector `strategy_init_cloud.py` **is NOT the nearly empty `strategy_init_cloud.py` from the six-case project.** Use precisely the link above. It provides canonical `select_liquid_fundamentals` and `passes_gerchik_screener`.
 
-**Defaults (set automatically in new `main.py`):** `scan_start = 2024-05-01`, `scan_end = 2024-05-31` (31 calendar days, fixed independent test). Custom date span allowed only up to **35 calendar days** per run. Saved project parameters override defaults. First line must contain `QWCT 2.6 COHORT ACTIVE 2024-05-01..2024-05-31`. Do **not** rerun Apr10–19 by accident.
+**Current defaults in updated `main.py`:** `scan_start = 2024-06-01`, `scan_end = 2024-06-30` (new independent month; earlier May run already completed). Custom date span allowed only up to **35 calendar days** per run. **Saved QuantConnect project parameters OVERRIDE these defaults** — remove/update any saved May dates. Expect `QWCT 2.6 COHORT ACTIVE 2024-06-01..2024-06-30`. Do **not** rerun unchanged April or May evidence.
 
 ## Timing and data validity — do not confuse replay with real-time trading
 

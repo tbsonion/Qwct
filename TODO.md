@@ -1,5 +1,12 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — NEXT SINGLE USER ACTION: native 180-D1 mirror verification for AON/DELL, one new notebook cell
+
+- [x] **Built one-cell [`research/chart_review_qc/MIRROR_AON_DELL_ONE_CELL.py`](https://github.com/tbsonion/Qwct/blob/main/research/chart_review_qc/MIRROR_AON_DELL_ONE_CELL.py)**. In existing QuantConnect Research Notebook append the code to one new cell BELOW the already executed AON/DELL D1/M5 charts; do not replace them or rerun June backtest. Requests real original **RAW typed native D1 TradeBar**, strict as-of 09:29, last 180 closed bars, feeds native Wilder ATR(14), SMA(50), volume SMA(20); matches previously observed original source high/low; calls canonical `strategy.levels.levels_for_session`; checks `kind=mirror` with independent D1 source-kind/breach/retest/valid_from chronology. Logs `QWCT MIRROR REVIEW`, `QWCT MIRROR CASE` or fail-closed `QWCT MIRROR ERROR`. NO orders. Native notebook addon has NOT yet been run; do not claim pass.
+- [x] **Corrected conceptual dependency in optional older multi-cell notebook:** existing chart-only `d1` lacked LEAN `atr14`/`sma50`, so `levels_for_session` would not produce a valid mirror inventory. The new one-cell addon explicitly populates native indicator snapshots, not artificial ATR/indicators. Keep old chart check and AON 77/78 source-minute limitation as independent findings.
+- [ ] **User sends mirror lines next**. Then decide whether the *automatic* D1 mirror source was actually present/causal on AON or DELL. Separately label real manual Gerchik BSU on source chart before any change to trading criteria.
+
+
 ## 2026-10-15 — Actual user-supplied QWCT 2.9 native D1/M5 Research evidence reviewed
 
 - [x] **AON and DELL real QuantBook notebook screenshots received**; original May 2024 RAW D1 extrema match native 2.8. **AON Jun12 SHORT** original $293.5900, D1 median $293.8175: first M5 range crosses downward at 09:35, OHLC O/H $293.920 L $292.340 C $292.400, 2 case range crosses, zero strict relevant wick exact touch. **DELL Jun7 LONG** original $128.7500, median $128.6750: first source M5 range crosses downward at 14:15, O/H $130.225 L/C $128.520, 7 case M5 range crosses, zero strict relevant wick exact touch. These two initial crosses are *downward penetrations*, not exact BPU1 bounces; do NOT infer any TVX/trade.

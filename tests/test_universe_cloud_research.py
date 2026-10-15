@@ -274,6 +274,7 @@ def test_full50_audit_uses_existing_stage2_results_without_changing_top10():
         aligned_distinct_tickers=set(), role_aligned_distinct_tickers=set(),
         full50_near_tickers=set(), full50_bsu_role_tickers=set(),
         outside10_examples=[], shadow_picks_logged=[],
+        basis_counts=Counter(), basis_details=[],
         shadow_unique_tickers=set(), shadow_unique_level_origins=set(),
         log=observed.append,
     )
@@ -281,6 +282,7 @@ def test_full50_audit_uses_existing_stage2_results_without_changing_top10():
         requests.append((members, session))
         return {symbol: symbol.value for symbol in members}
     algo._history_asof = histories
+    algo._scaled_shadow_history = lambda symbols, day: {}
     algo._native_frame = lambda raw, session: raw
 
     tree = ast.parse(APP.read_text(encoding="utf-8"))
@@ -563,3 +565,120 @@ def test_universe_next_research_window_defaults_to_april15_diagnostic():
     assert 'self.get_parameter("scan_end") or "2024-04-19"' in code
     assert 'self.get_parameter("scan_start") or "2024-04-01"' not in code
     assert 'self.get_parameter("scan_end") or "2024-04-05"' not in code
+
+
+def _compare_basis():
+    from math import isfinite
+    from zoneinfo import ZoneInfo
+    return _standalone_cloud_function("compare_raw_scaled", {
+        "pd": pd, "isfinite": isfinite,
+        "et": lambda v: pd.Timestamp(v).tz_localize(
+            ZoneInfo("America/New_York")) if pd.Timestamp(v).tzinfo is None
+            else pd.Timestamp(v).tz_convert(ZoneInfo("America/New_York")),
+    })
+
+
+def _basis_fixture():
+    from datetime import timedelta
+    days = pd.bdate_range("2024-03-01", periods=25,
+                          tz="America/New_York")
+    d1 = pd.DataFrame(index=days)
+    d1["high"], d1["low"], d1["close"] = 105.0, 95.0, 100.0
+    d1["bar_end"] = [d + pd.Timedelta(hours=16) for d in days]
+    level = Level(price=99., kind="resistance", touches=2,
+                  first_idx=5, last_idx=12, source="swing_cluster")
+    session = (days[-1] + timedelta(days=1)).date()
+    def bar(day, high=105., low=95., close=100.):
+        return SimpleNamespace(time=day, end_time=day + pd.Timedelta(hours=16),
+                               high=high, low=low, close=close)
+    scaled = [bar(d) for d in days]
+    return d1, level, session, scaled, bar
+
+
+def test_scaled_shadow_price_basis_match_rebase_and_stale_latest():
+    check = _compare_basis()
+    raw, level, session, scaled, bar = _basis_fixture()
+    identical = check(raw, level, session, scaled, .01)
+    assert identical["status"] == "MATCH"
+    assert identical["raw"] == identical["scaled"] == 105.
+    assert identical["last_raw"] == identical["last_scaled"] == 100.
+    assert identical["ratio"] == 1.
+
+    # Split-adjusted historical pivot MUST be reported, not silently
+    # substituted into the RAW exact-touch detector.
+    scaled[5] = bar(raw.index[5], high=52.5)
+    rebased = check(raw, level, session, scaled, .01)
+    assert rebased["status"] == "REBASED"
+    assert rebased["scaled"] == 52.5 and rebased["raw"] == 105.
+    assert rebased["ratio"] == .5
+    assert rebased["last_raw"] == rebased["last_scaled"]
+
+    scaled[-1] = bar(raw.index[-1], close=99.8)
+    latest = check(raw, level, session, scaled, .01)
+    assert latest["status"] == "LATEST_DIFF"
+    assert latest["why"] == "LATEST_CLOSE_BASIS_DISAGREES"
+
+
+def test_scaled_shadow_source_timestamp_missing_duplicates_future_fail_closed():
+    check = _compare_basis()
+    raw, level, session, scaled, bar = _basis_fixture()
+    assert check(raw, level, session, None, .01)["status"] == "UNKNOWN"
+    assert check(raw, level, session, scaled, None)["why"] == "NO_NATIVE_TICK"
+    assert check(raw, level, session, scaled[6:], .01)["why"] == (
+        "SCALED_SOURCE_OR_LATEST_MISSING")
+    out = check(raw, level, session, scaled + [scaled[-1]], .01)
+    assert out["why"] == "SCALED_ASOF_ORDER_OR_FUTURE"
+    scaled[5] = bar(raw.index[5] + pd.Timedelta(days=1))
+    assert check(raw, level, session, scaled, .01)["status"] == "UNKNOWN"
+    raw, level, session, scaled, bar = _basis_fixture()
+    scaled[5] = bar(raw.index[5], high=105.)
+    scaled[5].end_time += pd.Timedelta(minutes=1)
+    assert check(raw, level, session, scaled, .01)["why"] == (
+        "RAW_SCALED_ENDTIME_MISMATCH")
+    raw, level, session, scaled, bar = _basis_fixture()
+    scaled[-1] = bar(pd.Timestamp(session).tz_localize("America/New_York"))
+    assert check(raw, level, session, scaled, .01)["status"] == "UNKNOWN"
+
+
+def test_scaled_shadow_typed_history_is_bounded_and_only_requested_for_shadow():
+    from collections import Counter
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    code = APP.read_text(encoding="utf-8")
+    assert code.count("self._history_asof(members, day)") == 1
+    assert code.count("self._scaled_shadow_history(") == 1
+    assert "data_normalization_mode=DataNormalizationMode.SCALED_RAW" in code
+    assert "if shadow:" in code
+    assert "QWCT BASIS SUMMARY" in code and "QWCT BASIS DETAIL" in code
+    assert "self.origin_details if getattr(self, \"verbose_logs\", False) else []" in code
+    assert len(code.encode("utf-8")) < 32_000
+
+    tree = ast.parse(code)
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+               and n.name == "QwctUniverseResearch")
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef)
+                  and n.name == "_scaled_shadow_history")
+    env = {"TradeBar": object,
+           "Resolution": SimpleNamespace(DAILY="daily"),
+           "DataNormalizationMode": SimpleNamespace(SCALED_RAW="scaled")}
+    exec(compile(ast.fix_missing_locations(ast.Module(
+        body=[method], type_ignores=[])), str(APP), "exec"), env)
+
+    class History:
+        def __getitem__(self, bar_type):
+            assert bar_type is object
+            def history(symbols, count, resolution, fill_forward,
+                        data_normalization_mode):
+                assert type(symbols) is list and symbols == ["WMT", "JNJ"]
+                assert (count, resolution, fill_forward, data_normalization_mode) == (
+                    180, "daily", False, "scaled")
+                return [{"WMT": "bar1"}, {"JNJ": "bar2"}]
+            return history
+    observed = env["_scaled_shadow_history"](
+        SimpleNamespace(history=History()), ("WMT", "JNJ"),
+        date(2024, 4, 11))
+    assert observed == {"WMT": ["bar1"], "JNJ": ["bar2"]}
+    assert all(cmd not in code for cmd in
+               ("self.market_order(", "self.limit_order(", "self.buy(",
+                "self.sell(", "self.set_holdings(", "Resolution.SECOND",
+                "Resolution.TICK"))

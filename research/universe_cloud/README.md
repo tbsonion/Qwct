@@ -1,5 +1,16 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15: REAL native LEAN first run — tuple-to-list typed History fix prepared
+
+Actual LEAN Engine **v2.5.0.0.18179**, run `c9fdcf0711e0f00dd55768003c71ac2e`, 2024-04-01..2024-04-05, **successfully produced five daily Fundamental selections of 50 stocks each (250 candidate-days)**. However, `d1_ready=0`, `stage2_pass=0`, `watchlist_days=0` because **ALL FIVE** native batched D1 `History[TradeBar]` calls raised `No method matches given arguments for history: (<class 'tuple'>, ...)`. Thus **ZERO watchlist counts are a HISTORY OVERLOAD ERROR, NOT evidence that no historical stocks qualified**. No trades/orders were submitted.
+
+**Root cause shown in source:** the project stored original top-50 picks as `tuple(selected)` and subsequently passed that Python **tuple** into LEAN's *typed* `self.history[TradeBar](symbols, 180, Resolution.DAILY, ...)`. The earlier successfully verified BSU project passes a **Python list** of Symbols (`[symbol]`) to the same typed API. LEAN overload binding rejected the tuple, before any D1 values could be examined.
+
+**Minimal targeted patch committed:** the standalone [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) now calls `self.history[TradeBar](list(symbols), 180, Resolution.DAILY, ...)`. Retains original selected *membership*, Fundamental ranking, 50/10 constraints, unchanged screener/levels/trend, RAW histories, date window, and **no orders**. New regression checks verify typed-history receives an actual list, not a tuple; **this specific fix is not yet native Cloud-verified**.
+
+**ACTION: in existing `Qwct-Universe-Research` project REPLACE ONLY `main.py`** from link above. Keep `strategy/__init__.py`, `strategy/config.py`, `strategy/indicators.py`, `strategy/levels.py` exactly as they are. Run Save → Build → Backtest with SAME April 1–5, 2024 dates. Paste `QWCT UNIVERSE DAY`, `QWCT UNIVERSE SUMMARY`, and any `QWCT UNIVERSE EXAMPLE`. If errors remain, examine the exact LEAN log rather than loosening screening gates or introducing an alternate API.
+
+
 **Purpose:** Test how much wider dynamic universe screening increases the number of **original Qwct-compliant premarket D1 level + sided-trend opportunities**, without selecting retrospectively hand-picked mega caps or weakening any thresholds. **RESEARCH ONLY / ALL ORDERS DISABLED**. This does NOT search M5 BSU/BPU, place quotes, confirm TVX, simulate fills or calculate P&L.
 
 ## Ready-to-copy complete 5-file Cloud setup

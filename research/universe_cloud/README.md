@@ -1,5 +1,34 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## NEW independent-period native result: Apr 8–19, 2024 — 9 of 10 trading days covered
+
+**QuantConnect LEAN v2.5.0.0.18179 backtest `37850a5ba8ff6f8cc5383afd21d030ca`**, dated 2024-04-08..2024-04-19, successfully completed **WITHOUT M5, SEC, or orders**. It is a **different time window** from the original Apr 1–5 experiment and uses **unchanged** same-stage D1 filters and original liquidity ranking. **Important integrity exception:** it expected **10 US equity sessions**, but `days=9`, with **2024-04-15 missing** from day logs and `rejects['missing_same_day_universe']=1`. This is a fail-closed missing-native-Universe day; do **not** treat Apr 15 as zero matches, silently fill from a prior day's universe, extrapolate to ten sessions, or claim exhaustive validation.
+
+| Cohort / metric | Native observed value (9 covered days) |
+|---|---:|
+| Historical liquidity Top50 membership | **450 candidate-stock-days**, 50 per observed session |
+| D1 histories ready | **446**, four insufficient RAW D1 history |
+| Canonical stage2 passed | **412** |
+| Legacy liquidity Top10 | **90** symbol-days |
+| Legacy Top10 with D1 confirmed near level | **25** |
+| Legacy Top10 with D1 source-role+native trend match | **3** (one each TSLA Apr 10, AAPL Apr 16, META Apr 18) |
+| Full Top50 source-role+trend | **14** candidate-symbol-days |
+| D1-first Shadow Top10 | **14**, 11 distinct tickers and 11 distinct source fingerprints |
+| Shadow intersection with legacy Top10 | **3** |
+| Shadow outside legacy Top10 | **11** |
+| Shadow has at least one match | **8 of 9 observed sessions** (Apr 17 zero; Apr 15 unobserved) |
+
+The per-session Shadow counts for observed days Apr 8/9/10/11/12/16/17/18/19 were **1,1,2,4,1,2,0,2,1**. Unlike the original development period Apr 1–5 (9 candidates / 7 tickers, **zero** within legacy Top10), this independent window includes **three** legacy-aligned candidates, but an additional **eleven** D1-only rows appear by filtering the same Top50 **before** the Top10 cutoff. The sample supports a consistent **coverage gain at the D1-precondition stage**, not any claim of better returns, M5 BPU1/BPU2, preclose TVX, fills, or profitability. The original count of 10 sessions must **not** be used as denominator until the Apr 15 universe gap is investigated.
+
+**All 14 native Shadow stock-days, with original Fundamental liquidity rank:** Apr 8 JNJ #40; Apr 9 JNJ #38; Apr 10 TSLA #2 and JNJ #42; Apr 11 INTC #18, WMT #41, TXN #42, CRM #46; Apr 12 CRM #44; Apr 16 AAPL #3 and AMAT #50; Apr 17 none; Apr 18 META #8 and MCD #49; Apr 19 NFLX #12. JNJ repeated three times and CRM twice; that is **11 distinct tickers**, **not 14 independent BSU trade setups**.
+
+**Additional safety caveat from real evidence:** Several native D1 `shadow_level` cluster centroids are fractional-tick-looking prices (e.g. **INTC $37.2025, WMT $61.6075, TXN $167.325, CRM $294.315, NFLX $602.785**). Do not feed these averages directly to native exact-touch M5 BSU detection. The raw original swing high/low, `first_idx`, native security tick size, source dates, normalization/corporate actions need validation first. The existing Qwct `strategy/bsu_bridge.py` documents these fail-closed requirements. **Apr15 universe callback timing/data reason is unverified**: inspect missing-day logs and recorded selection timestamps; do not silently carry forward members or loosen any filters.
+
+**NEXT engineering task:** (a) add a **read-only `missing_same_day_universe` day/date diagnostic** to the isolated research `main.py` and verify if Apr15 selection was absent or late, without changing membership timing; (b) add a **native-RAW D1 origin/tick-size research audit** of shadow candidates using the same already retrieved D1 bar objects, no M5 or order insertion, without pretending RAW-only proof equals split-adjusted proof; (c) once safe, use native M5 only on source-verified candidates. A single cohesive source change and one Cloud retest is preferable to several blind reruns. **None of these new diagnostics has been implemented or native tested yet.** The current code is unchanged and the independent-window results have been recorded as source evidence.
+
+**Cloud action now: NONE — existing `Qwct-Universe-Research` runs as-is.** Do not touch original `Qwct-LEAN-Test` or older `Qwct-BSU-Research`.  
+
+
 ## 2026-10-15: Native Shadow Top10 VERIFIED — nine D1-only rows / seven original-level origins
 
 **Real native QuantConnect LEAN 2.5.0.0.18179 run `925f9cad95176a12269bae8b9f8f030d`**, 2024-04-01..2024-04-05, **completed 31.53 s with no orders**. Shadow comparison added to the existing `Qwct-Universe-Research` project, all prior Top10 and full50 counters unchanged:

@@ -442,11 +442,13 @@ def test_shadow_origin_audit_reuses_confirmed_swings_and_raw_extreme():
     assert "SCALED_RAW" in result["reason"]
     # Native metadata unavailable -> UNKNOWN, never assume US $.01 tick.
     assert audit(d1, lvl, session, StrategyConfig(), None)["status"] == "UNKNOWN"
-    # An observed fractional RAW extreme is not silently rounded into a BSU.
+    # Historical RAW TradeBar OHLC can contain a legitimate sub-penny
+    # midpoint execution. Native minimum ORDER tick does not prove an
+    # executed trade was impossible. Block BPU promotion until resolved.
     d1.loc[days[12], "high"] = 105.005
     invalid = audit(d1, lvl, session, StrategyConfig(), .01)
-    assert invalid["status"] == "FAIL"
-    assert invalid["reason"] == "RAW_ORIGIN_OFF_NATIVE_TICK_GRID"
+    assert invalid["status"] == "UNKNOWN"
+    assert invalid["reason"] == "RAW_TRADE_EXTREME_SUBTICK_NOT_ORDER_PRICE"
     # Source/confirmation mismatch and future bars must fail closed.
     lvl.valid_from = (days[26] + timedelta(days=1)).date()
     assert audit(d1, lvl, session, StrategyConfig(), .01)["status"] == "FAIL"

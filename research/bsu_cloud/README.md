@@ -1,10 +1,25 @@
 # Qwct-BSU-Research — separate empty QuantConnect Cloud Python project
 
+## FIX for Cloud "No module named strategy.d1_bridge_audit" (backtest initializer)
+
+A real user QuantConnect backtest showed this exact import exception at `main.py` line 14 **even though** the new module appeared under `project/strategy/` and the Cloud terminal had printed `All files saved`. The exact reason it was missing from the backtest Python module registry is not proven; do not claim that new D1 logic has run or that the strategy failed. The **new file must not be relied on**.
+
+**New workaround: place the same research-only helper inside the existing and already importable `strategy/__init__.py`**. The original canonical [strategy/__init__.py](https://github.com/tbsonion/Qwct/blob/main/strategy/__init__.py) in Qwct is **unchanged**. A separate Cloud-ready copy has been generated for THIS research project only; it contains the original package preamble plus the unchanged D1 helper implementation.
+
+**Only TWO replacements in `Qwct-BSU-Research`:**
+
+| QuantConnect Cloud destination | Copy from this exact GitHub SOURCE |
+|---|---|
+| **`main.py`** (replace) | [research/bsu_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) — now imports `premarket_audit` from existing `strategy` package, not `strategy.d1_bridge_audit` |
+| **`strategy/__init__.py`** (replace existing tiny file; preserve exact Cloud destination) | [research/bsu_cloud/strategy_init_cloud.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/strategy_init_cloud.py) — **paste its contents into `strategy/__init__.py`**, do **NOT** create `strategy/strategy_init_cloud.py` |
+
+Old `strategy/d1_bridge_audit.py` in the project can remain unused; it is no longer imported. Other Cloud files stay unchanged. Keep 2024-03-16..2024-04-26 and Save → Build → Backtest; look for `BSU D1 BRIDGE`. Do not update the separate original `Qwct-LEAN-Test`. Both Cloud files are below QuantConnect's 32,000-character per-file maximum. This workaround **still requires a native Cloud run**; GitHub CI tests can validate only pure Python packaging.
+
 ## CURRENT: Research-only as-of D1 eligibility bridge — native Cloud run required
 
 **After native PPHL and SEC historical research successfully found three events,** the next code change adds an independent **D1/filter audit** for those **same three cases**, without changing symbols, date range or trade rules. GitHub CI: **352 pure tests passed**, and the main Qwct **24-Python-file Free package also passed**; the **new D1 report is not yet native LEAN-verified**.
 
-**Update only these TWO Cloud paths in the separate `Qwct-BSU-Research` project:**
+**SUPERSEDED instructions (original direct module attempt failed in native Cloud; use the workaround at the top of this README instead):**
 
 | Cloud path | Exact GitHub source |
 |---|---|

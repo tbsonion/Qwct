@@ -1,5 +1,16 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.3: READ-ONLY RAW swing origins + Fundamental callback timing
+
+- [x] **Reuse-first changes on GitHub main:** update only `research/universe_cloud/main.py`; use current `strategy/levels.py` (`_confirmed_swings`, `native_cluster_tolerance`) with already fetched RAW D1, native `symbol_properties.minimum_price_variation`, no new subscriptions or orders; preserve legacy and shadow criteria.
+- [x] Add `QWCT UNIVERSE TIMING SELECT/SCAN/SUMMARY` to distinguish absent vs empty same-day Fundamental callback, vs late callback after 09:29 ET; keep missing April 15, 2024 **unobserved** (do not backfill with prior day's selected list).
+- [x] Add `QWCT ORIGIN SUMMARY/DETAIL` with original first swing extreme, dates, cluster median, current observed tick, and `PASS / FAIL / UNKNOWN`. **PASS means RAW D1-only chronology/tick**, not full RAW vs SCALED_RAW corporate action provenance, official BSU, M5 or trade.
+- [x] Add new regression cases in `tests/test_universe_cloud_research.py` for native-tick off-grid extremes, missing metadata, future and misconfirmed sources, missing/empty/late callbacks, single History request and order prohibition.
+- [ ] **CI result:** verify the latest GitHub Actions run for the implementation commit (mock and syntax tests never substitute QuantConnect native run).
+- [ ] **NEXT native Cloud test:** update **only** [`Qwct-Universe-Research/main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py), rerun **2024-04-08..2024-04-19** and inspect full timing/origin logs. Compare historical run 37850a5ba8ff6f8cc5383afd21d030ca; Apr 15 had **no observation**, not zero candidates.
+- [ ] **Before native M5:** resolve `UNKNOWN`/off-grid cases using independent SCALED_RAW/split provenance and manual BSU labels. Only then consider existing BsuDetector + M5 bridge. No new orders.
+
+
 **Актуально:** 2026-10-14. **Ветка-источник:** `main`. **Режим:** `RESEARCH ONLY / ALL ORDERS DISABLED`.
 
 > Единый актуальный TODO проекта. Старые отчёты в `docs/` — исторические срезы; утверждения в них вроде «LEAN не запускался» устарели. Спецификация правил: [docs/strategy_spec.md](docs/strategy_spec.md). «Готово в коде» **не означает** «доказано на настоящем LEAN / соответствует Герчику / прибыльно / разрешено торговать».

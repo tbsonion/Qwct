@@ -1,14 +1,36 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## LATEST native LEAN 5-day outcome: dynamic screen CONFIRMED; BSU role mismatch next
+
+**Actual QuantConnect LEAN v2.5.0.0.18179**, run `247db2a140c2ae2a6790fbee82ffb1a4`, April 1–5 2024, completed in 34.11s. Native typed `History[TradeBar]` with `list(symbols)` is **confirmed fixed in real Cloud**; the prior tuple overload problem is resolved. Orders off.
+
+| Measurement | Real value | Proper interpretation |
+|---|---:|---|
+| Native Fundamental stage1 | 50 candidates × 5 sessions = **250 candidate-symbol-days** | Historical dynamic universe, not 250 separate tickers |
+| Native D1 histories ready | **246 / 250** | Four rejected: `insufficient closed RAW D1` (historical factor/start-date warnings, no synthetic fallback) |
+| Original Qwct stage2 pass | **227 / 246** | Candidate-symbol-day count across the full 50, not 227 independent setups |
+| Original 10-stock watchlist | **50 symbol-days** | Up to 10 per day; not 50 unique tickers |
+| Has a two-touch D1 level (any distance) | **50 / 50** | Such a level can be far away |
+| Has D1 level within 1×ATR | **3 / 50** | **AMZN Apr 1**, **AMZN Apr 2**, **AMD Apr 5** |
+| Close-relative Scenario bounce direction agrees with native SMA trend | **2 / 50** | **Same AMZN resistance 179.835 on TWO adjacent days**, **NOT two independent opportunities**, and still no BPU or model scoring |
+| AMD 2024-04-05 | D1 near, trend neutral `G=0,L=0` | Not aligned |
+
+**Important methodological issue in actual log:** the apparent two AMZN `trend_aligned` results are tagged **`resistance` at 179.835**, **below** prior-day closes **180.38** and **180.97**, and the earlier D1-only code calls the hypothetical bounce side `long` because it mirrors Qwct `ScenarioEvaluator` (position relative to close). But original independent `BsuDetector` maps **resistance → short** and **support → long**. A `resistance` below price may be a *role-reversal* hypothesis, but the existing `levels_for_session` had **not** labeled this level `mirror` (and D1 study expressly excludes confirmed mirrors). Therefore **those two counts cannot be presented as two candidate long BSU bounces without further source/role reconciliation**.
+
+**NEXT code is already prepared — one-file diagnostic, no rule change:** [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) still computes the exact **old** `watch_aligned` and `aligned_level_days`, and **adds** `BSU_ROLE_OK / BSU_ROLE_MISMATCH` to `EXAMPLE` rows. It additionally reports `watch_bsu_role_aligned`, `bsu_role_aligned_level_days`, `bsu_role_conflict_level_days`, **unique ticker** counts separately from ticker-day counts. `BSU_ROLE_OK` requires original `support+long` or `resistance+short` **and** the already required sided SMA alignment. `BSU_ROLE_MISMATCH` is a diagnostic, **not a new trade filter or rewritten canonical Qwct algorithm**.
+
+**Action:** in the SAME existing `Qwct-Universe-Research`, replace **ONLY Cloud `main.py`** from [GitHub](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py), leave the other four files and other QuantConnect projects unchanged, rerun **2024-04-01..2024-04-05**. Paste `QWCT UNIVERSE SUMMARY` and `QWCT UNIVERSE EXAMPLE` (DAY lines optional). **This additional read-only role branch has passed pure GitHub tests but has not yet been verified in native Cloud**. Avoid adding M5 until we know whether there are any role-consistent premarket D1 candidates. The 4 insufficient-history rejections remain legitimate unknown data, not losing trades.
+
+
 ## 2026-10-15: REAL native LEAN first run — tuple-to-list typed History fix prepared
 
 Actual LEAN Engine **v2.5.0.0.18179**, run `c9fdcf0711e0f00dd55768003c71ac2e`, 2024-04-01..2024-04-05, **successfully produced five daily Fundamental selections of 50 stocks each (250 candidate-days)**. However, `d1_ready=0`, `stage2_pass=0`, `watchlist_days=0` because **ALL FIVE** native batched D1 `History[TradeBar]` calls raised `No method matches given arguments for history: (<class 'tuple'>, ...)`. Thus **ZERO watchlist counts are a HISTORY OVERLOAD ERROR, NOT evidence that no historical stocks qualified**. No trades/orders were submitted.
 
 **Root cause shown in source:** the project stored original top-50 picks as `tuple(selected)` and subsequently passed that Python **tuple** into LEAN's *typed* `self.history[TradeBar](symbols, 180, Resolution.DAILY, ...)`. The earlier successfully verified BSU project passes a **Python list** of Symbols (`[symbol]`) to the same typed API. LEAN overload binding rejected the tuple, before any D1 values could be examined.
 
-**Minimal targeted patch committed:** the standalone [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) now calls `self.history[TradeBar](list(symbols), 180, Resolution.DAILY, ...)`. Retains original selected *membership*, Fundamental ranking, 50/10 constraints, unchanged screener/levels/trend, RAW histories, date window, and **no orders**. New regression checks verify typed-history receives an actual list, not a tuple; **this specific fix is not yet native Cloud-verified**.
+**Minimal targeted patch committed:** the standalone [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) now calls `self.history[TradeBar](list(symbols), 180, Resolution.DAILY, ...)`. Retains original selected *membership*, Fundamental ranking, 50/10 constraints, unchanged screener/levels/trend, RAW histories, date window, and **no orders**. New regression checks verify typed-history receives an actual list, not a tuple; **now native Cloud-verified by run 247db2a140c2ae2a6790fbee82ffb1a4 (see top)**.
 
-**ACTION: in existing `Qwct-Universe-Research` project REPLACE ONLY `main.py`** from link above. Keep `strategy/__init__.py`, `strategy/config.py`, `strategy/indicators.py`, `strategy/levels.py` exactly as they are. Run Save → Build → Backtest with SAME April 1–5, 2024 dates. Paste `QWCT UNIVERSE DAY`, `QWCT UNIVERSE SUMMARY`, and any `QWCT UNIVERSE EXAMPLE`. If errors remain, examine the exact LEAN log rather than loosening screening gates or introducing an alternate API.
+**Historical instructions for the already verified tuple fix (superseded by the role-audit rerun above):** Previously the only Cloud change was `main.py`. Keep `strategy/__init__.py`, `strategy/config.py`, `strategy/indicators.py`, `strategy/levels.py` exactly as they are. Run Save → Build → Backtest with SAME April 1–5, 2024 dates. Paste `QWCT UNIVERSE DAY`, `QWCT UNIVERSE SUMMARY`, and any `QWCT UNIVERSE EXAMPLE`. If errors remain, examine the exact LEAN log rather than loosening screening gates or introducing an alternate API.
 
 
 **Purpose:** Test how much wider dynamic universe screening increases the number of **original Qwct-compliant premarket D1 level + sided-trend opportunities**, without selecting retrospectively hand-picked mega caps or weakening any thresholds. **RESEARCH ONLY / ALL ORDERS DISABLED**. This does NOT search M5 BSU/BPU, place quotes, confirm TVX, simulate fills or calculate P&L.

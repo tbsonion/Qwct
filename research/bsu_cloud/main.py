@@ -11,7 +11,7 @@ from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.patterns_bsu import Bar as ResearchBar, BsuDetector
-from strategy.d1_bridge_audit import premarket_audit
+from strategy import premarket_audit
 
 ET = ZoneInfo("America/New_York")
 

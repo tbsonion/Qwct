@@ -20,6 +20,12 @@ In the new **Qwct-BSU-Research** project, replace the default `main.py` and crea
 
 For the current native PPHL A/B smoke test, default dates are back to **2024-03-16 through 2024-04-26**, with fixed MSFT/AMZN/AAPL. Cloud scan parameters override the defaults if set. Do not change Qwct-LEAN-Test.
 
+## QuantConnect Cloud 32,000-character main.py limit: resolved
+
+Cloud rejected a previous main.py of **35,714 characters** before the native SEC backtest could run. The research main.py was **reduced to 31,319 characters** by removing only explanatory standalone comments, shortening docstrings and trimming excess blank lines. PPHL, SEC history, BPU, logging, settings and no-orders behavior are unchanged. A GitHub test now checks both character and UTF-8 byte size (<=32,000) and parses the source. **The shortened SEC version still needs a native LEAN Cloud run**; a successful GitHub test alone cannot prove that historical second-level data is accessible.
+
+**Action:** replace **only** Cloud `Qwct-BSU-Research/main.py` with [the current shortened source](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py), Save, then Backtest 2024-03-16..2024-04-26. No other source files need replacing.
+
 ## Next read-only Cloud test: native SECOND history 30-second-preclose check
 
 The **three completed M5 proof pairs are confirmed** from the native LEAN run below. The sole newer change in [research/bsu_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) is a **historical native ONE-SECOND TradeBar audit of those same three cases**, using the official LEAN typed History API. **The one-second branch has not yet been verified in native Cloud**; the full prior PPHL baseline and real OHLC evidence have.

@@ -395,3 +395,145 @@ def test_shadow_code_keeps_legacy_watchlist_and_single_native_history_request():
     for action in ("self.market_order(", "self.limit_order(",
                    "self.buy(", "self.sell(", "self.set_holdings("):
         assert action not in s
+
+
+def _standalone_cloud_function(name, dependencies):
+    """Load a research function without importing the LEAN-only runtime."""
+    tree = ast.parse(APP.read_text(encoding="utf-8"))
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+              and n.name == name)
+    env = dict(dependencies)
+    exec(compile(ast.fix_missing_locations(
+        ast.Module(body=[fn], type_ignores=[])), str(APP), "exec"), env)
+    return env[name]
+
+
+def test_shadow_origin_audit_reuses_confirmed_swings_and_raw_extreme():
+    from datetime import timedelta
+    from math import isfinite
+    from strategy.levels import _confirmed_swings
+    env = {
+        "pd": pd, "isfinite": isfinite, "timedelta": timedelta,
+        "_confirmed_swings": _confirmed_swings,
+        "native_cluster_tolerance": lambda *_: 0.25,
+    }
+    audit = _standalone_cloud_function("origin_d1_audit", env)
+    days = pd.bdate_range("2024-01-02", periods=45,
+                          tz="America/New_York")
+    d1 = pd.DataFrame({
+        "open": 98., "high": 100., "low": 95., "close": 98.
+    }, index=days)
+    d1.loc[days[12], "high"] = 105.00
+    d1.loc[days[24], "high"] = 105.02
+    lvl = Level(price=105.01, kind="resistance", touches=2,
+                strength=2., first_idx=12, last_idx=24,
+                source="swing_cluster", formed_at=days[24].date(),
+                valid_from=(days[27] + timedelta(days=1)).date())
+    session = (days[-1] + timedelta(days=1)).date()
+    result = audit(d1, lvl, session, StrategyConfig(), 0.01)
+    assert result["status"] == "PASS"
+    assert result["origin"] == 105.00
+    assert result["cluster"] == 105.01
+    assert result["source_date"] == str(days[12].date())
+    assert result["confirmed_at"] == str(days[27].date())
+    assert "SCALED_RAW_UNCHECKED" in result["basis"]
+    assert "SCALED_RAW" in result["reason"]
+    # Native metadata unavailable -> UNKNOWN, never assume US $.01 tick.
+    assert audit(d1, lvl, session, StrategyConfig(), None)["status"] == "UNKNOWN"
+    # An observed fractional RAW extreme is not silently rounded into a BSU.
+    d1.loc[days[12], "high"] = 105.005
+    invalid = audit(d1, lvl, session, StrategyConfig(), .01)
+    assert invalid["status"] == "FAIL"
+    assert invalid["reason"] == "RAW_ORIGIN_OFF_NATIVE_TICK_GRID"
+    # Source/confirmation mismatch and future bars must fail closed.
+    lvl.valid_from = (days[26] + timedelta(days=1)).date()
+    assert audit(d1, lvl, session, StrategyConfig(), .01)["status"] == "FAIL"
+    assert audit(d1, lvl, days[-1].date(), StrategyConfig(), .01)["status"] == "FAIL"
+
+
+def test_shadow_origin_audit_rejects_non_swing_pivot():
+    from datetime import timedelta
+    from math import isfinite
+    from strategy.levels import _confirmed_swings
+    audit = _standalone_cloud_function("origin_d1_audit", {
+        "pd": pd, "isfinite": isfinite, "timedelta": timedelta,
+        "_confirmed_swings": _confirmed_swings,
+        "native_cluster_tolerance": lambda *_: 0.25,
+    })
+    days = pd.bdate_range("2024-01-02", periods=40,
+                          tz="America/New_York")
+    d1 = pd.DataFrame({"high": 100., "low": 95.}, index=days)
+    lvl = Level(price=100., kind="resistance", touches=2,
+                first_idx=8, last_idx=16, source="swing_cluster",
+                formed_at=days[16].date(),
+                valid_from=(days[19] + timedelta(days=1)).date())
+    got = audit(d1, lvl, (days[-1] + timedelta(days=1)).date(),
+                StrategyConfig(), .01)
+    assert got["status"] == "FAIL"
+    assert got["reason"] == "ORIGIN_OR_LAST_IS_NOT_CONFIRMED_SWING"
+
+
+def test_missing_universe_diagnostic_distinguishes_no_callback_empty_and_late():
+    from collections import Counter
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    code = ast.parse(APP.read_text(encoding="utf-8"))
+    cls = next(n for n in code.body if isinstance(n, ast.ClassDef)
+               and n.name == "QwctUniverseResearch")
+    methods = [n for n in cls.body if isinstance(n, ast.FunctionDef)
+               and n.name in ("_screen", "_prepare")]
+    env = {
+        "et": lambda value: pd.Timestamp(value).tz_convert("America/New_York"),
+        "select_liquid_fundamentals": (
+            lambda fundamentals, cfg: ["AAPL"] if fundamentals else []),
+    }
+    exec(compile(ast.fix_missing_locations(
+        ast.Module(body=methods, type_ignores=[])), str(APP), "exec"), env)
+    tz = ZoneInfo("America/New_York")
+    log = []
+    day = date(2024, 4, 15)
+    algo = SimpleNamespace(
+        time=datetime(2024, 4, 15, 9, 29, tzinfo=tz),
+        cfg=StrategyConfig(), screen_by_day={}, covered_days=set(),
+        scan_missing_days=set(), selection_events=[],
+        counts=Counter(), rejections=Counter(), log=log.append,
+    )
+    env["_prepare"](algo)
+    assert algo.rejections["missing_same_day_universe"] == 1
+    assert day in algo.scan_missing_days
+    assert day not in algo.covered_days
+    assert any("status=NO_CALLBACK_BEFORE_SCAN" in row for row in log)
+    algo.time += timedelta(minutes=3)
+    env["_screen"](algo, [SimpleNamespace(time=algo.time, end_time=algo.time)])
+    assert algo.counts["selection_after_missed_scan"] == 1
+    assert day not in algo.covered_days  # no hindsight backfill/retry
+    assert any("after_missed_scan=True" in row for row in log)
+    # Empty callback is observably different from no callback.
+    empty_log = []
+    other = SimpleNamespace(
+        time=datetime(2024, 4, 15, 8, 0, tzinfo=tz),
+        cfg=StrategyConfig(), screen_by_day={}, covered_days=set(),
+        scan_missing_days=set(), selection_events=[],
+        counts=Counter(), rejections=Counter(), log=empty_log.append,
+    )
+    env["_screen"](other, [])
+    other.time += timedelta(hours=1, minutes=29)
+    env["_prepare"](other)
+    assert any("status=EMPTY_SELECTION" in row for row in empty_log)
+
+
+def test_origin_diagnostic_cloud_scope_and_no_orders():
+    code = APP.read_text(encoding="utf-8")
+    assert len(code.encode("utf-8")) < 32_000
+    assert "from strategy.levels import levels_for_session, _confirmed_swings" in code
+    assert "native_cluster_tolerance" in code
+    assert code.count("self._history_asof(members, day)") == 1
+    for item in ("QWCT UNIVERSE TIMING SELECT", "QWCT UNIVERSE TIMING SCAN",
+                 "QWCT UNIVERSE TIMING SUMMARY", "QWCT ORIGIN SUMMARY",
+                 "QWCT ORIGIN DETAIL", "RAW_ONLY_SCALED_RAW_UNCHECKED"):
+        assert item in code
+    for forbidden in ("self.market_order(", "self.limit_order(",
+                      "self.set_holdings(", "self.buy(", "self.sell(",
+                      "Resolution.SECOND", "Resolution.TICK"):
+        assert forbidden not in code

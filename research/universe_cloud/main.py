@@ -31,7 +31,8 @@ def classify_snapshot(d1, cfg, session):
     stage2 = passes_gerchik_screener(price, a, v, cfg)
     if not stage2:
         return dict(stage2=False, price=price, atr=a, volume=v,
-                    eligible=0, near=0, aligned=0, examples=[])
+                    eligible=0, near=0, aligned=0, role_aligned=0,
+                    role_conflict=0, examples=[])
     levels = [x for x in levels_for_session(d1, session, cfg)
               if (x.source == "swing_cluster"
                   and x.kind in ("support", "resistance")
@@ -44,23 +45,34 @@ def classify_snapshot(d1, cfg, session):
     gt = global_trend(d1, len(d1)-1, cfg)
     lt = trend_direction(d1, len(d1)-1, cfg)
     qualified = []
+    role_aligned = []
     for x in near:
-        # Canonical ScenarioEvaluator bounce direction is relative to
-        # the prior D1 close, not inferred from support/resistance labels.
+        # Canonical ScenarioEvaluator bounce side depends on prior close.
+        # The separate BsuDetector arm instead uses source kind:
+        # support => long, resistance => short. Never equate them.
         side = "short" if x.price >= price else "long"
         matching = (gt == lt == (1 if side == "long" else -1))
         if matching:
             qualified.append((x, side))
+            if (x.kind == "support" and side == "long"
+                    or x.kind == "resistance" and side == "short"):
+                role_aligned.append((x, side))
     examples = [
         (round(x.price, 4), x.kind,
          "short" if x.price >= price else "long",
          x.touches, round(x.strength, 2),
          "PASS" if gt == lt == (1 if x.price < price else -1)
-         else "FAIL", gt, lt)
+         else "FAIL", gt, lt,
+         "BSU_ROLE_OK" if (
+             x.kind == "support" and x.price < price
+             or x.kind == "resistance" and x.price >= price)
+         else "BSU_ROLE_MISMATCH")
         for x in near[:3]]
     return dict(stage2=True, price=price, atr=a, volume=v,
                 eligible=len(levels), near=len(near),
-                aligned=len(qualified), examples=examples)
+                aligned=len(qualified), role_aligned=len(role_aligned),
+                role_conflict=len(qualified)-len(role_aligned),
+                examples=examples)
 
 
 class QwctUniverseResearch(QCAlgorithm):
@@ -88,6 +100,9 @@ class QwctUniverseResearch(QCAlgorithm):
         self.covered_days = set()
         self.stock_day_ids = set()
         self.aligned_day_ids = set()
+        self.bsu_role_aligned_day_ids = set()
+        self.aligned_distinct_tickers = set()
+        self.role_aligned_distinct_tickers = set()
         anchor = self.add_equity(
             "SPY", Resolution.MINUTE, fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
@@ -197,6 +212,8 @@ class QwctUniverseResearch(QCAlgorithm):
             self.counts["eligible_level_days"] += obs["eligible"]
             self.counts["near_level_days"] += obs["near"]
             self.counts["aligned_level_days"] += obs["aligned"]
+            self.counts["bsu_role_aligned_level_days"] += obs["role_aligned"]
+            self.counts["bsu_role_conflict_level_days"] += obs["role_conflict"]
             if obs["eligible"]:
                 self.counts["watch_with_two_touch"] += 1
             if obs["near"]:
@@ -204,6 +221,11 @@ class QwctUniverseResearch(QCAlgorithm):
             if obs["aligned"]:
                 self.counts["watch_with_trend_aligned_bounce"] += 1
                 self.aligned_day_ids.add(label)
+                self.aligned_distinct_tickers.add(symbol.value)
+            if obs["role_aligned"]:
+                self.counts["watch_with_bsu_role_aligned"] += 1
+                self.bsu_role_aligned_day_ids.add(label)
+                self.role_aligned_distinct_tickers.add(symbol.value)
             if obs["near"] and len(self.example_rows) < 16:
                 self.example_rows.append((
                     day, symbol.value, rank+1, obs, obs["examples"][:2]))
@@ -211,7 +233,8 @@ class QwctUniverseResearch(QCAlgorithm):
             f"QWCT UNIVERSE DAY {day} candidates={len(members)} "
             f"d1_qualified={len(passed)} watchlist={len(watchlist)} "
             f"watch_near={sum(x[2]['near']>0 for x in watchlist)} "
-            f"watch_aligned={sum(x[2]['aligned']>0 for x in watchlist)}; "
+            f"watch_aligned={sum(x[2]['aligned']>0 for x in watchlist)} "
+            f"watch_bsu_role_aligned={sum(x[2]['role_aligned']>0 for x in watchlist)}; "
             "NO M5 / NO ORDERS")
 
     def on_end_of_algorithm(self):
@@ -227,8 +250,19 @@ class QwctUniverseResearch(QCAlgorithm):
             f"watch_with_trend_aligned_bounce="
             f"{self.counts['watch_with_trend_aligned_bounce']} "
             f"aligned_level_days={self.counts['aligned_level_days']} "
+            f"bsu_role_aligned_level_days="
+            f"{self.counts['bsu_role_aligned_level_days']} "
+            f"bsu_role_conflict_level_days="
+            f"{self.counts['bsu_role_conflict_level_days']} "
+            f"watch_with_bsu_role_aligned="
+            f"{self.counts['watch_with_bsu_role_aligned']} "
             f"unique_symbol_days={len(self.stock_day_ids)} "
             f"unique_aligned_symbol_days={len(self.aligned_day_ids)} "
+            f"unique_aligned_tickers={len(self.aligned_distinct_tickers)} "
+            f"unique_bsu_role_aligned_symbol_days="
+            f"{len(self.bsu_role_aligned_day_ids)} "
+            f"unique_bsu_role_aligned_tickers="
+            f"{len(self.role_aligned_distinct_tickers)} "
             f"rejects={dict(self.rejections.most_common(4))}; "
             "NO M5 / NO SEC / NO ORDERS")
         for day, ticker, rank, obs, levels in self.example_rows:
@@ -236,4 +270,5 @@ class QwctUniverseResearch(QCAlgorithm):
                 f"QWCT UNIVERSE EXAMPLE {day} {ticker} rank={rank} "
                 f"close={obs['price']:.4f} atr={obs['atr']:.4f} "
                 f"near={obs['near']} trend_aligned_levels={obs['aligned']} "
+                f"bsu_role_aligned_levels={obs['role_aligned']} "
                 f"levels={levels}; D1 ONLY / NO ORDERS")

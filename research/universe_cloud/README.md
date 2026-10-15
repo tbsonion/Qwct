@@ -1,5 +1,13 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15 — Second native compact-log run completed; April 15 STILL not measured
+
+User's latest real LEAN 2.5.0.0.18179 backtest `2e5f65fc65c3467e0534a794b8a6e3f8` ran **Apr 1–5, 2024 again**. Compact logging works and finishes without the earlier QuantConnect Free 10KB truncation. It reproduces 5 scans/5 native selection callbacks, 250 candidates, 246 ready RAW D1, 227 stage2 PASS, 9 Shadow stock-days (7 original level fingerprints), and **RAW origin 8 PASS / 1 FAIL (WMT original RAW 61.565 off observed 0.01 tick)**. **It does NOT investigate the April 15, 2024 missing Fundamental callback.** No M5 or orders were run.
+
+**Operational fix:** The isolated research Cloud-ready `main.py` now defaults to **`2024-04-08` through `2024-04-19`** when project parameters `scan_start` and `scan_end` are absent/empty. This changes **only fallback test dates**; all D1 logic, selection, subscriptions and order prohibitions stay intact. If the QuantConnect project already defines `scan_start`/`scan_end`, those settings override fallback dates and **must be updated in the Cloud Project panel**. Before trusting any rerun, verify opening log says `QWCT UNIVERSE RESEARCH ACTIVE 2024-04-08..2024-04-19`.
+
+**Next:** Replace only [Cloud `Qwct-Universe-Research/main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py), check the start/end parameters (if present), keep `verbose_logs` unset/off, and inspect `QWCT UNIVERSE TIMING SELECT/SCAN/SUMMARY` for Apr 15 together with `QWCT ORIGIN SUMMARY/DETAIL`. Still research-only; no M5/SEC/orders, and no conclusion about profitability.
+
 ## 2026-10-15 — REAL Cloud RAW origin smoke: 2024-04-01..05 (8 PASS / 1 FAIL), compact logging now ready
 
 Native LEAN **v2.5.0.0.18179** completed run **`e52e0c836a0cd349d078dc64775f82bd`** for **2024-04-01..2024-04-05**, *NOT the requested April 8–19 missing-date investigation*. One Fundamental selection callback at midnight and same-day selection at 09:29 ET on each of the five sessions: `scans=5`, `selection_callbacks=5`, `missed_scan_days=[]`. April 15 is therefore **STILL UNTESTED** in this run.

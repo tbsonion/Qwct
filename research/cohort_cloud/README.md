@@ -1,5 +1,34 @@
 # QWCT 2.6 — Native dynamic D1 → M5 research cohort (May 2024)
 
+## 2026-10-15 — QWCT 2.7 VERIFIED: all five previously missed June sessions recovered natively
+
+**Real QuantConnect LEAN Cloud run** `a2faf8b5c39541af3d10104c8dc610b9` on LEAN `v2.5.0.0.18184`, **2024-06-01 through 2024-06-30**, `timing=next_session`. Algorithm completed normally in 86.32 s, without orders. All **five** previously missed sessions passed native next-exchange-session timing: **June 3 ← June 1, June 10 ← June 8, June 17 ← June 15, June 20 ← holiday June 19, June 24 ← June 22**. Those actual previous Fundamental selection callbacks had **50 selected symbols each, native callback at 00:00 ET on the displayed date, and observed `Fundamental.EndTime` source min/max equal to that LEAN callback timestamp**. These observations establish LEAN as-of eligibility for the frozen previous callback, not independent external proof of fundamental filing/dissemination timestamps. **June 3 and 10 produced no Shadow proxies; they are covered zero-Shadow days rather than skipped days.**
+
+| Measure | Previous June `strict` native run | June `next_session` native run | Difference |
+| --- | ---: | ---: | ---: |
+| Scheduled equity scans | 19 | 19 | 0 |
+| Sessions with observed selection | **14** | **19** | **+5** |
+| Native selection days from next valid exchange session | 0 | 5 | +5 |
+| Candidate stock-days screened | 700 | 950 | +250 |
+| RAW D1 ready | 699 | 949 | +250 |
+| Stage2 pass | 633 | 861 | +228 |
+| Shadow stock-days / READY original swing proxies | 12 / 12 | **17 / 17** | **+5 / +5** |
+| RAW/SCALED_RAW MATCH | 6 | 7 | +1 |
+| RAW/SCALED_RAW REBASED | 6 | 10 | +4 |
+| Sessions with eligible after-close M1 replay | 8 | **11** | +3 |
+| Original native M1 bars replayed | 4,521 | 6,411 | +1,890 |
+| Native valid M5 candles (all with 16:00 final closes) | 936 | **1,326** | **+390** |
+| Guarded native M5 close `Scan` successful | 12 | **17** | +5 |
+| Strict BPU1 / closed BPU2 | **0 / 0** | **0 / 0** | 0 / 0 |
+| Other source-data rejects | one `D1_INSUFFICIENT_CLOSED_RAW` | one same | unchanged |
+
+**Closest M5 wick distances to original RAW BSU proxy pivots:** AON Jun 12 resistance **-2 ticks ($0.02) at 11:30**, newly included CAT Jun 24 resistance **-2 ticks ($0.02) at 11:30**, CRM Jun 27 resistance **-4 ticks ($0.04) at 09:35**; DELL Jun 7 support **+7 ticks ($0.07) at 14:50**. Here signed is `(extreme - original_pivot)/tick`: negative for high below resistance, positive for low above support. **Near-misses are not an exact-touch BPU1 and do not imply one.** AON and CAT closed-M5 highs did not reach their chosen original pivot on the recorded nearest bar.
+
+**Status:** QWCT 2.7 is now **native runtime VERIFIED for calendar-source recovery**, and the June cohort is fully covered by a same-day or next-valid-session LEAN Fundamental selection. **The Gerchik strategy is still UNVERIFIED**: 17 algorithmic D1 swing-level proxies are not 17 independently certified manual BSU; no exact BPU1 or BPU2 appeared in 1,326 M5 observations; no SEC/TICK -30s TVX, eight combined signal gates, or trade P&L was proven. The single insufficient RAW D1 case is separately recorded and is not a BSU outcome.
+
+**NEXT research, before extending the time period:** independently check what a canonical manual Gerchik BSU/BPU1 touch means with actual labeled D1/M5 chart examples; compare original *source swing extreme* vs D1 *cluster median*, exact wick extreme vs intrabar range crossing, and whether market data crossed the level without its extremum equaling it. Count those separately as **read-only disjoint diagnostic categories**, never automatically promote range crossings to BPU1, change detector tick tolerance or report simulated orders/fills. The current preserved source baseline is the June 2.7 native run ID above. Subsequent multi-month sampling should only begin once this evidence question is answered. **No June rerun needed merely to reconfirm callback timing.**
+
+
 ## 2026-10-15 — QWCT 2.7 built: native-calendar Fundamental callback A/B, native LEAN proof PENDING
 
 **Problem:** The fully closed June 2024 baseline run `b6ec6049eff86d7f021293eca42410c3` covered **14/19 scheduled equity sessions** with strict same-calendar-day Fundamental callbacks. June **3, 10, 17, 20, 24** were skipped, even though the native LEAN Fundamental selection can deliver Friday data on Saturday and preholiday data on a closed market date. Trading-day eligibility for the callback has not previously been proved. All 12 observed price-level proxy cases produced 936 genuine native M5 bars and zero exact BPU1/BPU2. No legitimate signal may be invented by changing that rule.

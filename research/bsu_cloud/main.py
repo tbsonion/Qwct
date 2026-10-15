@@ -535,8 +535,12 @@ class QwctBsuResearch(QCAlgorithm):
             try:
                 start = et(bar.time)
                 end = et(bar.end_time)
-                if (end <= et(bpu1_end) or end > et(cutoff)
-                        or end-start != pd.Timedelta(seconds=1)):
+                # History range endpoints are not guaranteed to
+                # represent completed-bar end times. Discard any
+                # bar outside the as-of window BEFORE reading its prices.
+                if end <= et(bpu1_end) or end > et(cutoff):
+                    continue
+                if end-start != pd.Timedelta(seconds=1):
                     return "INVALID_1S_INTERVAL", len(selected), None, None, None
                 if (not isfinite(float(bar.volume))
                         or float(bar.volume) <= 0

@@ -1,5 +1,31 @@
 # Qwct-BSU-Research — separate empty QuantConnect Cloud Python project
 
+## CURRENT: Research-only as-of D1 eligibility bridge — native Cloud run required
+
+**After native PPHL and SEC historical research successfully found three events,** the next code change adds an independent **D1/filter audit** for those **same three cases**, without changing symbols, date range or trade rules. GitHub CI: **352 pure tests passed**, and the main Qwct **24-Python-file Free package also passed**; the **new D1 report is not yet native LEAN-verified**.
+
+**Update only these TWO Cloud paths in the separate `Qwct-BSU-Research` project:**
+
+| Cloud path | Exact GitHub source |
+|---|---|
+| `main.py` | [research/bsu_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) — one new read-only D1 reporting call; **31,710 characters (under 32,000)** |
+| `strategy/d1_bridge_audit.py` | [strategy/d1_bridge_audit.py](https://github.com/tbsonion/Qwct/blob/main/strategy/d1_bridge_audit.py) — **NEW research-only module**, create it under the existing `strategy` folder |
+
+**Do not touch** the six already present `strategy/` modules, original `Qwct-LEAN-Test`, or any main-project trading logic. The standalone research project uses **8 Python files** now. The main 24-file package explicitly excludes this optional research module; its package workflow passed.
+
+**Run the SAME known dates** `2024-03-16..2024-04-26`, fixed `MSFT,AMZN,AAPL`, Save → Build → Backtest. Paste ALL `BSU D1 BRIDGE` lines and `BSU PPHL SEC SUMMARY`. Original PPHL/SEC sample should reproduce.
+
+**Exactly what is compared:**
+- At backtest end, for each of the **three** strict PPHL BPU2 episodes within the session window, request native **RAW DAILY `History[TradeBar]` ending at the historic trading day's midnight**, then take only 180 already-closed D1 bars. Fail closed for any same-day/future candle, duplicated/misordered provenance or missing native indicator history.
+- Recompute `AverageTrueRange(14)` and `SimpleMovingAverage(50)` from those true closed D1 `TradeBar` objects, following the existing Qwct indicator pattern, **not handmade averages**.
+- Use exact **`levels_for_session`, `native_cluster_tolerance`, original Qwct source-origin timestamp, `min_touches`, `min_level_strength`, `valid_from` and median-cluster distance** for a **separate** `cluster2touch=PASS/FAIL`. A single PPHL swing must **never** be promoted into an eligible original Qwct two-touch cluster merely because BPU2 closed.
+- Reuse **`global_trend` and `trend_direction`** based on historical native SMA50 series. Trend is `PASS` only if both trends agree with the side of the PPHL episode; `UNKNOWN` if history/SMA is inadequate.
+- Use **original `next_level`** against the prior-day levels in trade direction. `room4R` and `room3R` compare room to the next known D1 level against theoretical `entry=round((BSU±luft)/native_tick)*native_tick` and the **original BsuDetector** stop. **No next D1 level means UNKNOWN, NOT guaranteed infinite room or a profit claim.**
+- Output `origin`, `cluster2touch`, `proximity`, `trend`, `room4R`, `room3R`, `R`, `nextD1`, `entry`, `stop`, `ATR`, `prevD1`, `model=UNKNOWN` and `NOT TRADE ELIGIBLE` for each episode. **Full 14-feature intraday model selection, actual quotes, execution, costs, realized P&L and live event-driven SEC TVX remain UNKNOWN.**
+
+The new module reports independent **PASS/FAIL/UNKNOWN** gates to locate the true bottleneck; it does not modify or override them. No SEC signal is allowed to promote a PPHL-only episode to a strategy-approved trade.
+
+
 **Status (2026-10-14): first native LEAN Cloud smoke successful** on 2024-03-16–2024-04-26 with real M5 data. It observed **8 BPU1**, **3 closed-M5 BPU2**, **5 invalid BPU2 attempts**, **416 candidate level-days** across MSFT/AMZN/AAPL and **0 orders**. This does not prove -30s TVX, profitability, or a fully validated Gerchik setup. The main trading project `Qwct-LEAN-Test` remains unchanged.
 
 ## LATEST VERIFIED: native SEC retrospective Cloud run b6609c888b81d0edccb9a96134934783
@@ -24,7 +50,7 @@ Native PPHL provenance remains **3 unique symbol+date+side+origin episodes**, al
 
 ## What to do in the empty project
 
-In the new **Qwct-BSU-Research** project, replace the default `main.py` and create the `strategy` folder with the following six **unchanged, canonical Qwct** modules (7 Python files total):
+**Historical setup instructions:** the project originally used `main.py` plus the following six unchanged canonical modules (7 Python files). The CURRENT D1 experiment above adds `strategy/d1_bridge_audit.py` as the eighth.
 
 | Cloud path to create/replace | Ready-to-copy GitHub link | Why |
 |---|---|---|

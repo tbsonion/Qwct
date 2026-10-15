@@ -11,6 +11,7 @@ from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.patterns_bsu import Bar as ResearchBar, BsuDetector
+from strategy.d1_bridge_audit import premarket_audit
 
 ET = ZoneInfo("America/New_York")
 
@@ -560,6 +561,13 @@ class QwctBsuResearch(QCAlgorithm):
                 f"BSU PPHL OFFGRID {symbol} {side} "
                 f"origin={born[:16]} RAW={price:.6f} "
                 f"ref_tick={tick:.6f} SKIPPED; NO ORDERS")
+        for proof in self.pphl_in_window_proofs[:12]:
+            try:
+                note = premarket_audit(self, proof, et)
+            except Exception as exc:
+                note = "D1=UNKNOWN:audit_error:" + str(exc)[:95]
+            self.log(f"BSU D1 BRIDGE {proof[0]} BPU2={proof[1]} "
+                     f"{note}; NO ORDERS")
         sec_summary = Counter()
         for proof in self.pphl_in_window_proofs[:12]:
             label, count, low, high, last = self._audit_native_sec_preclose(proof)

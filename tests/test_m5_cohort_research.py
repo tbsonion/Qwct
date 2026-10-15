@@ -114,6 +114,19 @@ def test_native_m1_m5_replay_tail_diagnostic_never_invents_last_bar():
         "TIMING AUDIT ONLY / NO SYNTHETIC BAR",
     ):
         assert phrase in code
-    assert "consolidator.scan(" not in code  # never flush an unclosed M5
-    assert "TradeBar(" not in code  # don't create artificial boundary bars
+    # LEAN Scan closes ONLY an independently verified five-minute
+    # interval: five original consecutive minute bars, positive volume.
+    assert "consolidator.scan(minute_bars[-1].end_time)" in code
+    for condition in (
+        'tail_ok = len(minute_bars) >= 5',
+        'for i, b in enumerate(minute_bars[-5:])',
+        'not getattr(b, "is_fill_forward", False)',
+        'and isfinite(float(b.volume)) and float(b.volume) > 0',
+        'self.rejects["M1_CLOSE_FIVE_NOT_COMPLETE"]',
+        'self.rejects["M5_CLOSE_UNVERIFIED_SOURCE"]',
+        'self.rejects["M5_CLOSE_NOT_EMITTED"]',
+        'self.summary["close_scanned"]',
+    ):
+        assert condition in code
+    assert "TradeBar(" not in code  # never fabricate 16:00 input
     assert len(code.encode("utf-8")) < 32_000

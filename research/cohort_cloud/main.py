@@ -12,6 +12,7 @@ from strategy import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.patterns_bsu import Bar as ClosedBar, BsuDetector
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.timing_gate import next_session_fundamentals, freeze_fundamental_event
+from strategy.bsu_touch_audit import TouchAudit, audit_report
 from strategy.levels import levels_for_session, _confirmed_swings, native_cluster_tolerance
 from strategy.indicators import trend_direction, global_trend
 
@@ -445,7 +446,10 @@ class QwctM5CohortResearch(QCAlgorithm):
                     day=day, origin=orig["origin"], source=orig["source_date"],
                     basis=proof["status"], tick=tick, detector=detector,
                     bpu1=0, strict_bpu1=0, bpu2=0, strict_bpu2=0,
-                    invalid=0, n_m5=0, best_ticks=None, first_strict=False)
+                    invalid=0, n_m5=0, best_ticks=None, first_strict=False,
+                    audit=TouchAudit(symbol.value, day, orig["source_date"],
+                                     side, orig["origin"], level.price, tick,
+                                     proof["status"]))
                 self.active.setdefault(symbol, []).append(case)
                 self.all_cases.append(case)
                 self.summary["ready_origins"] += 1
@@ -590,6 +594,7 @@ class QwctM5CohortResearch(QCAlgorithm):
             case["best_ticks"] = distance
             case["best_signed"] = (extreme-level)/tick
             case["best_at"] = at.strftime("%H:%M")
+        case["audit"].observe(bar, at)
         old = detector.state.phase
         try:
             state = detector.on_bar(ClosedBar(
@@ -663,18 +668,10 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"strict_window={self.summary['strict_bpu2_window']} "
             f"invalid={self.summary['invalidated']}; NO ORDERS")
         self.log(f"QWCT COHORT REJECTS {dict(self.rejects.most_common(12))}")
-        rows = sorted(
-            (c for c in self.all_cases if c["best_ticks"] is not None),
-            key=lambda c: (c["best_ticks"], c["day"], c["ticker"]))
         self.log(
             f"QWCT COHORT COVERAGE tracked={len(self.all_cases)} "
-            f"observed={len(rows)} nearest_samples={min(10, len(rows))}")
-        for c in rows[:10]:
-            self.log(
-                f"QWCT COHORT NEAREST {c['day']} {c['ticker']} "
-                f"{c['side']} basis={c['basis']} "
-                f"m5={c['n_m5']} closest_ticks={c['best_ticks']} "
-                f"signed={c['best_signed']:.2f} at={c['best_at']} "
-                f"bpu1={c['bpu1']} bpu2={c['bpu2']}")
+            f"observed={sum(c['n_m5'] > 0 for c in self.all_cases)}")
+        for line in audit_report(self.all_cases):
+            self.log(line)
         for event in self.events:
             self.log(event + "; CLOSED M5 ONLY / NO FILLS")

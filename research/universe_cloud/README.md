@@ -1,5 +1,25 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15: NEXT EXPERIMENT IMPLEMENTED — D1-aware shadow Top10 (native run pending)
+
+**Purpose:** the real native full50 run `5497a648495b409e7cea19ff98f21d85` on 2024-04-01..05 found **9 D1-only source-role+trend-qualified symbol-days from 7 distinct tickers among the top50**, but **all 9 were outside the original liquidity-first Top10**. This is evidence of a watchlist **coverage bottleneck** during this five-day sample, *not* evidence that any BSU/BPU/TVX trading signal or profit was missed.
+
+**GitHub code change: ONLY [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py).** In the **existing** `Qwct-Universe-Research` Cloud project, replace **only `main.py`**, keep the four `strategy/` files unchanged, and run **2024-04-01..2024-04-05** unchanged. Do **not** change `Qwct-LEAN-Test` or `Qwct-BSU-Research`. The code passed **369 pure GitHub tests**, but the **new shadow stage has not run in native LEAN yet**.
+
+The added **`d1_shadow_shortlist(passed, max_results)`** uses the **same point-in-time daily Fundamental Top50**, **same one already proven batch of RAW native D1 TradeBars** and **already calculated** unmodified price / ATR / average share-volume stage2, confirmed historical minimum 2-touch D1 cluster, morning `valid_from`, <=1 native D1 ATR proximity, sided native SMA global+local trend, and strict **source support+long or resistance+short** evidence. **No re-ranking by pattern "strength" or historical returns.** It filters first and takes at most the original `cfg.screener_watchlist_limit=10` in existing highest-liquidity order (`rank`, then symbol). **If only 2 meet the D1-only criteria, shadow contains 2: it NEVER pads empty slots with unqualified names.**
+
+**Crucial:** the **original** `watchlist=passed[:10]`, the actual QuantConnect **50-member Fundamental Universe** and all existing `QWCT UNIVERSE` Top10 / FULL50 logs remain **unchanged**. The shadow is only an extra Python list and printed report; it does **not** create a new LEAN Universe, add subscriptions, request additional History/M5/SEC, change canonical scenario/model/BSU semantics, turn on orders, or measure financial outcomes. The original D1 qualification uses RAW normalization, not guaranteed split-equivalent to primary Qwct's SCALED_RAW warmup. This is only a research candidate-list policy comparison.
+
+**New native logs expected (counts are deliberately NOT assumed until real Cloud verifies them):**
+
+- `QWCT SHADOW DAY YYYY-MM-DD legacy=N shadow=N overlap=N outside_legacy=N rank_tickers=SYMBOL:ORIGINAL_LIQUIDITY_RANK,...` — original Top10 vs filtered-before-top10 independent candidate list, per day.
+- `QWCT SHADOW SUMMARY cap=10 days=5 nonempty_days=... shadow_symbol_days=... legacy_overlap_symbol_days=... outside_legacy_symbol_days=... unique_shadow_tickers=... unique_shadow_level_origins=... pick_rows_logged=...` — distinct tickers and source fingerprints kept separate from stock-days; **neither is number of completed trading signals**.
+- `QWCT SHADOW PICK DATE SYMBOL liquidity_rank=N shadow_rank=N qualified_levels=N evidence=[(price, source_kind, direction, touches, strength, valid_from, formed_at), ...]` — up to **25** printed stock-day cases, up to **3** levels per case, with explicit total count; no unreported symbol should be inferred if log is truncated.
+- Existing `QWCT UNIVERSE SUMMARY` and `QWCT UNIVERSE FULL50` should reproduce the last native counts **50/0 (legacy role aligned)** vs **227/9 (full50 stage2 / role aligned)**, subject to identical historical data.
+
+**To review:** provide the final `QWCT UNIVERSE SUMMARY`, `QWCT UNIVERSE FULL50`, `QWCT SHADOW SUMMARY`, all `QWCT SHADOW DAY`, and available `QWCT SHADOW PICK` rows. The nine earlier D1-only cases are a **prediction for reproduction** in an unchanged historical simulation, *not yet measured by this new policy code*. Validate native history/cache behavior and the original 50-symbol cap before any future policy decision or event-driven M5 observer.
+
+
 ## LATEST ACTUAL LEAN — FULL50 confirms original Top10 liquidity cutoff masks D1 candidates
 
 **Confirmed native LEAN 2.5.0.0.18179, run `5497a648495b409e7cea19ff98f21d85`, 2024-04-01..2024-04-05, finished 30.29 seconds, no orders.** This run tested exactly the **same as-of 50 liquidity-ranked stocks and historical D1/trend rules**, now counting *already screened* names outside Top10 without additional subscriptions or M5. The prior Top10 rows reproduced exactly.
@@ -22,7 +42,7 @@
 
 **What to do next:** do **not** rerun these same five days solely to recount them, increase Top10 in the main trading algorithm, or relax D1/BPU rules. A **separate read-only shadow candidate selection** can now compare the existing fixed Top10 liquidity order with a *conditional, as-of, D1-qualified shortlist* from the same already fetched Top50. That prioritizes stocks with proven D1 provenance, nearby confirmed support-long or resistance-short and sided G/L trend while retaining a **10-stock cap and one historical data request**. Still **no M5, orders, TVX or trades** until that watchlist policy is specified and independently validated. Alternative: first reconcile D1 source labels and independently expert-annotated US-stock examples, then select an M5 cohort.
 
-**Cloud action now: NONE.** The last full50 Python source in `Qwct-Universe-Research` ran successfully and need not be reinstalled. Existing `Qwct-BSU-Research` and `Qwct-LEAN-Test` untouched.
+**HISTORICAL (before implementing shadow Top10):** the previous full50 report required no further Cloud updates; the NEW shadow version at top DOES require replacing only `main.py`. Existing `Qwct-BSU-Research` and `Qwct-LEAN-Test` untouched.
 
 
 ## 2026-10-15: REAL native BSU ROLE check complete — zero eligible in watchlist, next full50 check ready

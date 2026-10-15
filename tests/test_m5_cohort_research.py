@@ -26,8 +26,8 @@ def test_free_cloud_budget_no_orders_and_bounded_independent_month():
     s = APP.read_text(encoding="utf-8")
     ast.parse(s)
     assert len(s.encode("utf-8")) < 32_000
-    assert 'self.get_parameter("scan_start") or "2024-05-01"' in s
-    assert 'self.get_parameter("scan_end") or "2024-05-31"' in s
+    assert 'self.get_parameter("scan_start") or "2024-06-01"' in s
+    assert 'self.get_parameter("scan_end") or "2024-06-30"' in s
     assert "(end-start).days > 35" in s
     assert "Resolution.SECOND" not in s and "Resolution.TICK" not in s
     for command in (

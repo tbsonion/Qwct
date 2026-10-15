@@ -179,3 +179,43 @@ def test_new_universe_history_fix_does_not_expand_cloud_files():
     for bad in ("self.market_order(", "self.limit_order(",
                 "self.set_holdings(", "self.buy(", "self.sell("):
         assert bad not in source
+
+
+def test_role_conflict_resistance_below_price_not_long_bsu():
+    env = _standalone_classifier()
+    env["levels_for_session"] = lambda *_: [_level(179.835, "resistance")]
+    r = env["classify_snapshot"](_d1(), StrategyConfig(), date(2024,4,1))
+    assert r["near"] == 1 and r["aligned"] == 1
+    assert r["role_aligned"] == 0 and r["role_conflict"] == 1
+    assert r["examples"][0][8] == "BSU_ROLE_MISMATCH"
+
+
+def test_role_match_support_below_price_matches_long_bsu():
+    env = _standalone_classifier()
+    env["levels_for_session"] = lambda *_: [_level(179.835, "support")]
+    r = env["classify_snapshot"](_d1(), StrategyConfig(), date(2024,4,1))
+    assert r["aligned"] == r["role_aligned"] == 1
+    assert r["role_conflict"] == 0
+    assert r["examples"][0][8] == "BSU_ROLE_OK"
+
+
+def test_role_audit_does_not_relax_trend_or_volume():
+    env = _standalone_classifier()
+    env["levels_for_session"] = lambda *_: [_level(179.835, "resistance")]
+    env["global_trend"] = lambda *_: -1
+    r = env["classify_snapshot"](_d1(), StrategyConfig(), date(2024,4,1))
+    assert r["aligned"] == r["role_aligned"] == 0
+    d1 = _d1()
+    d1["volume_sma"] = 1
+    bad = env["classify_snapshot"](d1, StrategyConfig(), date(2024,4,1))
+    assert not bad["stage2"]
+    assert bad["aligned"] == bad["role_aligned"] == 0
+
+
+def test_cloud_role_diagnostics_and_file_limits():
+    s = APP.read_text(encoding="utf-8")
+    for token in ("watch_bsu_role_aligned=", "unique_aligned_tickers=",
+                  "unique_bsu_role_aligned_tickers=",
+                  "bsu_role_conflict_level_days=", "BSU_ROLE_MISMATCH"):
+        assert token in s
+    assert len(s.encode("utf-8")) < 32_000

@@ -148,6 +148,73 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
     return done("PASS", "RAW_D1_ONLY;SCALED_RAW_UNVERIFIED")
 
 
+
+def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
+    """PIT RAW/SCALED_RAW price-basis observation, never BSU authorization."""
+    result = dict(status="UNKNOWN", why="MISSING_SCALED_HISTORY",
+                  source=None, raw=None, scaled=None, last_raw=None,
+                  last_scaled=None, ratio=None, tick=tick, bars=0)
+
+    def done(status, why):
+        result["status"], result["why"] = status, why
+        return result
+
+    i = lvl.first_idx
+    if (d1 is None or d1.empty or not d1.index.is_unique
+            or not d1.index.is_monotonic_increasing
+            or d1.index.tz is None or i < 0 or i >= len(d1)
+            or d1.index[-1].date() >= session):
+        return done("UNKNOWN", "INVALID_RAW_ASOF_INDEX")
+    source_day, last_day = d1.index[i].date(), d1.index[-1].date()
+    result["source"] = str(source_day)
+    if not scaled_bars:
+        return result
+    try:
+        tick = float(tick)
+        if not isfinite(tick) or tick <= 0:
+            return done("UNKNOWN", "NO_NATIVE_TICK")
+        field = "low" if lvl.kind == "support" else "high"
+        if lvl.kind not in ("support", "resistance"):
+            return done("UNKNOWN", "INVALID_LEVEL_KIND")
+        origin_raw = float(d1.iloc[i][field])
+        last_raw = float(d1.iloc[-1]["close"])
+        start_end = et(d1.iloc[i]["bar_end"])
+        last_end = et(d1.iloc[-1]["bar_end"])
+        by_day, previous = {}, None
+        for bar in scaled_bars:
+            start, end = et(bar.time), et(bar.end_time)
+            if (start.date() >= session or end.date() >= session
+                    or end <= start or (previous is not None
+                    and start.date() <= previous)):
+                return done("UNKNOWN", "SCALED_ASOF_ORDER_OR_FUTURE")
+            previous = start.date()
+            by_day[start.date()] = bar
+        result["bars"] = len(by_day)
+        if source_day not in by_day or last_day not in by_day:
+            return done("UNKNOWN", "SCALED_SOURCE_OR_LATEST_MISSING")
+        origin_bar, last_bar = by_day[source_day], by_day[last_day]
+        if (et(origin_bar.end_time) != start_end
+                or et(last_bar.end_time) != last_end):
+            return done("UNKNOWN", "RAW_SCALED_ENDTIME_MISMATCH")
+        origin_scaled = float(getattr(origin_bar, field))
+        last_scaled = float(last_bar.close)
+        if not all(isfinite(v) and v > 0 for v in
+                   (origin_raw, origin_scaled, last_raw, last_scaled)):
+            return done("UNKNOWN", "INVALID_BASIS_PRICE")
+        result.update(raw=origin_raw, scaled=origin_scaled,
+                      last_raw=last_raw, last_scaled=last_scaled,
+                      ratio=origin_scaled/origin_raw)
+        tolerance = tick*0.5 + tick*1e-7
+        if abs(last_raw-last_scaled) > tolerance:
+            return done("LATEST_DIFF", "LATEST_CLOSE_BASIS_DISAGREES")
+        if abs(origin_raw-origin_scaled) > tolerance:
+            return done("REBASED", "HISTORICAL_ORIGIN_SCALE_DIFFERS")
+    except (AttributeError, TypeError, ValueError, KeyError,
+            IndexError, OverflowError) as exc:
+        return done("UNKNOWN", "BASIS_ERROR:" + str(exc)[:35])
+    return done("MATCH", "ORIGIN_AND_LATEST_MATCH_WITHIN_HALF_TICK")
+
+
 class QwctUniverseResearch(QCAlgorithm):
     def initialize(self):
         start = datetime.strptime(
@@ -172,6 +239,8 @@ class QwctUniverseResearch(QCAlgorithm):
         self.scan_missing_days = set()
         self.origin_counts = Counter()
         self.origin_details = []
+        self.basis_counts = Counter()
+        self.basis_details = []
         self.counts = Counter()
         self.rejections = Counter()
         self.example_rows = []
@@ -240,6 +309,18 @@ class QwctUniverseResearch(QCAlgorithm):
                 if bucket[symbol] is not None:
                     bucket[symbol].append(bar)
         return bucket
+
+
+    def _scaled_shadow_history(self, symbols, day):
+        """One optional batched SCALED_RAW D1 request for Shadow ONLY."""
+        result = {s: [] for s in symbols}
+        for packet in self.history[TradeBar](
+                list(symbols), 180, Resolution.DAILY, fill_forward=False,
+                data_normalization_mode=DataNormalizationMode.SCALED_RAW):
+            for symbol, bar in packet.items():
+                if symbol in result:
+                    result[symbol].append(bar)
+        return result
 
     def _native_frame(self, raw, day):
         if raw is None or len(raw) < 60:
@@ -328,6 +409,14 @@ class QwctUniverseResearch(QCAlgorithm):
         self.counts["shadow_outside_legacy_symbol_days"] += len(shadow)-overlap
         if shadow:
             self.counts["shadow_nonempty_days"] += 1
+        scaled = {}
+        if shadow:
+            try:
+                scaled = self._scaled_shadow_history(
+                    [sym for _, sym, _ in shadow], day)
+            except Exception as exc:
+                self.log(f"QWCT BASIS FETCH ERROR {day} {str(exc)[:60]}")
+                self.basis_counts["fetch_errors"] += 1
         for i, (rank, symbol, obs) in enumerate(shadow, start=1):
             self.shadow_unique_tickers.add(symbol.value)
             tick = None
@@ -341,6 +430,14 @@ class QwctUniverseResearch(QCAlgorithm):
                 self.origin_counts[report["status"]] += 1
                 if len(self.origin_details) < 30:
                     self.origin_details.append((day, symbol.value, side, report))
+                basis = compare_raw_scaled(
+                    qualified_d1[symbol], lvl, day, scaled.get(symbol), tick)
+                self.basis_counts[basis["status"]] += 1
+                if report["status"] != "PASS":
+                    self.basis_counts["raw_origin_not_pass"] += 1
+                if len(self.basis_details) < 25:
+                    self.basis_details.append((day, symbol.value, side,
+                                               report["status"], basis))
             for item in obs["shadow_levels"]:
                 self.shadow_unique_level_origins.add(
                     (symbol.value, item[0], item[1], item[6]))
@@ -423,7 +520,7 @@ class QwctUniverseResearch(QCAlgorithm):
             f"printed={len(self.origin_details)}; "
             "PASS means RAW D1 pivot/grid/chronology ONLY; "
             "SCALED_RAW, split history, canonical BSU and M5 UNVERIFIED")
-        for day, ticker, side, row in self.origin_details:
+        for day, ticker, side, row in (self.origin_details if getattr(self, "verbose_logs", False) else []):
             self.log(
                 f"QWCT ORIGIN DETAIL {day} {ticker} side={side} "
                 f"cluster={row['cluster']:.6f} "
@@ -432,6 +529,23 @@ class QwctUniverseResearch(QCAlgorithm):
                 f"valid_from={row['valid_from']} tick={row['tick']} "
                 f"status={row['status']} reason={row['reason']} "
                 f"basis={row['basis']}")
+        self.log(
+            "QWCT BASIS SUMMARY "
+            f"match={self.basis_counts['MATCH']} "
+            f"rebased={self.basis_counts['REBASED']} "
+            f"latest_diff={self.basis_counts['LATEST_DIFF']} "
+            f"unknown={self.basis_counts['UNKNOWN']} "
+            f"raw_not_pass={self.basis_counts['raw_origin_not_pass']} "
+            f"fetch_errors={self.basis_counts['fetch_errors']}; "
+            "SCALED_RAW is as-of; differences do not certify split or BSU")
+        for day, ticker, side, raw_state, b in self.basis_details:
+            self.log(
+                f"QWCT BASIS DETAIL {day} {ticker} {side} "
+                f"src={b['source']} R={b['raw']} S={b['scaled']} "
+                f"lastR={b['last_raw']} lastS={b['last_scaled']} "
+                f"ratio={None if b['ratio'] is None else round(b['ratio'], 7)} "
+                f"tick={b['tick']} raw={raw_state} "
+                f"basis={b['status']} why={b['why']}")
         self.log(
             "QWCT UNIVERSE SUMMARY "
             f"days={self.counts['days']} "

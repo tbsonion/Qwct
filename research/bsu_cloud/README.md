@@ -20,6 +20,43 @@ In the new **Qwct-BSU-Research** project, replace the default `main.py` and crea
 
 For the current native PPHL A/B smoke test, default dates are back to **2024-03-16 through 2024-04-26**, with fixed MSFT/AMZN/AAPL. Cloud scan parameters override the defaults if set. Do not change Qwct-LEAN-Test.
 
+## Native PPHL Cloud test: CONFIRMED / strict-and-window cases found
+
+The user's actual QuantConnect **LEAN Engine v2.5.0.0.18179** log, **2024-03-16 through 2024-04-26**, run `c87716354f4706f73666bf18add82885`, confirms the first end-to-end **native PivotPointsHighLow(3,3,100)** A/B research run:
+
+| Observed item | Count |
+|---|---:|
+| Qwct clustered level-days (unchanged baseline) | 416 |
+| PPHL pivot level-days | 2,819 |
+| Overlap (identical original RAW pivot/side/time) | 416 |
+| PPHL-only level-days | 2,403 |
+| Distinct PPHL-only pivot origins over run | 100 |
+| PPHL-only native M5 checks | 187,434 |
+| PPHL-only detector BPU1 / strict BPU1 | 28 / 22 |
+| PPHL-only closed-M5 BPU2 / BPU2 after strict BPU1 | 8 / 6 |
+| **PPHL-only strict BPU2 within 12:00–13:30 ET** | **3** |
+| Original Qwct strict BPU1 / strict BPU2 after BPU1 | **6 / 1**, unchanged |
+| Native PPHL **off-grid RAW origin rejections** | **87** (not Python binding failures) |
+| Trading orders / actual -30s SEC TVX | **0 / not measured** |
+
+**This is the first observation of research patterns passing strict BPU1 + M5-closed BPU2 + historical fixed time-window together.** They do **not** yet pass the rest of the original Qwct filters for a real trade (D1 strength, model choice, trend, available 4R/3R room, risk, SEC/tick preclose). The 2,403 PPHL-only level-days include repeated observations of historical single pivot sources; they are NOT 2,403 unique tradable opportunities. The 3 pattern events could share an origin/day. Their unique symbol-date-source count is not known from the first log.
+
+**First named in-window observation**: AMZN **2024-03-21 BPU1 closed 13:10 ET → BPU2 closed 13:15 ET**, historical RAW PPHL resistance **179.53**, confirmed on **2024-03-19 16:00 ET**. This is a read-only event, NOT SEC 13:14:30 price confirmation. Other two time-window observations were hidden by the first five-event live log cap, not disproved.
+
+**Data-quality distinction:** `pphl_errors={'off-grid native PPHL origin': 87}` reports refused original pivot prices that do not lie on the declared tick grid. It is a research exclusion counter, NOT fatal errors; native LEAN completed successfully, and the original Qwct `rejects={}` remains unchanged. The excluded prices' unique origin count and raw values must be reported before changing any tick rounding.
+
+### Narrow next patch: evidence only, not more signal generation
+
+**Update only standalone `Qwct-BSU-Research/main.py`** from the GitHub link in the table below. The new proof-only logging retains **all** strict PPHL BPU2 events in the current time window independently of the first-five live log cap. It reports:
+
+- `BSU PPHL EVIDENCE`: total strict in-window M5-closed events, count of **unique `symbol + day + side + original RAW origin`** episodes, off-grid rejection count and count of unique excluded origins.
+- `BSU PPHL WINDOW PROOF` and `BSU PPHL WINDOW OHLC`: each BPU1/BPU2 actual completed M5 pair, original BSU price/time, later confirmation time, strict price gap in native ticks, stop and luft. Limit 12 displayed pair details; omissions explicitly counted.
+- `BSU PPHL OFFGRID`: up to three actual original RAW pivot examples that were excluded from native tick-grid equality **without rounding or feeding them to the detector**.
+
+The new proof logging **does not alter** the PPHL candidate list, original detector, time window, D1 strategy gates, M5 bars, or order execution. The current evidence-log patch still needs a native Cloud backtest; source-level tests and the first native PPHL version are not proof of this updated version.
+
+**Run:** keep **2024-03-16..2024-04-26**, replace ONLY standalone research `main.py`, then run `Save → Backtest` and share `BSU PPHL EVIDENCE`, all `BSU PPHL WINDOW PROOF/OHLC`, any `BSU PPHL OFFGRID`, plus `BSU PPHL COMPARE`, `BSU RESEARCH SUMMARY` and `BSU RESEARCH ELIGIBILITY`. This is the final short targeted proof step before deciding whether to use more symbols. Keep trading completely disabled.
+
 ## CURRENT Cloud task: native LEAN PPHL versus existing Qwct pivots (research-only)
 
 **Update only the new research project's main.py:** [Cloud-ready research main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py). Defaults are **2024-03-16 to 2024-04-26** (a previously tested window, deliberately replayed for an A/B comparison). Leave the six strategy modules and Qwct-LEAN-Test untouched.
@@ -28,7 +65,7 @@ The new shadow uses LEAN's **actual PivotPointsHighLow(3,3,100)**, manually upda
 
 **Bring back the lines:** BSU PPHL COMPARE, BSU RESEARCH SUMMARY, BSU RESEARCH ELIGIBILITY, and any BSU PPHL ONLY BPU1/BPU2 entries. The PPHL summary separately reports pivot level-days, unique original pivots, overlap, PPHL-only observations, exact M5 BPU1, closed BPU2 and time eligibility, as well as PPHL Python binding/data failures. It must show a nonempty native PPHL denominator with no failure. The already-native-verified baseline from this window should stay at BPU1_strict=6 and BPU2_with_strict_BPU1=1.
 
-**Status:** 339 GitHub unit tests passed; **new PPHL Cloud branch not yet native LEAN-verified**. The tests use a mock native pivot event to check pivot/confirmation chronology; they do not certify the QuantConnect binding. Do not infer complete Gerchik pattern, SEC TVX, live execution or returns. Reusing the same three tickers isolates the pivot change; a subsequent separate experiment will compare point-in-time native Qwct/Universe.Top(50) screening rather than mixing both changes here.
+**Historical status:** native PPHL is now Cloud-verified by run c87716354f4706f73666bf18add82885. **The newer read-only proof log patch is pending Cloud verification.** The tests use a mock native pivot event to check pivot/confirmation chronology; they do not certify the QuantConnect binding. Do not infer complete Gerchik pattern, SEC TVX, live execution or returns. Reusing the same three tickers isolates the pivot change; a subsequent separate experiment will compare point-in-time native Qwct/Universe.Top(50) screening rather than mixing both changes here.
 
 **Source links:** [PPHL documentation](https://www.quantconnect.com/docs/v2/writing-algorithms/indicators/supported-indicators/pivot-points-high-low), [native PPHL implementation](https://github.com/QuantConnect/Lean/blob/master/Indicators/PivotPointsHighLow.cs), [original Gerchik BSU definition](https://gerchik.com/torgovye-patterny/bsu-bpu-teoriya), [time-of-day guide](https://gerchik.com/journal/fondovye-rynki/torgovyj-algoritm-aleksandra-gerchika/).
 

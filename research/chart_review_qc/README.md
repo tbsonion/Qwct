@@ -1,0 +1,34 @@
+# QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
+
+**Status 2026-10-15:** The QuantConnect Python Research Notebook and independent mirror chronology auditor are **implemented but have NOT been executed in the user's native QuantConnect Research Environment**. **No real visual Gerchik BSU labels are certified yet.** QWCT 2.8 native June baseline and production trading code remain unchanged.
+
+## Why this is next
+
+QWCT native June2.8 run `4b787847b9e5d2405b2fd97a541fa71e` previously proved 19/19 sessions, 17 approved historic swing **proxies**, 1,326 closed M5, 11 M5 OHLC price-range straddles in 4 cases, but **zero** relevant wick-extreme equality BPU1/BPU2. AON June12 and DELL June7 are the first two independent visual review cases, CRM June27 and ABT June7 follow. Their **source/median** prices differ; a range straddle is not an executable BSU touch or a confirmed trade. See [manual review evidence packet](../cohort_cloud/BSU_MANUAL_REVIEW_JUNE_2024.md).
+
+### User action: no fresh backtest, only one notebook
+
+1. Open the existing **QuantConnect Cloud** `Qwct-M5-Cohort-Research` project and enter **Research** / **Python notebook**. Keep its existing `strategy` files unchanged. Open or import the ready-to-run [**BSU_D1_M5_REVIEW.ipynb**](./BSU_D1_M5_REVIEW.ipynb) from GitHub. If the UI doesn't offer import, copy the code cells in order to a new notebook.
+2. Run notebook cells top-down. Default `CASE_CHOICE=["AON","DELL"]`, so only **two plots** are produced; set `CASE_CHOICE=["AON","DELL","CRM","ABT"]` later to include the other cases. **Do not add 2.9 as backtest root `main.py`**: it uses `QuantBook`, not `QCAlgorithm`.
+3. The notebook requests actual **RAW** US equity D1 historical candles, capped at the **same last 180 closed trading bars as the QWCT cohort**, cut off *before the target day's 09:29 ET*. It separately requests actual historical **minute** bars ending <=16:00 ET of that same target session and independently groups into 5-minute closed OHLC by true **minute EndTime**. No fill-forward. It **refuses to label** the source if original D1 pivot differs by >$0.0001 from the native 2.8 report, if native M5 OHLC range-cross count/first timestamp differs, if the 78 real M5 time buckets aren't present, or if final 15:55–16:00 lacks all 5 native M1 candles. **Read the printed PASS/FAIL evidence before evaluating any plot.**
+4. D1 candlesticks are **as-of prior trading close only**; original RAW D1 source first-extremum and the D1 swing **median** are drawn as **two separate** levels. Current-day M5 chart marks every range-crossing candidate (which is NOT BPU1), and displays any 5-minute bucket missing an original M1. It prints the original first-cross M5 OHLC plus immediate following two M5 candles for checking chronological conditions.
+5. The last optional cell imports original QWCT `strategy.levels` (if available in same project), searches only `kind='mirror'` levels already returned by that code as-of target day, and independently checks the causal source-kind, `swing_k` right-side confirmation, an earlier separate D1 breach, later retest on the reversed side, and `valid_from`. Source checker code is also in [`mirror_asof_audit.py`](./mirror_asof_audit.py) with unit tests [`test_mirror_asof_audit.py`](../../tests/test_mirror_asof_audit.py). `PROXY_VERIFIED` means only **the automated mirror chronology is internally explainable**, *NOT* manual Gerchik BSU confirmation or a verified BPU1.
+6. Send screenshots of **AON and DELL D1/M5 figures** and the notebook's printed SOURCE / CROSS / M5 / MIRROR diagnostics. Then we can perform and record **manual YES / NO / INDETERMINATE** labels for the fixed level, context, and potential first touch from actual pictured history, without guessing. See the [review template](../cohort_cloud/BSU_MANUAL_REVIEW_JUNE_2024.md).
+
+**AON reference from native June2.8:** session Jun12; RAW swing source on May10 at **293.5900**, D1 cluster median **293.8175**; first raw pivot M5 range straddle at **09:35**; **two** M5 ranges straddled, but **no exact relevant wick equality**.
+
+**DELL reference:** session Jun7; RAW swing source on May14 at **128.7500**, median **128.6750**; first M5 range straddle at **14:15**, **seven** ranged across original pivot; **zero exact relevant wick equality**.
+
+Optional: CRM/ABT after these two. A different native RAW history, timestamp offset, corporate-action factor or M5 resampling can produce discrepancies: **fail closed and investigate**, do not silently relabel the pivot. For exact 2.8 price basis comparisons, the chart report must match the already observed Cloud backtest before visual interpretation.
+
+## What was verified without needing new historical market data
+
+- Existing source `strategy/levels.py` **can** relabel a confirmed original support/resistance swing-cluster as `kind='mirror'` after a subsequent daily close breaching the level, followed by a separate daily retest/rejection and a new causal `valid_from`. But the earlier 2.8 `classify_snapshot` filters `kind in ('support','resistance')`, so excludes those mirror levels from **that subset**. We have not demonstrated that any of the four review cases actually contains a **causally verified** mirror.
+- The new independent pure mirror auditor uses a **strictly historical frame**, level indexes, source high/low near the original cluster, native cluster tolerance, earliest separate breach/retest, and expected `valid_from`. If both source high/low are near the candidate price, the original kind is **ambiguous** and the audit refuses to certify. It **never** creates a signal or trade.
+- Unit regression test source committed to GitHub; real GitHub Actions execution and native research notebook rendering are **not verified**. Do not report CI PASS or successful historical chart review until run evidence exists.
+
+## Guardrails
+
+This is **only technical provenance and chart-based manual labeling**. The author was not verified via complete YouTube subtitles; the written source & topic timestamps are indexed in [`GERCHIK_PRIMARY_SOURCE_AUDIT.md`](../cohort_cloud/GERCHIK_PRIMARY_SOURCE_AUDIT.md). Do not relabel the 11 range crossings as BPU1, reduce BPU1 tick tolerance, allow arbitrary median-rounding, infer TVX from M5, or place orders.
+
+QuantConnect disallows downloading unlicensed raw historical price data from Cloud Object Store. We therefore **plot inside the Research Environment**, using authorized in-platform data, and share screenshots of conclusions, not an exported market-data archive. Official QuantConnect docs: https://www.quantconnect.com/docs/v2/research-environment/key-concepts/getting-started , https://www.quantconnect.com/docs/v2/research-environment/datasets/us-equity , https://www.quantconnect.com/docs/v2/cloud-platform/object-store .

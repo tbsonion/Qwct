@@ -228,9 +228,9 @@ class QwctM5CohortResearch(QCAlgorithm):
 
     def initialize(self):
         start = datetime.strptime(
-            self.get_parameter("scan_start") or "2024-05-01", "%Y-%m-%d")
+            self.get_parameter("scan_start") or "2024-06-01", "%Y-%m-%d")
         end = datetime.strptime(
-            self.get_parameter("scan_end") or "2024-05-31", "%Y-%m-%d")
+            self.get_parameter("scan_end") or "2024-06-30", "%Y-%m-%d")
         if end < start or (end-start).days > 35:
             raise ValueError("Cohort research is limited to <=35 days")
         self.set_start_date(start.year, start.month, start.day)

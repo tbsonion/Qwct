@@ -1,9 +1,4 @@
-"""Qwct BSU-Research: structural levels / native RAW M5, no orders.
-
-Standalone QuantConnect Cloud research project; does not import or modify
-the main Qwct strategy. Reuses canonical strategy levels and BsuDetector.
-Results are hypotheses, NOT canonical Gerchik signals or a P&L backtest.
-"""
+"""Read-only QuantConnect BSU/PPHL research using native D1 and M5. No orders."""
 from AlgorithmImports import *
 from collections import Counter
 from datetime import datetime, timedelta, time
@@ -17,15 +12,12 @@ from strategy.levels import levels_for_session, native_cluster_tolerance
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.patterns_bsu import Bar as ResearchBar, BsuDetector
 
-
 ET = ZoneInfo("America/New_York")
-
 
 def et(value):
     """Interpret LEAN naive timestamps as exchange-local, never as UTC."""
     t = pd.Timestamp(value)
     return t.tz_localize(ET) if t.tzinfo is None else t.tz_convert(ET)
-
 
 class QwctBsuResearch(QCAlgorithm):
     def initialize(self):
@@ -47,12 +39,7 @@ class QwctBsuResearch(QCAlgorithm):
         self.rejections = Counter()
         self._quarantined = set()
         self._events_logged = 0
-        # Keep genuine completed BPU2 candle evidence separate from
-        # the small real-time log budget; no reconstructed OHLC/fills.
         self._bpu2_proofs = []
-        # Completely independent comparison: native LEAN PPHL D1 origins
-        # absent from the existing 2-swing Qwct level observer set.
-        # Never passes candidates to the original signal or order path.
         self._raw_d1 = {}
         self.pphl_shadow = {}
         self.pphl_counts = Counter()
@@ -60,14 +47,10 @@ class QwctBsuResearch(QCAlgorithm):
         self.pphl_unique = set()
         self.pphl_only_unique = set()
         self.pphl_samples_logged = 0
-        # Keep every observed strict+time-window M5 pair as native
-        # provenance evidence, even after capped live logs fill up.
         self.pphl_in_window_proofs = []
         self.pphl_window_unique = set()
         self.pphl_offgrid_unique = set()
         self.pphl_offgrid_samples = []
-        # Deliberately fixed first test universe. This is NOT a marketwide
-        # point-in-time screener and does not certify other US equities.
         for name in ("MSFT", "AMZN", "AAPL"):
             sym = self.add_equity(
                 name, Resolution.MINUTE, fill_forward=False,
@@ -75,7 +58,6 @@ class QwctBsuResearch(QCAlgorithm):
             self.securities[sym].set_data_normalization_mode(
                 DataNormalizationMode.RAW)
             self.symbols_to_scan += (sym,)
-            # Native LEAN TimePeriod consolidator: no invented M5 prices.
             self.consolidate(sym, timedelta(minutes=5), self._on_m5)
 
         clock = self.symbols_to_scan[0]
@@ -132,22 +114,13 @@ class QwctBsuResearch(QCAlgorithm):
         return d1
 
     def _pphl_candidates(self, sym, d1, states, tick, session):
-        """Read-only native PPHL pivot events confirmed using closed RAW D1.
-
-        PPHL's current indicator output is +1 (new high), -1 (new
-        low), 2 (both), 0 (none). Unlike reading final ZigZag pivots,
-        this records an event only AFTER it is confirmed by the k-th
-        right-side daily bar. Never infer the pivot at its origin date.
-        The detector source is LEAN's PivotPointsHighLow, not a homemade
-        high/low pivot implementation.
-        """
+        """Reconstruct causally confirmed native PPHL D1 pivots from RAW history."""
         from AlgorithmImports import PivotPointsHighLow
 
         k = self.cfg.swing_k
         native = PivotPointsHighLow(k, k, 100)
         source = self._raw_d1[sym]
         found = []
-        # Streaming native updates establish the *confirmation* timestamp.
         for i, daily in enumerate(source):
             native.update(daily)
             if i < 2 * k or not native.is_ready:
@@ -179,12 +152,8 @@ class QwctBsuResearch(QCAlgorithm):
                             self.pphl_offgrid_samples.append(
                                 (sym.value, kind, origin_end.isoformat(),
                                  price, tick))
-                    # Never round an off-grid source to generate a
-                    # detector event or an invented exact touch.
                     continue
                 found.append((kind, price, origin_end, confirmed_at))
-        # The most recent 100 pivot origins, consistent with PPHL's
-        # documented bounded history. Report any discarded old sources.
         if len(found) > 100:
             self.pphl_counts["older_pivots_skipped"] += len(found) - 100
             found = found[-100:]
@@ -194,9 +163,6 @@ class QwctBsuResearch(QCAlgorithm):
             key = (sym.value, side, born.isoformat(), round(price / tick))
             self.pphl_unique.add(key)
             self.pphl_counts["level_days"] += 1
-            # Compare the actual raw pivot origin, not a rounded
-            # cluster median. An equal price at another origin time is
-            # a different historical swing.
             matched = any(
                 x["side"] == side
                 and x["origin_time"] == born.isoformat()
@@ -269,8 +235,6 @@ class QwctBsuResearch(QCAlgorithm):
                 self.active[sym] = states
                 count += len(states)
                 self.counts["symbols_warmed"] += 1
-                # The independent PPHL comparison can fail without
-                # suppressing a proven Qwct baseline observation.
                 try:
                     self.pphl_shadow[sym] = self._pphl_candidates(
                         sym, d1, states, tick, session)
@@ -280,14 +244,12 @@ class QwctBsuResearch(QCAlgorithm):
                     self.pphl_rejects[
                         "PPHL_FAIL: " + str(shadow_error)[:95]] += 1
             except Exception as exc:
-                # Fail closed for this symbol/day. Do not fabricate candles.
                 self.active[sym] = []
                 self.pphl_shadow[sym] = []
                 self.rejections[str(exc)[:75]] += 1
         self.counts["bsu_observer_days"] += count
 
     def on_data(self, data):
-        # A native split invalidates today's RAW pivot and M5 observation.
         splits = getattr(data, "splits", None)
         if splits is None:
             return
@@ -300,8 +262,6 @@ class QwctBsuResearch(QCAlgorithm):
                 self.rejections["LEAN split occurred: day quarantined"] += 1
 
     def _on_pphl_m5(self, bar, current):
-        # Shadow candidates use the *same already validated native
-        # consolidated TradeBar* as the main research detector.
         for case in self.pphl_shadow.get(bar.symbol, []):
             det = case["detector"]
             if det.state.phase in ("invalidated", "bpu2_confirmed"):
@@ -419,17 +379,11 @@ class QwctBsuResearch(QCAlgorithm):
                 self.rejections["BPU bar invalid: "+str(exc)[:60]] += 1
                 continue
             if result.phase == "bpu1" and old != "bpu1":
-                # Actual completed native M5 candle, captured when BPU1
-                # appeared. Do not infer it from the later BPU2 candle.
                 case["bpu1_bar"] = (
                     current.strftime("%Y-%m-%d %H:%M"),
                     float(bar.open), float(bar.high),
                     float(bar.low), float(bar.close),
                     float(bar.volume))
-                # Detector admits <= half a reference tick (180.145 vs
-                # 180.140 on AMZN); that is NOT strict price equality.
-                # Keep its original observation count for comparability,
-                # but never call a half-tick proxy "exact" in the logs.
                 bpu1_delta = abs(extreme - pivot)
                 bpu1_strict = bpu1_delta <= tick * 1e-5
                 case["bpu1_strict"] = bpu1_strict
@@ -452,11 +406,6 @@ class QwctBsuResearch(QCAlgorithm):
                 if first is None:
                     self.rejections["BPU2 without retained BPU1 candle"] += 1
                 else:
-                    # This is only a *separate reporting flag*. It never
-                    # gates/moves a detector event or authorizes a trade.
-                    # Actual TVX would be sampled 30s BEFORE BPU2 close.
-                    # Time eligibility is only a separate research flag;
-                    # SEC/TICK timing and order placement are NOT inferred.
                     hypothetical_tvx = (
                         current - pd.Timedelta(seconds=30)).time()
                     in_bounce_window = any(
@@ -471,8 +420,6 @@ class QwctBsuResearch(QCAlgorithm):
                             self.counts["strict_bpu2_in_window"] += 1
                     else:
                         self.counts["half_tick_predecessor_bpu2"] += 1
-                    # Original on-grid BPU1 comparison is visible even
-                    # when subsequent RAW TradeBar highs show subpennies.
                     first_extreme = first[3] if side == "long" else first[2]
                     first_diff_ticks = abs(first_extreme - pivot) / tick
                     second_extreme = (float(bar.low) if side == "long"
@@ -499,12 +446,7 @@ class QwctBsuResearch(QCAlgorithm):
                 self.counts["invalid_bpu2_attempts"] += 1
 
     def _audit_native_sec_preclose(self, proof):
-        """Retrospective, read-only native SECOND TradeBar as-of-cutoff audit.
-
-        This runs at backtest END, not at the historical cutoff second.
-        Data strictly later than BPU2-30s is excluded from every computed
-        value. It is not a real-time TVX observation, quote or fill.
-        """
+        """Audit historical one-second trades at BPU2 minus 30s; no fill or order."""
         (ticker, event_at, side, pivot, born, confirmed, tick, first,
          closed_bpu2, stop, luft) = proof
         sym = next((s for s in self.symbols_to_scan
@@ -516,9 +458,6 @@ class QwctBsuResearch(QCAlgorithm):
         if bpu2_end - bpu1_end != timedelta(minutes=5):
             return "BAD_BPU_TIMING", 0, None, None, None
         cutoff = bpu2_end - timedelta(seconds=30)
-        # Python history date-range arguments are algorithm-local ET;
-        # the upper bound is exclusive. We still enforce <= cutoff
-        # on every actual TradeBar END TIME, regardless of API behavior.
         hist_end = cutoff + timedelta(seconds=1)
         try:
             rows = [
@@ -535,9 +474,6 @@ class QwctBsuResearch(QCAlgorithm):
             try:
                 start = et(bar.time)
                 end = et(bar.end_time)
-                # History range endpoints are not guaranteed to
-                # represent completed-bar end times. Discard any
-                # bar outside the as-of window BEFORE reading its prices.
                 if end <= et(bpu1_end) or end > et(cutoff):
                     continue
                 if end-start != pd.Timedelta(seconds=1):
@@ -561,8 +497,6 @@ class QwctBsuResearch(QCAlgorithm):
         high = max(float(bar.high) for bar in selected)
         low = min(float(bar.low) for bar in selected)
         last = float(selected[-1].close)
-        # A partial 4m30s BPU2 trade range must be contained in the
-        # independently observed completed native RAW M5 OHLC.
         if (low < closed_bpu2[2]-1e-7 or
                 high > closed_bpu2[1]+1e-7):
             return "M5_SEC_RAW_MISMATCH", len(selected), low, high, last
@@ -626,10 +560,6 @@ class QwctBsuResearch(QCAlgorithm):
                 f"BSU PPHL OFFGRID {symbol} {side} "
                 f"origin={born[:16]} RAW={price:.6f} "
                 f"ref_tick={tick:.6f} SKIPPED; NO ORDERS")
-        # Request native SECOND trade bars only for completed strict
-        # BPU2 events inside the previously configured bounce window.
-        # This uses retrospective history with an explicit -30s cutoff,
-        # not an event-driven live preclose signal or executable quote.
         sec_summary = Counter()
         for proof in self.pphl_in_window_proofs[:12]:
             label, count, low, high, last = self._audit_native_sec_preclose(proof)
@@ -663,8 +593,6 @@ class QwctBsuResearch(QCAlgorithm):
                      f"RAW_BSU={pivot:.4f} M5={extreme:.4f} "
                      f"gap={gap:+.4f} ticks={abs(gap/tick):.1f} "
                      f"at={at}; NOT necessarily BPU1")
-        # Every completed BPU2 gets an independently capped, native
-        # M5 OHLC evidence pair, even if the first-7 event log filled up.
         for ticker, at, side, pivot, origin, cluster, first, second, dist, grid, allowed, strict, luft, stop in self._bpu2_proofs[:8]:
             self.log(f"BSU RESEARCH PROOF {ticker} BPU2={at} {side} "
                      f"BSU={pivot:.4f} origin={origin[:16]} "

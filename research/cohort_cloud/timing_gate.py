@@ -29,7 +29,8 @@ def next_session_fundamentals(events, now, market_hours, localize):
             continue
         try:
             # LEAN Exchange.Hours expects exchange-local naive DateTime.
-            local = at.to_pydatetime().replace(tzinfo=None)
+            local = (at.to_pydatetime() if hasattr(at, "to_pydatetime")
+                     else at).replace(tzinfo=None)
             if market_hours.is_date_open(local, extended_market_hours=False):
                 continue
             next_open = localize(market_hours.get_next_market_open(

@@ -453,9 +453,6 @@ class QwctM5CohortResearch(QCAlgorithm):
             if (sym, day) not in self.quarantined]
         if not symbols:
             return
-        # Replay at the ACTUAL exchange close (half-days too). A +1
-        # minute schedule may never execute on the final backtest day.
-        # Completed native minutes were NEVER used by the 09:29 selector.
         start = datetime.combine(day, time(9, 30), ET)
         end = et(self.time).to_pydatetime()
         if et(end) <= et(start):
@@ -478,7 +475,7 @@ class QwctM5CohortResearch(QCAlgorithm):
             self._replay(symbol, minute[symbol], day, end)
 
     def _replay(self, symbol, minute_bars, day, close):
-        """Actual LEAN TradeBarConsolidator from historical native TradeBars."""
+
         cases = self.active[symbol]
         if not minute_bars:
             self.rejects["EMPTY_M1_" + symbol.value] += 1
@@ -512,6 +509,36 @@ class QwctM5CohortResearch(QCAlgorithm):
         except Exception as exc:
             self.rejects["M5_CONSOLIDATOR:" + str(exc)[:45]] += 1
             return
+        # LEAN needs Scan to emit last [15:55,16:00) bar.
+        # Only complete native M1 coverage may produce that M5 candle.
+        tail_ok = len(minute_bars) >= 5
+        if tail_ok:
+            try:
+                start_last = et(close) - timedelta(minutes=5)
+                tail_ok = all(
+                    et(b.time) == start_last + timedelta(minutes=i)
+                    and et(b.end_time) == start_last + timedelta(minutes=i+1)
+                    and not getattr(b, "is_fill_forward", False)
+                    and isfinite(float(b.volume)) and float(b.volume) > 0
+                    for i, b in enumerate(minute_bars[-5:]))
+            except (ValueError, TypeError, OverflowError, AttributeError):
+                tail_ok = False
+        if tail_ok:
+            n = len(emitted)
+            try:
+                # Native DateTime, never a manufactured price or bar.
+                consolidator.scan(minute_bars[-1].end_time)
+            except Exception as exc:
+                self.rejects["M5_CLOSE_SCAN:" + str(exc)[:45]] += 1
+            if (len(emitted) == n + 1
+                    and et(emitted[-1].end_time) == et(close)
+                    and et(emitted[-1].time) ==
+                    et(close) - timedelta(minutes=5)):
+                self.summary["close_scanned"] += 1
+            else:
+                self.rejects["M5_CLOSE_NOT_EMITTED"] += 1
+        else:
+            self.rejects["M1_CLOSE_FIVE_NOT_COMPLETE"] += 1
         self.summary["native_m1"] += len(minute_bars)
         self.summary["m5_emitted"] += len(emitted)
         last_m5_end = et(emitted[-1].end_time) if emitted else None
@@ -530,6 +557,9 @@ class QwctM5CohortResearch(QCAlgorithm):
             return
         for bar in emitted:
             at = et(bar.end_time)
+            if at == et(close) and not tail_ok:
+                self.rejects["M5_CLOSE_UNVERIFIED_SOURCE"] += 1
+                continue
             if not time(9, 35) <= at.time() <= time(16, 0):
                 self.rejects["M5_OUTSIDE_REGULAR_SESSION"] += 1
                 continue
@@ -619,6 +649,7 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"m1_tail_early={self.summary['m1_tail_before_close']} "
             f"m5_tail_close={self.summary['m5_tail_at_close']} "
             f"m5_tail_early={self.summary['m5_tail_before_close']} "
+            f"close_scanned={self.summary['close_scanned']} "
             f"bpu1={self.summary['bpu1']} "
             f"strict_bpu1={self.summary['strict_bpu1']} "
             f"bpu2={self.summary['bpu2_closed']} "
@@ -631,7 +662,6 @@ class QwctM5CohortResearch(QCAlgorithm):
                 f"QWCT COHORT TAIL {day} {ticker} m1={m1} m5={m5} "
                 f"m1_last={last_m1} m5_last={last_m5} close={close}; "
                 "TIMING AUDIT ONLY / NO SYNTHETIC BAR")
-        # Distinct observed cases only. Free 10KB log budget.
         rows = sorted(
             (c for c in self.all_cases if c["best_ticks"] is not None),
             key=lambda c: (c["best_ticks"], c["day"], c["ticker"]))

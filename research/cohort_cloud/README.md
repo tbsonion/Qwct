@@ -1,6 +1,40 @@
 # QWCT 2.6 — Native dynamic D1 → M5 research cohort (May 2024)
 
-**Status:** Code and pure regression guards committed. **A real native QuantConnect 2.6 Cloud backtest has NOT run yet**, and any BPU1/BPU2 counts are UNKNOWN until its log is received. No trading orders, SEC/TICK data, backtested fills, or claimed profitability.
+## 2026-10-15 — Real native May 2024 result: no exact BPU1, incomplete coverage to investigate
+
+**Native QuantConnect LEAN 2.5.0.0.18184 backtest `e30da5e09d7fc0b9507871f63f7536c7` completed, May 1–31 2024.** This is the first genuine QWCT 2.6 run, superseding the original "native pending" status in the setup instructions below.
+
+| Observed result | Count |
+| --- | ---: |
+| Scheduled market-day scans | 22 |
+| Fundamental selection callbacks | 22, including 4 weekends |
+| Sessions with same-calendar-day Fundamental selection | 18 |
+| **Four sessions skipped for missing same-day callback** | **May 6, 13, 20, 28** |
+| Fundamental top50 stock-days examined | 900 |
+| Native RAW D1-ready / Stage2 pass | 900 / 813 |
+| Shadow qualified stock-days | 13 |
+| Origin provenance PASS / UNKNOWN / FAIL | 13 / 0 / 0 |
+| Native RAW/SCALED origins | 8 MATCH / 5 REBASED |
+| Ready BSU **proxies** | 13 |
+| Sessions with eligible after-close minute replay | 10 |
+| Native M1 TradeBars | 5,000 |
+| Validated emitted native M5 bars | 1,001 |
+| Closed-M5 BPU1 strict / BPU2 confirmed | **0 / 0** |
+| Rejected events | four missed-callback sessions; no other logged reject reasons |
+| Executed trades / TVX fills | 0 / NOT TESTED |
+
+**Nearest observed native M5 extrema relative to original RAW pivots (tick=$0.01 for these cases):** **ADBE May 3 short ≈2 ticks ($0.02)** and **FTNT May 8 short ≈2 ticks ($0.02)** were nearest. Neither exactly touched the pivot as required. Next was JNJ May 2, 8 ticks ($0.08), then JNJ May 14, 21 ticks ($0.21). A two-tick miss is **NOT an exact touch**, even if that seems close visually. These are **minimum absolute distances in the checked closed M5 extrema**, not verified tick-by-tick prices or entries.
+
+**Coverage warning — do not mislabel this as a full-month negative result:** every one of the 13 ready cases had exactly **77 validated M5 candles** (`13 × 77 = 1,001`). An uninterrupted regular US equity session normally contains **78 complete five-minute periods** from 09:30 through 16:00. The gap is suspicious and may be explained by the final 15:55–16:00 candle not being emitted by manual `TradeBarConsolidator` replay at an exact-close History boundary; missing last-minute input is another possible explanation. **This is a hypothesis, not yet proved by timestamp evidence.** The backtest's 5,000 M1 bars versus a hypothetical 13×390=5,070 also warrants checking actual closed minute coverage, but missing minutes may reflect real market data availability. Therefore the hard result is **zero observed BPU1 in the available 1,001 validated M5 bars**, not zero possible BPU1 throughout all 13 complete sessions.
+
+**Data-universe coverage warning:** 4 of 22 intended scans were **skipped**, not screened with zero qualified tickers. The Saturday Fundamental callbacks are real, but this experiment still keys selection by the callback's same calendar day. Coverage is only **18 of 22 market sessions**, not a complete 22-day universe. Do not silently infer Monday candidates or retest those days using hindsight.
+
+**Targeted research instrumentation now added to GitHub only:** `research/cohort_cloud/main.py` retains identical Fundamental/D1 origin/basis/Shadow/BPU1/BPU2 logic, but now includes `QWCT COHORT TAIL` for up to four actual symbol-days and summary counts `m1_tail_close`, `m1_tail_early`, `m5_tail_close`, `m5_tail_early`. They print true last native minute and true emitted native M5 timestamps vs exchange close — **without manually flushing, manufacturing missing bars, or relaxing any pattern rule**. This modified code is **NOT what produced the real May run**; these additional tail metrics are **native unverified** until a new backtest.
+
+**Next bounded action:** do **not** rerun the unchanged six April cases or claim "BPU detector broken". Check M1/M5 tail provenance first in any next independent monthly run (e.g. June 2024), so positive/negative signal counts carry valid coverage. Then separately design an explicit, causally safe weekend-callback→Monday effective-session policy if improving coverage is required. Do not fit a two-tick tolerance or use the cluster median as an exact BSU. Manual Gerchik BSU validation and actual -30s SEC/TICK TVX remain separate later gates.
+
+
+**Status:** One real May 2024 native QuantConnect 2.6 run completed; see evidence above. Later tail-diagnostic code revision is not yet native-tested. No trading orders, SEC/TICK data, backtested fills, or claimed profitability.
 
 ## Purpose: broader point-in-time evidence, without changing the trading rules
 

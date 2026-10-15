@@ -145,7 +145,7 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
             return done("FAIL", "RAW_ORIGIN_OFF_NATIVE_TICK_GRID")
     except (TypeError, ValueError, KeyError, IndexError, OverflowError) as exc:
         return done("UNKNOWN", "RAW_ORIGIN_AUDIT_ERROR:" + str(exc)[:40])
-    return done("PASS", "RAW_PIVOT_ONLY;SCALED_RAW_SPLITS_UNVERIFIED")
+    return done("PASS", "RAW_D1_ONLY;SCALED_RAW_UNVERIFIED")
 
 
 class QwctUniverseResearch(QCAlgorithm):
@@ -161,6 +161,7 @@ class QwctUniverseResearch(QCAlgorithm):
         self.set_time_zone("America/New_York")
         self.set_cash(25_000)
         self.cfg = StrategyConfig()
+        self.verbose_logs = (self.get_parameter("verbose_logs") == "1")
         self.universe_settings.resolution = Resolution.DAILY
         self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
@@ -216,9 +217,9 @@ class QwctUniverseResearch(QCAlgorithm):
                                       len(selected), sample_at, sample_end))
         self.log(
             f"QWCT UNIVERSE TIMING SELECT day={day} "
-            f"clock={et(self.time).isoformat()} sample_time={sample_at} "
-            f"sample_end={sample_end} selected={len(selected)} "
-            f"after_missed_scan={late}")
+            f"at={et(self.time).strftime('%H:%M')} "
+            f"source={sample_at}..{sample_end} "
+            f"n={len(selected)} late={int(late)}")
         return selected
 
     def _history_asof(self, symbols, day):
@@ -288,10 +289,11 @@ class QwctUniverseResearch(QCAlgorithm):
                 f"status={'EMPTY_SELECTION' if callback_seen else 'NO_CALLBACK_BEFORE_SCAN'} "
                 "no prior-day fallback; NOT zero candidates")
             return
-        self.log(
-            f"QWCT UNIVERSE TIMING SCAN day={day} "
-            f"clock={et(self.time).isoformat()} "
-            "status=SAME_DAY_SELECTION_READY")
+        if getattr(self, "verbose_logs", False):
+            self.log(
+                f"QWCT UNIVERSE TIMING SCAN day={day} "
+                f"clock={et(self.time).isoformat()} "
+                "status=SAME_DAY_SELECTION_READY")
         self.covered_days.add(day)
         self.counts["days"] += 1
         self.counts["candidate_days"] += len(members)
@@ -395,13 +397,14 @@ class QwctUniverseResearch(QCAlgorithm):
             if obs["near"] and len(self.example_rows) < 16:
                 self.example_rows.append((
                     day, symbol.value, rank+1, obs, obs["examples"][:2]))
-        self.log(
-            f"QWCT UNIVERSE DAY {day} candidates={len(members)} "
-            f"d1_qualified={len(passed)} watchlist={len(watchlist)} "
-            f"watch_near={sum(x[2]['near']>0 for x in watchlist)} "
-            f"watch_aligned={sum(x[2]['aligned']>0 for x in watchlist)} "
-            f"watch_bsu_role_aligned={sum(x[2]['role_aligned']>0 for x in watchlist)}; "
-            "NO M5 / NO ORDERS")
+        if getattr(self, "verbose_logs", False):
+            self.log(
+                f"QWCT UNIVERSE DAY {day} candidates={len(members)} "
+                f"d1_qualified={len(passed)} watchlist={len(watchlist)} "
+                f"watch_near={sum(x[2]['near']>0 for x in watchlist)} "
+                f"watch_aligned={sum(x[2]['aligned']>0 for x in watchlist)} "
+                f"watch_bsu_role_aligned={sum(x[2]['role_aligned']>0 for x in watchlist)}; "
+                "NO M5 / NO ORDERS")
 
     def on_end_of_algorithm(self):
         self.log(
@@ -470,7 +473,7 @@ class QwctUniverseResearch(QCAlgorithm):
             f"unique_shadow_level_origins={len(self.shadow_unique_level_origins)} "
             f"pick_rows_logged={len(self.shadow_picks_logged)}; "
             "D1 ONLY / NO M5 / NO SEC / NO ORDERS")
-        for day, ticker, legacy_rank, shadow_rank, levels, count in self.shadow_picks_logged:
+        for day, ticker, legacy_rank, shadow_rank, levels, count in (self.shadow_picks_logged if getattr(self, "verbose_logs", False) else []):
             self.log(
                 f"QWCT SHADOW PICK {day} {ticker} "
                 f"liquidity_rank={legacy_rank} shadow_rank={shadow_rank} "
@@ -492,14 +495,14 @@ class QwctUniverseResearch(QCAlgorithm):
             f"unique_bsu_role_aligned_tickers="
             f"{len(self.full50_bsu_role_tickers)}; "
             "D1 ONLY / NO M5 / NO ORDERS")
-        for day, ticker, rank, obs, levels in self.outside10_examples:
+        for day, ticker, rank, obs, levels in (self.outside10_examples if getattr(self, "verbose_logs", False) else []):
             self.log(
                 f"QWCT UNIVERSE OUTSIDE10 {day} {ticker} "
                 f"rank={rank} close={obs['price']:.4f} "
                 f"atr={obs['atr']:.4f} "
                 f"bsu_role_aligned={obs['role_aligned']} "
                 f"near_levels={levels}; D1 ONLY / NO ORDERS")
-        for day, ticker, rank, obs, levels in self.example_rows:
+        for day, ticker, rank, obs, levels in (self.example_rows if getattr(self, "verbose_logs", False) else []):
             self.log(
                 f"QWCT UNIVERSE EXAMPLE {day} {ticker} rank={rank} "
                 f"close={obs['price']:.4f} atr={obs['atr']:.4f} "

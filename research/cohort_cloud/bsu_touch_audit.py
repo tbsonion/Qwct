@@ -42,7 +42,7 @@ class TouchAudit:
         SHORT_OF = relevant wick has not reached original pivot.
         RANGE_CROSSED = wick overshot and OHLC spans RAW pivot; crossing
         inside a candle is NOT the Gerchik exact BPU1 requirement.
-        GAP_BEYOND = entire observed candle is beyond the RAW pivot;
+        BEYOND_NO_SPAN = entire observed candle is beyond the RAW pivot;
         no observed within-candle range crosses that price.
         """
         low, high = float(bar.low), float(bar.high)
@@ -61,7 +61,7 @@ class TouchAudit:
         elif low <= self.raw <= high:
             category = "RANGE_CROSSED"
         else:
-            category = "GAP_BEYOND"
+            category = "BEYOND_NO_SPAN"
         self.counts[category] += 1
         self.counts["BARS"] += 1
         stamp = at.strftime("%H:%M")
@@ -104,7 +104,7 @@ def audit_report(cases, limit=12):
         f"raw_exact={totals['EXACT_WICK']} "
         f"short_of={totals['SHORT_OF']} "
         f"range_crossed={totals['RANGE_CROSSED']} "
-        f"gap_beyond={totals['GAP_BEYOND']} "
+        f"beyond_no_span={totals['BEYOND_NO_SPAN']} "
         f"cluster_ranges={totals['CLUSTER_RANGE']} "
         f"cluster_wick_near={totals['CLUSTER_WICK_NEAR']} "
         f"exact_cases={exact_cases} crossed_cases={cross_cases} "
@@ -126,7 +126,7 @@ def audit_report(cases, limit=12):
             f"m5={a.counts['BARS']} exact={a.counts['EXACT_WICK']} "
             f"short={a.counts['SHORT_OF']} "
             f"cross={a.counts['RANGE_CROSSED']} "
-            f"gap={a.counts['GAP_BEYOND']} "
+            f"beyond={a.counts['BEYOND_NO_SPAN']} "
             f"clust_cross={a.counts['CLUSTER_RANGE']} "
             f"nearest_signed={a.nearest_signed:.2f} at={a.at} "
             f"first_cross={a.first_cross_at or '-'}; NO ORDERS")

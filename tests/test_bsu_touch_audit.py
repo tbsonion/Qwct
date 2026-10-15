@@ -25,13 +25,13 @@ def test_short_four_disjoint_categories_and_closest_signed_gap():
         (99.90, 99.98, "SHORT_OF", "09:35"),
         (99.95, 100.00, "EXACT_WICK", "09:40"),
         (99.95, 100.03, "RANGE_CROSSED", "09:45"),
-        (100.05, 100.12, "GAP_BEYOND", "09:50"),
+        (100.05, 100.12, "BEYOND_NO_SPAN", "09:50"),
     ):
         bar, at = m5(lo, hi, end)
         assert a.observe(bar, at) == expected
     assert a.counts["BARS"] == 4
     assert [a.counts[k] for k in (
-        "SHORT_OF", "EXACT_WICK", "RANGE_CROSSED", "GAP_BEYOND")] == [1, 1, 1, 1]
+        "SHORT_OF", "EXACT_WICK", "RANGE_CROSSED", "BEYOND_NO_SPAN")] == [1, 1, 1, 1]
     assert a.first_cross_at == "09:45"
     assert a.nearest == 0 and a.nearest_signed == 0
     assert a.at == "09:40"
@@ -46,12 +46,12 @@ def test_long_support_classification_is_direction_correct():
         (100.02, 100.12, "SHORT_OF"),
         (100.00, 100.07, "EXACT_WICK"),
         (99.97, 100.04, "RANGE_CROSSED"),
-        (99.88, 99.95, "GAP_BEYOND"),
+        (99.88, 99.95, "BEYOND_NO_SPAN"),
     ):
         bar, at = m5(low, high)
         assert a.observe(bar, at) == expected
     assert sum(a.counts[k] for k in (
-        "SHORT_OF", "EXACT_WICK", "RANGE_CROSSED", "GAP_BEYOND")) == 4
+        "SHORT_OF", "EXACT_WICK", "RANGE_CROSSED", "BEYOND_NO_SPAN")) == 4
 
 
 def test_half_tick_precision_matches_existing_detector_not_two_tick_nearmiss():

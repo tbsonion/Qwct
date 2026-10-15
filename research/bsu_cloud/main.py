@@ -60,6 +60,12 @@ class QwctBsuResearch(QCAlgorithm):
         self.pphl_unique = set()
         self.pphl_only_unique = set()
         self.pphl_samples_logged = 0
+        # Keep every observed strict+time-window M5 pair as native
+        # provenance evidence, even after capped live logs fill up.
+        self.pphl_in_window_proofs = []
+        self.pphl_window_unique = set()
+        self.pphl_offgrid_unique = set()
+        self.pphl_offgrid_samples = []
         # Deliberately fixed first test universe. This is NOT a marketwide
         # point-in-time screener and does not certify other US equities.
         for name in ("MSFT", "AMZN", "AAPL"):
@@ -164,6 +170,17 @@ class QwctBsuResearch(QCAlgorithm):
                     continue
                 if abs(price - round(price / tick) * tick) > tick * 1e-5:
                     self.pphl_rejects["off-grid native PPHL origin"] += 1
+                    offgrid_key = (
+                        sym.value, kind, origin_end.isoformat(),
+                        round(price, 6))
+                    if offgrid_key not in self.pphl_offgrid_unique:
+                        self.pphl_offgrid_unique.add(offgrid_key)
+                        if len(self.pphl_offgrid_samples) < 3:
+                            self.pphl_offgrid_samples.append(
+                                (sym.value, kind, origin_end.isoformat(),
+                                 price, tick))
+                    # Never round an off-grid source to generate a
+                    # detector event or an invented exact touch.
                     continue
                 found.append((kind, price, origin_end, confirmed_at))
         # The most recent 100 pivot origins, consistent with PPHL's
@@ -199,6 +216,7 @@ class QwctBsuResearch(QCAlgorithm):
                     self.cfg, price, side, atr_value=last_atr,
                     tick_size=tick, bsu_ts=born.to_pydatetime()),
                 "bpu1_strict": False,
+                "bpu1_observed": None,
             })
         return out
 
@@ -289,6 +307,7 @@ class QwctBsuResearch(QCAlgorithm):
             if det.state.phase in ("invalidated", "bpu2_confirmed"):
                 det.reset()
                 case["bpu1_strict"] = False
+                case["bpu1_observed"] = None
             self.pphl_counts["only_m5_checks"] += 1
             side, pivot, tick = case["side"], case["origin"], case["tick"]
             extreme = float(bar.low if side == "long" else bar.high)
@@ -305,6 +324,10 @@ class QwctBsuResearch(QCAlgorithm):
             if result.phase == "bpu1" and old != "bpu1":
                 self.pphl_counts["only_bpu1_detector"] += 1
                 case["bpu1_strict"] = abs(extreme - pivot) <= tick * 1e-5
+                case["bpu1_observed"] = (
+                    current.strftime("%Y-%m-%d %H:%M"),
+                    float(bar.open), float(bar.high),
+                    float(bar.low), float(bar.close), float(bar.volume))
                 if case["bpu1_strict"]:
                     self.pphl_counts["only_bpu1_strict"] += 1
                     if self.pphl_samples_logged < 5:
@@ -326,6 +349,23 @@ class QwctBsuResearch(QCAlgorithm):
                     for a, b in self.cfg.session_windows_bounce)
                 if allowed:
                     self.pphl_counts["only_bpu2_strict_in_window"] += 1
+                    first = case.get("bpu1_observed")
+                    if first is None:
+                        self.pphl_rejects["strict window BPU2 missing BPU1 OHLC"] += 1
+                    else:
+                        episode_key = (
+                            case["symbol"], str(current.date()), side,
+                            case["origin_time"], round(pivot / tick))
+                        self.pphl_window_unique.add(episode_key)
+                        self.pphl_in_window_proofs.append((
+                            case["symbol"], current.strftime("%Y-%m-%d %H:%M"),
+                            side, pivot, case["origin_time"],
+                            case["confirmed_at"], tick, first,
+                            (float(bar.open), float(bar.high),
+                             float(bar.low), float(bar.close),
+                             float(bar.volume)),
+                            float(det.state.stop_price),
+                            float(det.state.luft)))
                 if self.pphl_samples_logged < 5:
                     self.log(
                         f"BSU PPHL ONLY BPU2 {case['symbol']} "
@@ -478,6 +518,36 @@ class QwctBsuResearch(QCAlgorithm):
             f"{self.pphl_counts['older_pivots_skipped']} "
             f"pphl_errors={dict(self.pphl_rejects.most_common(3))}; "
             "NO SEC TVX / NO ORDERS")
+        self.log(
+            "BSU PPHL EVIDENCE "
+            f"strict_in_window_events="
+            f"{self.pphl_counts['only_bpu2_strict_in_window']} "
+            f"unique_level_day_episodes={len(self.pphl_window_unique)} "
+            f"offgrid_rejections={self.pphl_rejects['off-grid native PPHL origin']} "
+            f"unique_offgrid_origins={len(self.pphl_offgrid_unique)} "
+            "NO SEC TVX / NO ORDERS")
+        for symbol, event_at, side, price, born, confirmed, tick, first, second, stop, luft in self.pphl_in_window_proofs[:12]:
+            extreme = first[3] if side == "long" else first[2]
+            self.log(
+                f"BSU PPHL WINDOW PROOF {symbol} BPU2={event_at} {side} "
+                f"pivot={price:.4f} origin={born[:16]} "
+                f"confirmed={confirmed[:16]} "
+                f"BPU1={first[0]} strict_ticks={abs(extreme-price)/tick:.6f}; "
+                "CLOSED M5 ONLY / NO SEC TVX")
+            self.log(
+                f"BSU PPHL WINDOW OHLC {symbol} "
+                f"BPU1={first[1]:.4f}/{first[2]:.4f}/{first[3]:.4f}/{first[4]:.4f} "
+                f"BPU2={second[0]:.4f}/{second[1]:.4f}/{second[2]:.4f}/{second[3]:.4f} "
+                f"stop={stop:.4f} luft={luft:.4f}; NO ORDERS")
+        if len(self.pphl_in_window_proofs) > 12:
+            self.log(
+                f"BSU PPHL WINDOW PROOF omitted="
+                f"{len(self.pphl_in_window_proofs)-12}; NO ORDERS")
+        for symbol, side, born, price, tick in self.pphl_offgrid_samples:
+            self.log(
+                f"BSU PPHL OFFGRID {symbol} {side} "
+                f"origin={born[:16]} RAW={price:.6f} "
+                f"ref_tick={tick:.6f} SKIPPED; NO ORDERS")
         best = sorted(self.case_nearest.values(), key=lambda r: abs(r[0]))[:8]
         self.log("BSU RESEARCH SUMMARY "
                  f"symbols_warmed={self.counts['symbols_warmed']} "

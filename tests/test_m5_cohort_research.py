@@ -130,6 +130,7 @@ def test_2_7_next_session_has_strict_ab_mode_and_native_calendar_only():
     assert 'self.get_parameter("timing_mode") or "next_session"' in s
     assert 'self.timing_mode not in ("strict", "next_session")' in s
     assert "self.securities[self.anchor].exchange.hours" in s
+    assert 'if day not in self.by_day and self.timing_mode == "next_session":' in s
     assert 'label = "SAME_DAY"' in s
     assert 'label = "NEXT_SESSION"' in s
     assert 'self.summary["strict_days"] += 1' in s

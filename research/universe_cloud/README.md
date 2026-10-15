@@ -1,5 +1,30 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## LATEST ACTUAL LEAN — FULL50 confirms original Top10 liquidity cutoff masks D1 candidates
+
+**Confirmed native LEAN 2.5.0.0.18179, run `5497a648495b409e7cea19ff98f21d85`, 2024-04-01..2024-04-05, finished 30.29 seconds, no orders.** This run tested exactly the **same as-of 50 liquidity-ranked stocks and historical D1/trend rules**, now counting *already screened* names outside Top10 without additional subscriptions or M5. The prior Top10 rows reproduced exactly.
+
+| Stage / definition | Historical stock-day observations |
+|---|---:|
+| Fundamental Top50 membership | 250 across five days |
+| Usable closed RAW D1 history | 246; 4 insufficient |
+| Original Qwct stage2 price/ATR/volume pass | 227 |
+| Original Top10 watchlist | 50 (=10 per day) |
+| D1 two-touch source within 1×ATR (all stage2 pass names) | **42**, over **24 distinct tickers** |
+| Close-relative Scenario side + SMA G/L match (full50) | **20** |
+| Original native BSU support-long / resistance-short **AND** matching G/L, full50 | **9 symbol-days**, **7 distinct tickers** |
+| Same BSU-role+trend preconditions inside original Top10 | **0** |
+| Same BSU-role+trend preconditions **outside** original Top10 | **9**, all of them |
+
+**Finding:** in this five-session sample, **100% (9/9) of D1-only role+trend-qualified stock-days were screened out by the fixed Top10 liquidity watchlist**. The original canonical D1 level/trend thresholds did not cause the *absence of all premarket D1 possibilities across Top50*. The Top10 cutoff was the decisive **coverage bottleneck at this screening stage in this sample**. This does **not** show Top10 is wrong in other periods, that D1-only candidates had M5 BPU1/BPU2, executable TVX, 4R/3R or any profitable trade.
+
+**Eight of the nine symbol-days were printed** (log intentionally caps `QWCT UNIVERSE OUTSIDE10` at 8; do not invent the ninth): **UNH 4/1 + 4/2**, **MCD 4/1**, **MMM 4/2**, **PG 4/2 + 4/3**, **WMT 4/2**, **ABBV 4/4**. UNH and PG repeat across adjacent dates; *not* independent intraday signals. The ninth symbol-day and the seventh distinct symbol were not in the capped example lines. MCD and WMT display multiple nearby levels; their `role_aligned=1` is satisfied by the **resistance/short** level, not their logged **support/long** countertrend level.
+
+**What to do next:** do **not** rerun these same five days solely to recount them, increase Top10 in the main trading algorithm, or relax D1/BPU rules. A **separate read-only shadow candidate selection** can now compare the existing fixed Top10 liquidity order with a *conditional, as-of, D1-qualified shortlist* from the same already fetched Top50. That prioritizes stocks with proven D1 provenance, nearby confirmed support-long or resistance-short and sided G/L trend while retaining a **10-stock cap and one historical data request**. Still **no M5, orders, TVX or trades** until that watchlist policy is specified and independently validated. Alternative: first reconcile D1 source labels and independently expert-annotated US-stock examples, then select an M5 cohort.
+
+**Cloud action now: NONE.** The last full50 Python source in `Qwct-Universe-Research` ran successfully and need not be reinstalled. Existing `Qwct-BSU-Research` and `Qwct-LEAN-Test` untouched.
+
+
 ## 2026-10-15: REAL native BSU ROLE check complete — zero eligible in watchlist, next full50 check ready
 
 Actual native **QuantConnect LEAN v2.5.0.0.18179 run `06f195f83e949fa1a1e65ca77885aed0`**, April 1–5 2024; 32.41s, no runtime errors or orders. **This confirms the previous role-audit code ran in genuine Cloud.** Prior funnel remained stable: stage1 **250 candidate-stock-days**, **246 D1 ready**, **227 stage2 passed**, **50 top-10 watchlist stock-days**, **3** near-level watchlist stock-days.
@@ -20,7 +45,7 @@ A new GitHub version of [research/universe_cloud/main.py](https://github.com/tbs
 
 Additional summary line `QWCT UNIVERSE FULL50` reports **stage2_symbol_days**, **near_symbol_days**, **scenario_aligned_symbol_days**, **bsu_role_aligned_symbol_days**, **outside10_near_symbol_days**, **outside10_bsu_role_aligned_symbol_days**, **unique_near_tickers**, **unique_bsu_role_aligned_tickers**. `QWCT UNIVERSE OUTSIDE10` logs only up to 8 concrete point-in-time D1 role+trend-aligned outside-10 ticker examples, if any; examples still **not M5 or actual trades**. The baseline summary should remain **identical** to run `06f195...` unless market data/research environment changes.
 
-**Only replace `main.py` in the EXISTING `Qwct-Universe-Research` project**, and rerun **2024-04-01..2024-04-05**. Leave the other four Cloud files, `Qwct-BSU-Research`, and original `Qwct-LEAN-Test` unchanged. Paste **`QWCT UNIVERSE SUMMARY`**, **`QWCT UNIVERSE FULL50`**, and any **`QWCT UNIVERSE OUTSIDE10`** lines. Pure GitHub CI **365 tests passed**, but this new *full50 output* has **not** yet been confirmed in native Cloud.
+**HISTORICAL instruction, already COMPLETED in native Cloud run `5497a648...`:** The earlier full50 comparison required only `main.py` and the same five dates. Leave the other four Cloud files, `Qwct-BSU-Research`, and original `Qwct-LEAN-Test` unchanged. Paste **`QWCT UNIVERSE SUMMARY`**, **`QWCT UNIVERSE FULL50`**, and any **`QWCT UNIVERSE OUTSIDE10`** lines. Pure GitHub CI **365 tests passed**, but this new *full50 output* has **not** yet been confirmed in native Cloud.
 
 **Next decision after that result:** If original role+trend D1 candidates exist outside top10, assess the existing screener capacity as a potential coverage bottleneck **without automatically expanding subscriptions**. If none exist, the small premarket period/sample or structural level/trend filters are the bottleneck; compare rules with independently labeled chart examples before modifying any canonical filter. Do not connect M5 to a zero-eligible day list.
 

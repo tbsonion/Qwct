@@ -25,8 +25,10 @@ CASES = [
 ]
 CASE_CHOICE = ["AON", "DELL"]  # Change to ["AON","DELL","CRM","ABT"] to inspect all.
 qb = QuantBook()
-qb.set_start_date(2023, 7, 1)
-qb.set_end_date(2024, 7, 1)
+# Research history requests cannot fetch dates AFTER qb start/time.
+# Keep QuantBook as-of July 1 2024 so June 2024 is historical.
+qb.set_start_date(2024, 7, 1)
+qb.set_end_date(2024, 7, 2)
 qb.set_time_zone("America/New_York")
 assets = {
     t: qb.add_equity(t, Resolution.MINUTE, fill_forward=False,

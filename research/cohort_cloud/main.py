@@ -577,6 +577,8 @@ class QwctM5CohortResearch(QCAlgorithm):
         distance = abs(extreme-level)/tick
         if case["best_ticks"] is None or distance < case["best_ticks"]:
             case["best_ticks"] = distance
+            case["best_signed"] = (extreme-level)/tick
+            case["best_at"] = at.strftime("%H:%M")
         old = detector.state.phase
         try:
             state = detector.on_bar(ClosedBar(
@@ -661,6 +663,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                 f"QWCT COHORT NEAREST {c['day']} {c['ticker']} "
                 f"{c['side']} basis={c['basis']} "
                 f"m5={c['n_m5']} closest_ticks={c['best_ticks']} "
+                f"signed={c['best_signed']:.2f} at={c['best_at']} "
                 f"bpu1={c['bpu1']} bpu2={c['bpu2']}")
         for event in self.events:
             self.log(event + "; CLOSED M5 ONLY / NO FILLS")

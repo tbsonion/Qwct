@@ -498,6 +498,80 @@ class QwctBsuResearch(QCAlgorithm):
             elif result.phase == "invalidated":
                 self.counts["invalid_bpu2_attempts"] += 1
 
+    def _audit_native_sec_preclose(self, proof):
+        """Retrospective, read-only native SECOND TradeBar as-of-cutoff audit.
+
+        This runs at backtest END, not at the historical cutoff second.
+        Data strictly later than BPU2-30s is excluded from every computed
+        value. It is not a real-time TVX observation, quote or fill.
+        """
+        (ticker, event_at, side, pivot, born, confirmed, tick, first,
+         closed_bpu2, stop, luft) = proof
+        sym = next((s for s in self.symbols_to_scan
+                    if s.value == ticker), None)
+        if sym is None:
+            return "NO_SYMBOL", 0, None, None, None
+        bpu1_end = datetime.strptime(first[0], "%Y-%m-%d %H:%M")
+        bpu2_end = datetime.strptime(event_at, "%Y-%m-%d %H:%M")
+        if bpu2_end - bpu1_end != timedelta(minutes=5):
+            return "BAD_BPU_TIMING", 0, None, None, None
+        cutoff = bpu2_end - timedelta(seconds=30)
+        # Python history date-range arguments are algorithm-local ET;
+        # the upper bound is exclusive. We still enforce <= cutoff
+        # on every actual TradeBar END TIME, regardless of API behavior.
+        hist_end = cutoff + timedelta(seconds=1)
+        try:
+            rows = [
+                bar for packet in self.history[TradeBar](
+                    [sym], bpu1_end, hist_end, Resolution.SECOND,
+                    fill_forward=False,
+                    data_normalization_mode=DataNormalizationMode.RAW)
+                for key, bar in packet.items() if key == sym
+            ]
+        except Exception as exc:
+            return "HISTORY_ERROR:" + str(exc)[:90], 0, None, None, None
+        selected = []
+        for bar in rows:
+            try:
+                start = et(bar.time)
+                end = et(bar.end_time)
+                if (end <= et(bpu1_end) or end > et(cutoff)
+                        or end-start != pd.Timedelta(seconds=1)):
+                    return "INVALID_1S_INTERVAL", len(selected), None, None, None
+                if (not isfinite(float(bar.volume))
+                        or float(bar.volume) <= 0
+                        or not all(isfinite(float(v)) and float(v) > 0
+                                   for v in (bar.low, bar.high, bar.close))):
+                    return "INVALID_1S_TRADE", len(selected), None, None, None
+                selected.append(bar)
+            except (ValueError, TypeError, OverflowError) as exc:
+                return "BAD_1S_TRADE:" + str(exc)[:65], len(selected), None, None, None
+        if not selected:
+            return "NO_SECOND_TRADES", 0, None, None, None
+        selected.sort(key=lambda bar: et(bar.end_time))
+        if any(et(b.end_time) <= et(a.end_time)
+               for a, b in zip(selected, selected[1:])):
+            return "DUPLICATE_1S_TIMESTAMPS", len(selected), None, None, None
+        if et(selected[-1].end_time) != et(cutoff):
+            return "NO_TRADE_AT_EXACT_CUTOFF", len(selected), None, None, None
+        high = max(float(bar.high) for bar in selected)
+        low = min(float(bar.low) for bar in selected)
+        last = float(selected[-1].close)
+        # A partial 4m30s BPU2 trade range must be contained in the
+        # independently observed completed native RAW M5 OHLC.
+        if (low < closed_bpu2[2]-1e-7 or
+                high > closed_bpu2[1]+1e-7):
+            return "M5_SEC_RAW_MISMATCH", len(selected), low, high, last
+        tol = tick / 2
+        if side == "short":
+            okay = (high <= first[2] + tol
+                    and high >= pivot - luft - tol)
+        else:
+            okay = (low >= first[3] - tol
+                    and low <= pivot + luft + tol)
+        return ("RETROSPECTIVE_RULE_PASS" if okay
+                else "RETROSPECTIVE_RULE_FAIL"), len(selected), low, high, last
+
     def on_end_of_algorithm(self):
         self.log(
             "BSU PPHL COMPARE "
@@ -548,6 +622,28 @@ class QwctBsuResearch(QCAlgorithm):
                 f"BSU PPHL OFFGRID {symbol} {side} "
                 f"origin={born[:16]} RAW={price:.6f} "
                 f"ref_tick={tick:.6f} SKIPPED; NO ORDERS")
+        # Request native SECOND trade bars only for completed strict
+        # BPU2 events inside the previously configured bounce window.
+        # This uses retrospective history with an explicit -30s cutoff,
+        # not an event-driven live preclose signal or executable quote.
+        sec_summary = Counter()
+        for proof in self.pphl_in_window_proofs[:12]:
+            label, count, low, high, last = self._audit_native_sec_preclose(proof)
+            sec_summary[label.split(":")[0]] += 1
+            symbol, when = proof[0], proof[1]
+            vals = (f"low={low:.4f} high={high:.4f} "
+                    f"last={last:.4f}" if low is not None and high is not None
+                    and last is not None else "OHLC=UNKNOWN")
+            self.log(
+                f"BSU PPHL SEC RETRO {symbol} BPU2={when} "
+                f"seconds={count} status={label} {vals}; "
+                "historical as-of cutoff only / NO REAL-TIME TVX / NO ORDERS")
+        if len(self.pphl_in_window_proofs) > 12:
+            sec_summary["PROOFS_NOT_QUERIED"] += len(self.pphl_in_window_proofs) - 12
+        self.log(
+            f"BSU PPHL SEC SUMMARY cases={len(self.pphl_in_window_proofs)} "
+            f"status_counts={dict(sec_summary)}; "
+            "SEC trade prices, not execution quotes; NO ORDERS")
         best = sorted(self.case_nearest.values(), key=lambda r: abs(r[0]))[:8]
         self.log("BSU RESEARCH SUMMARY "
                  f"symbols_warmed={self.counts['symbols_warmed']} "

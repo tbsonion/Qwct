@@ -219,3 +219,95 @@ def test_cloud_role_diagnostics_and_file_limits():
                   "bsu_role_conflict_level_days=", "BSU_ROLE_MISMATCH"):
         assert token in s
     assert len(s.encode("utf-8")) < 32_000
+
+
+def test_full50_audit_uses_existing_stage2_results_without_changing_top10():
+    """Simulated native snapshot: one conflicting Top10 and one valid outside10.
+
+    This unit test only verifies ranking and counters, not LEAN history
+    availability or the existence of such a real-market outside10 stock.
+    """
+    from collections import Counter
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    class Sym:
+        def __init__(self, value):
+            self.value = value
+
+    day = date(2024, 4, 1)
+    symbols = tuple(Sym("T%02d" % i) for i in range(12))
+    observations = {}
+    for i, symbol in enumerate(symbols):
+        observations[symbol.value] = {
+            "stage2": True, "price": 100.0, "atr": 2.0,
+            "volume": 1_000_000, "eligible": 2,
+            "near": 1 if i in (0, 11) else 0,
+            "aligned": 1 if i in (0, 11) else 0,
+            "role_aligned": 1 if i == 11 else 0,
+            "role_conflict": 1 if i == 0 else 0,
+            "examples": [],
+        }
+    observed = []
+    requests = []
+    zone = ZoneInfo("America/New_York")
+    algo = SimpleNamespace(
+        time=datetime(2024, 4, 1, 9, 29, tzinfo=zone),
+        cfg=StrategyConfig(), screen_by_day={day: symbols},
+        covered_days=set(), counts=__import__("collections").Counter(),
+        rejections=Counter(), example_rows=[], stock_day_ids=set(),
+        aligned_day_ids=set(), bsu_role_aligned_day_ids=set(),
+        aligned_distinct_tickers=set(), role_aligned_distinct_tickers=set(),
+        full50_near_tickers=set(), full50_bsu_role_tickers=set(),
+        outside10_examples=[], log=observed.append,
+    )
+    def histories(members, session):
+        requests.append((members, session))
+        return {symbol: symbol.value for symbol in members}
+    algo._history_asof = histories
+    algo._native_frame = lambda raw, session: raw
+
+    tree = ast.parse(APP.read_text(encoding="utf-8"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+               and n.name == "QwctUniverseResearch")
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef)
+                  and n.name == "_prepare")
+    env = {
+        "et": lambda t: pd.Timestamp(t),
+        "classify_snapshot": lambda raw, cfg, session: observations[raw],
+    }
+    exec(compile(ast.Module(body=[method], type_ignores=[]),
+                 str(APP), "exec"), env)
+    env["_prepare"](algo)
+    assert len(requests) == 1
+    assert requests[0][0] is symbols
+    assert algo.counts["stage2_pass"] == 12
+    assert algo.counts["watchlist_days"] == 10
+    assert algo.counts["watch_with_trend_aligned_bounce"] == 1
+    assert algo.counts["watch_with_bsu_role_aligned"] == 0
+    assert algo.counts["full50_near_symbol_days"] == 2
+    assert algo.counts["full50_scenario_aligned_symbol_days"] == 2
+    assert algo.counts["full50_bsu_role_aligned_symbol_days"] == 1
+    assert algo.counts["outside10_near_symbol_days"] == 1
+    assert algo.counts["outside10_bsu_role_aligned_symbol_days"] == 1
+    assert len(algo.stock_day_ids) == 10
+    assert len(algo.outside10_examples) == 1
+    assert algo.outside10_examples[0][1] == "T11"
+    assert algo.outside10_examples[0][2] == 12
+    # Already prepared once: a duplicate callback cannot double count.
+    env["_prepare"](algo)
+    assert len(requests) == 1
+
+
+def test_full50_reports_stay_d1_only_and_under_cloud_limit():
+    code = APP.read_text(encoding="utf-8")
+    assert "QWCT UNIVERSE FULL50 " in code
+    assert "QWCT UNIVERSE OUTSIDE10 " in code
+    assert "bsu_role_aligned_symbol_days=" in code
+    assert "outside10_bsu_role_aligned_symbol_days=" in code
+    assert "unique_bsu_role_aligned_tickers=" in code
+    assert len(code.encode("utf-8")) < 32_000
+    assert code.count("self._history_asof(members, day)") == 1
+    for forbidden in ("self.market_order(", "self.limit_order(",
+                      "self.set_holdings(", "self.buy(", "self.sell("):
+        assert forbidden not in code

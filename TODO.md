@@ -1,5 +1,15 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — Native QWCT 2.3 result, next isolated test
+
+- [x] **Native Cloud run `e52e0c836a0cd349d078dc64775f82bd`**, **Apr 1–5** (user ran this earlier window rather than Apr 8–19), LEAN v2.5.0.0.18179; five same-day Fundamental callbacks; no missing dates in this period; previous D1 Shadow `250/246/227`, `9` symbol-days, `7` source fingerprints, `0` overlap reproduced.
+- [x] **RAW-only origin audit**: `raw_only_pass=8 fail=1 unknown=0` across nine stock-day rows; 6 distinct passing original pivots, 1 distinct failing one. **WMT** on Apr 2 has RAW high `61.565` (Mar 12) vs observed current native `0.01` tick; mark FAIL, do not round/fabricate.
+- [x] **Log cap resolved in GitHub (native rerun pending):** QuantConnect Free cut the native output at 10KB, so research `main.py` now defaults to compact logs. Optional `verbose_logs=1` restores historic noisy diagnostic rows; **leave off for Free**. No change to main strategy, screener, selection, requests, or orders.
+- [ ] **Still P0: April 15 missing universe event** — not checked by Apr 1–5. Replace ONLY [Cloud research `main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) and use `scan_start=2024-04-08` and `scan_end=2024-04-19`. Return `QWCT UNIVERSE TIMING SUMMARY/SELECT/SCAN` and `QWCT ORIGIN SUMMARY/DETAIL`. No invented Apr 15 candidates.
+- [ ] **Still P0: independent SCALED_RAW/tick/corporate-action provenance and manual BSU** before M5; RAW-only PASS not final approval, WMT half-cent issue unresolved.
+- [ ] **CI check**: confirm newest GitHub Actions Pure Strategy Checks result. Native cloud proof supersedes unit mocks only for the already tested *earlier* 5-day revision, not the newest compact-log change.
+
+
 ## 2026-10-15 — QWCT 2.3: READ-ONLY RAW swing origins + Fundamental callback timing
 
 - [x] **Reuse-first changes on GitHub main:** update only `research/universe_cloud/main.py`; use current `strategy/levels.py` (`_confirmed_swings`, `native_cluster_tolerance`) with already fetched RAW D1, native `symbol_properties.minimum_price_variation`, no new subscriptions or orders; preserve legacy and shadow criteria.

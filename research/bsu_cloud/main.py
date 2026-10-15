@@ -30,9 +30,9 @@ def et(value):
 class QwctBsuResearch(QCAlgorithm):
     def initialize(self):
         start = datetime.strptime(
-            self.get_parameter("scan_start") or "2024-06-08", "%Y-%m-%d")
+            self.get_parameter("scan_start") or "2024-03-16", "%Y-%m-%d")
         end = datetime.strptime(
-            self.get_parameter("scan_end") or "2024-07-19", "%Y-%m-%d")
+            self.get_parameter("scan_end") or "2024-04-26", "%Y-%m-%d")
         if end < start or (end - start).days > 45:
             raise ValueError("Research scan requires a 0..45 day window")
         self.set_start_date(start.year, start.month, start.day)
@@ -50,6 +50,16 @@ class QwctBsuResearch(QCAlgorithm):
         # Keep genuine completed BPU2 candle evidence separate from
         # the small real-time log budget; no reconstructed OHLC/fills.
         self._bpu2_proofs = []
+        # Completely independent comparison: native LEAN PPHL D1 origins
+        # absent from the existing 2-swing Qwct level observer set.
+        # Never passes candidates to the original signal or order path.
+        self._raw_d1 = {}
+        self.pphl_shadow = {}
+        self.pphl_counts = Counter()
+        self.pphl_rejects = Counter()
+        self.pphl_unique = set()
+        self.pphl_only_unique = set()
+        self.pphl_samples_logged = 0
         # Deliberately fixed first test universe. This is NOT a marketwide
         # point-in-time screener and does not certify other US equities.
         for name in ("MSFT", "AMZN", "AAPL"):
@@ -71,6 +81,8 @@ class QwctBsuResearch(QCAlgorithm):
             f"BSU RESEARCH ACTIVE {start.date()}..{end.date()} "
             "MSFT,AMZN,AAPL; ALL ORDERS DISABLED; "
             "RAW D1/RAW native M5; no Bounce Score; TVX NOT tested")
+        self.debug("BSU RESEARCH PPHL SHADOW: native D1 pivots,"
+                   " single-swing vs Qwct clustered origins; no orders")
 
     def _closed_daily(self, symbol):
         raw = [
@@ -110,10 +122,90 @@ class QwctBsuResearch(QCAlgorithm):
         if not (isfinite(float(d1["atr14"].iloc[-1]))
                 and float(d1["atr14"].iloc[-1]) > 0):
             raise ValueError("native daily ATR not ready")
+        self._raw_d1[symbol] = raw
         return d1
+
+    def _pphl_candidates(self, sym, d1, states, tick, session):
+        """Read-only native PPHL pivot events confirmed using closed RAW D1.
+
+        PPHL's current indicator output is +1 (new high), -1 (new
+        low), 2 (both), 0 (none). Unlike reading final ZigZag pivots,
+        this records an event only AFTER it is confirmed by the k-th
+        right-side daily bar. Never infer the pivot at its origin date.
+        The detector source is LEAN's PivotPointsHighLow, not a homemade
+        high/low pivot implementation.
+        """
+        from AlgorithmImports import PivotPointsHighLow
+
+        k = self.cfg.swing_k
+        native = PivotPointsHighLow(k, k, 100)
+        source = self._raw_d1[sym]
+        found = []
+        # Streaming native updates establish the *confirmation* timestamp.
+        for i, daily in enumerate(source):
+            native.update(daily)
+            if i < 2 * k or not native.is_ready:
+                continue
+            event = int(round(float(native.current.value)))
+            if event not in (-1, 1, 2):
+                continue
+            pivot_index = i - k
+            orig = d1.iloc[pivot_index]
+            origin_end = et(orig["bar_end"])
+            confirmed_at = et(daily.end_time)
+            if (origin_end >= confirmed_at
+                    or confirmed_at >= et(self.time)):
+                raise ValueError("PPHL causal confirmation invariant violated")
+            for kind in (("short",) if event == 1 else
+                         ("long",) if event == -1 else ("short", "long")):
+                price = float(orig["high" if kind == "short" else "low"])
+                if not isfinite(price) or price <= 0:
+                    self.pphl_rejects["nonfinite PPHL origin price"] += 1
+                    continue
+                if abs(price - round(price / tick) * tick) > tick * 1e-5:
+                    self.pphl_rejects["off-grid native PPHL origin"] += 1
+                    continue
+                found.append((kind, price, origin_end, confirmed_at))
+        # The most recent 100 pivot origins, consistent with PPHL's
+        # documented bounded history. Report any discarded old sources.
+        if len(found) > 100:
+            self.pphl_counts["older_pivots_skipped"] += len(found) - 100
+            found = found[-100:]
+        out = []
+        last_atr = float(d1["atr14"].iloc[-1])
+        for side, price, born, confirmed in found:
+            key = (sym.value, side, born.isoformat(), round(price / tick))
+            self.pphl_unique.add(key)
+            self.pphl_counts["level_days"] += 1
+            # Compare the actual raw pivot origin, not a rounded
+            # cluster median. An equal price at another origin time is
+            # a different historical swing.
+            matched = any(
+                x["side"] == side
+                and x["origin_time"] == born.isoformat()
+                and abs(x["origin"] - price) <= tick * 1e-5
+                for x in states)
+            if matched:
+                self.pphl_counts["overlap_level_days"] += 1
+                continue
+            self.pphl_counts["only_level_days"] += 1
+            self.pphl_only_unique.add(key)
+            out.append({
+                "symbol": sym.value, "session": str(session),
+                "origin": price, "origin_time": born.isoformat(),
+                "confirmed_at": confirmed.isoformat(),
+                "side": side, "tick": tick,
+                "detector": BsuDetector(
+                    self.cfg, price, side, atr_value=last_atr,
+                    tick_size=tick, bsu_ts=born.to_pydatetime()),
+                "bpu1_strict": False,
+            })
+        return out
 
     def _prepare_session(self):
         self.active.clear()
+        self.pphl_shadow.clear()
+        self._raw_d1.clear()
         session = et(self.time).date()
         count = 0
         for sym in self.symbols_to_scan:
@@ -159,9 +251,20 @@ class QwctBsuResearch(QCAlgorithm):
                 self.active[sym] = states
                 count += len(states)
                 self.counts["symbols_warmed"] += 1
+                # The independent PPHL comparison can fail without
+                # suppressing a proven Qwct baseline observation.
+                try:
+                    self.pphl_shadow[sym] = self._pphl_candidates(
+                        sym, d1, states, tick, session)
+                    self.pphl_counts["prepared_symbol_days"] += 1
+                except Exception as shadow_error:
+                    self.pphl_shadow[sym] = []
+                    self.pphl_rejects[
+                        "PPHL_FAIL: " + str(shadow_error)[:95]] += 1
             except Exception as exc:
                 # Fail closed for this symbol/day. Do not fabricate candles.
                 self.active[sym] = []
+                self.pphl_shadow[sym] = []
                 self.rejections[str(exc)[:75]] += 1
         self.counts["bsu_observer_days"] += count
 
@@ -174,8 +277,63 @@ class QwctBsuResearch(QCAlgorithm):
             if (getattr(event, "type", None) == SplitType.SPLIT_OCCURRED
                     and symbol in self.active):
                 self.active[symbol] = []
+                self.pphl_shadow[symbol] = []
                 self._quarantined.add((symbol, et(self.time).date()))
                 self.rejections["LEAN split occurred: day quarantined"] += 1
+
+    def _on_pphl_m5(self, bar, current):
+        # Shadow candidates use the *same already validated native
+        # consolidated TradeBar* as the main research detector.
+        for case in self.pphl_shadow.get(bar.symbol, []):
+            det = case["detector"]
+            if det.state.phase in ("invalidated", "bpu2_confirmed"):
+                det.reset()
+                case["bpu1_strict"] = False
+            self.pphl_counts["only_m5_checks"] += 1
+            side, pivot, tick = case["side"], case["origin"], case["tick"]
+            extreme = float(bar.low if side == "long" else bar.high)
+            old = det.state.phase
+            try:
+                result = det.on_bar(ResearchBar(
+                    ts=current.to_pydatetime(),
+                    open=float(bar.open), high=float(bar.high),
+                    low=float(bar.low), close=float(bar.close),
+                    volume=float(bar.volume), timeframe="M5"))
+            except (TypeError, ValueError) as exc:
+                self.pphl_rejects["PPHL_M5_FAIL: " + str(exc)[:60]] += 1
+                continue
+            if result.phase == "bpu1" and old != "bpu1":
+                self.pphl_counts["only_bpu1_detector"] += 1
+                case["bpu1_strict"] = abs(extreme - pivot) <= tick * 1e-5
+                if case["bpu1_strict"]:
+                    self.pphl_counts["only_bpu1_strict"] += 1
+                    if self.pphl_samples_logged < 5:
+                        self.log(
+                            f"BSU PPHL ONLY BPU1 {case['symbol']} "
+                            f"{current:%Y-%m-%d %H:%M} {side} "
+                            f"origin={pivot:.4f} "
+                            f"confirmed={case['confirmed_at'][:16]}; NO ORDERS")
+                        self.pphl_samples_logged += 1
+            elif result.phase == "bpu2_confirmed" and old != "bpu2_confirmed":
+                self.pphl_counts["only_bpu2_detector"] += 1
+                if not case["bpu1_strict"]:
+                    continue
+                self.pphl_counts["only_bpu2_strict"] += 1
+                preclose_time = (current - pd.Timedelta(seconds=30)).time()
+                allowed = any(
+                    time.fromisoformat(a) <= preclose_time
+                    < time.fromisoformat(b)
+                    for a, b in self.cfg.session_windows_bounce)
+                if allowed:
+                    self.pphl_counts["only_bpu2_strict_in_window"] += 1
+                if self.pphl_samples_logged < 5:
+                    self.log(
+                        f"BSU PPHL ONLY BPU2 {case['symbol']} "
+                        f"{current:%Y-%m-%d %H:%M} {side} "
+                        f"origin={pivot:.4f} "
+                        f"window={'YES' if allowed else 'NO'}; "
+                        "NO SEC TVX / NO ORDERS")
+                    self.pphl_samples_logged += 1
 
     def _on_m5(self, bar):
         sym = bar.symbol
@@ -192,6 +350,7 @@ class QwctBsuResearch(QCAlgorithm):
             self.rejections[reason] += 1
             return
         self.counts["native_m5_bars"] += 1
+        self._on_pphl_m5(bar, current)
         for case in self.active[sym]:
             detector = case["detector"]
             if detector.state.phase in ("invalidated", "bpu2_confirmed"):
@@ -300,6 +459,25 @@ class QwctBsuResearch(QCAlgorithm):
                 self.counts["invalid_bpu2_attempts"] += 1
 
     def on_end_of_algorithm(self):
+        self.log(
+            "BSU PPHL COMPARE "
+            f"prepared_days={self.pphl_counts['prepared_symbol_days']} "
+            f"pphl_level_days={self.pphl_counts['level_days']} "
+            f"overlap={self.pphl_counts['overlap_level_days']} "
+            f"pphl_only_level_days={self.pphl_counts['only_level_days']} "
+            f"unique_pphl_origins={len(self.pphl_unique)} "
+            f"unique_pphl_only_origins={len(self.pphl_only_unique)} "
+            f"pphl_only_M5_checks={self.pphl_counts['only_m5_checks']} "
+            f"pphl_only_BPU1={self.pphl_counts['only_bpu1_detector']} "
+            f"pphl_only_BPU1_strict={self.pphl_counts['only_bpu1_strict']} "
+            f"pphl_only_BPU2={self.pphl_counts['only_bpu2_detector']} "
+            f"pphl_only_BPU2_strict={self.pphl_counts['only_bpu2_strict']} "
+            f"pphl_only_strict_in_window="
+            f"{self.pphl_counts['only_bpu2_strict_in_window']} "
+            f"older_pivots_skipped="
+            f"{self.pphl_counts['older_pivots_skipped']} "
+            f"pphl_errors={dict(self.pphl_rejects.most_common(3))}; "
+            "NO SEC TVX / NO ORDERS")
         best = sorted(self.case_nearest.values(), key=lambda r: abs(r[0]))[:8]
         self.log("BSU RESEARCH SUMMARY "
                  f"symbols_warmed={self.counts['symbols_warmed']} "

@@ -2,6 +2,26 @@
 
 **Status (2026-10-14): first native LEAN Cloud smoke successful** on 2024-03-16–2024-04-26 with real M5 data. It observed **8 BPU1**, **3 closed-M5 BPU2**, **5 invalid BPU2 attempts**, **416 candidate level-days** across MSFT/AMZN/AAPL and **0 orders**. This does not prove -30s TVX, profitability, or a fully validated Gerchik setup. The main trading project `Qwct-LEAN-Test` remains unchanged.
 
+## LATEST VERIFIED: native SEC retrospective Cloud run b6609c888b81d0edccb9a96134934783
+
+**This is the current result. Older sections below are a chronological research archive; their requests to repeat historical backtests or verify SEC access are superseded by this section.**
+
+Real **QuantConnect LEAN 2.5.0.0.18179**, 2024-03-16..2024-04-26, confirmed `Resolution.SECOND` historical TradeBar access, the previous native D1 PPHL/M5 sample, and no Python-runtime errors. No orders were sent. It did **not** observe an event-driven, executable -30s TVX or profit.
+
+| PPHL-only strict BPU2 inside 12:00–13:30 ET | SEC trade bars in BPU2 before -30s cutoff | Cutoff status (trade prices only) | Interpretation |
+|---|---:|---|---|
+| **AMZN 2024-03-21 13:15 short**, BSU 179.53 | **135** | `NO_TRADE_AT_EXACT_CUTOFF` | **UNKNOWN**; no bar ending at 13:14:30, not proof that the previous trade or executable bid/ask was unavailable |
+| **AAPL 2024-04-03 12:20 long**, BSU 170.28 | **141** | `RETROSPECTIVE_RULE_PASS` (low 170.345, high 170.440, last 170.360) | Historical seconds through 12:19:30 did not violate the limited BPU2 extreme rule; **not a certified trade** |
+| **AAPL 2024-04-12 12:25 long**, BSU 175.82 | **235** | `RETROSPECTIVE_RULE_PASS` (low 175.830, high 176.220, last 176.030) | Historical seconds through 12:24:30 did not violate the limited BPU2 extreme rule; **not a certified trade** |
+
+The count of second-resolution `TradeBar` rows **is not a count of continuous clock seconds**, because `fill_forward=False` omits seconds without trades. The AMZN case cannot be called a fail or win based on no exact-second trade; a trading rule may use the most recent observed price subject to an explicitly justified age/staleness rule. We have **not** selected such a rule and have **not** upgraded AMZN to PASS. The two AAPL `PASS` statuses only test this research detector's partial BPU2 price constraints; **they do not prove valid Gerchik BSU strength, a premarket plan, trend agreement, 4R daily room, 3R net reward, realistic bid/ask or fill**.
+
+Native PPHL provenance remains **3 unique symbol+date+side+origin episodes**, all with exact BPU1, closed-M5 BPU2 and the existing historical window; **the original Qwct clustered baseline still finds zero** in-window strict BPU2. There were **87 pivot-day off-grid exclusions from only 3 unique RAW D1 origins**, not 87 different bad stocks.
+
+**Next decision, not another date sweep:** use the already implemented `levels_for_session`, native RAW D1 history, and original Qwct D1 model/feature checks for a read-only **as-of premarket filter matrix** on the **two AAPL candidates and one AMZN unknown**. Mark independently unverifiable conditions `UNKNOWN`; distinguish the old 2-touch cluster eligibility from an alternative single-PivotPointsHighLow source so that a PPHL-only setup is not misreported as Qwct-trade-approved. Then inspect independently labeled Gerchik D1 chart examples before changing strategy rules. The real-time SEC data handler and simulated fills remain OUT of scope until those filters are evaluated.
+
+**Cloud files:** NO update is required to reproduce this already successful native SEC backtest. Do not replace the current standalone research `main.py` or any main-project Python files just to repeat these same results.
+
 ## What to do in the empty project
 
 In the new **Qwct-BSU-Research** project, replace the default `main.py` and create the `strategy` folder with the following six **unchanged, canonical Qwct** modules (7 Python files total):
@@ -22,13 +42,13 @@ For the current native PPHL A/B smoke test, default dates are back to **2024-03-
 
 ## QuantConnect Cloud 32,000-character main.py limit: resolved
 
-Cloud rejected a previous main.py of **35,714 characters** before the native SEC backtest could run. The research main.py was **reduced to 31,319 characters** by removing only explanatory standalone comments, shortening docstrings and trimming excess blank lines. PPHL, SEC history, BPU, logging, settings and no-orders behavior are unchanged. A GitHub test now checks both character and UTF-8 byte size (<=32,000) and parses the source. **The shortened SEC version still needs a native LEAN Cloud run**; a successful GitHub test alone cannot prove that historical second-level data is accessible.
+Cloud rejected a previous main.py of **35,714 characters** before the native SEC backtest could run. The research main.py was **reduced to 31,319 characters** by removing only explanatory standalone comments, shortening docstrings and trimming excess blank lines. PPHL, SEC history, BPU, logging, settings and no-orders behavior are unchanged. A GitHub test now checks both character and UTF-8 byte size (<=32,000) and parses the source. **The shortened SEC version has now passed the native LEAN Cloud run above**; a successful GitHub test alone cannot prove that historical second-level data is accessible.
 
 **Action:** replace **only** Cloud `Qwct-BSU-Research/main.py` with [the current shortened source](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py), Save, then Backtest 2024-03-16..2024-04-26. No other source files need replacing.
 
 ## Next read-only Cloud test: native SECOND history 30-second-preclose check
 
-The **three completed M5 proof pairs are confirmed** from the native LEAN run below. The sole newer change in [research/bsu_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) is a **historical native ONE-SECOND TradeBar audit of those same three cases**, using the official LEAN typed History API. **The one-second branch has not yet been verified in native Cloud**; the full prior PPHL baseline and real OHLC evidence have.
+The **three completed M5 proof pairs are confirmed** from the native LEAN run below. The sole newer change in [research/bsu_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) is a **historical native ONE-SECOND TradeBar audit of those same three cases**, using the official LEAN typed History API. **The one-second branch is now confirmed by the native Cloud result at the top**; the full prior PPHL baseline and real OHLC evidence have.
 
 - Calls `self.history[TradeBar]([symbol], bpu1_end, bpu2_end-29s, Resolution.SECOND, fill_forward=False, data_normalization_mode=DataNormalizationMode.RAW)` **only for the 3 previously found strict+time-window events** (capped at 12) at backtest END. Every observed TradeBar **end time must be <= BPU2 close minus 30 seconds**. The end datetime is one second after the intended cutoff solely because API date-ranges can be end-exclusive; an additional time guard prevents any future sample.
 - Verifies that native SEC TradeBars are genuine **one-second, positive-volume** trades with strictly increasing end times; requires an actual trade bar ending **exactly** at the -30s cutoff, otherwise logs `NO_TRADE_AT_EXACT_CUTOFF`. Missing history is reported as `NO_SECOND_TRADES` or `HISTORY_ERROR:`, **never replaced by minute/OHLC interpolation**.

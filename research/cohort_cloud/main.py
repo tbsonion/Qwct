@@ -1,4 +1,4 @@
-"""QWCT 2.6 read-only dynamic D1->M5 cohort; never place orders."""
+"""QWCT 2.8 read-only D1 source-to-native M5 geometry audit; no orders."""
 from AlgorithmImports import *
 from collections import Counter
 from datetime import datetime, timedelta, time
@@ -264,7 +264,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                          self.time_rules.after_market_close(anchor, 0),
                          self._finish)
         self.debug(
-            f"QWCT 2.6 COHORT ACTIVE {start.date()}..{end.date()} "
+            f"QWCT 2.8 BSU AUDIT ACTIVE {start.date()}..{end.date()} "
             f"native Fundamental50 + D1 Shadow10; timing={self.timing_mode}; "
             "after-close RAW M1 -> native M5 replay; NO M5-at-open, "
             "NO SEC / NO TVX / NO ORDERS")

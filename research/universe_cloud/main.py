@@ -20,6 +20,17 @@ def et(value):
     return t.tz_localize(ET) if t.tzinfo is None else t.tz_convert(ET)
 
 
+def d1_shadow_shortlist(passed, limit):
+    """Read-only D1-first max-N shadow; retains original liquidity rank."""
+    if type(limit) is not int or limit <= 0:
+        raise ValueError("shadow capacity must be a positive integer")
+    qualified = [
+        row for row in passed
+        if row[2].get("stage2") is True and row[2].get("role_aligned", 0) > 0
+    ]
+    return sorted(qualified, key=lambda row: (row[0], row[1].value))[:limit]
+
+
 def classify_snapshot(d1, cfg, session):
     """Use existing Qwct D1 screener, levels, and native-SMA trend rules."""
     if len(d1) < 60 or not d1.index.is_unique:
@@ -32,7 +43,7 @@ def classify_snapshot(d1, cfg, session):
     if not stage2:
         return dict(stage2=False, price=price, atr=a, volume=v,
                     eligible=0, near=0, aligned=0, role_aligned=0,
-                    role_conflict=0, examples=[])
+                    role_conflict=0, shadow_levels=[], examples=[])
     levels = [x for x in levels_for_session(d1, session, cfg)
               if (x.source == "swing_cluster"
                   and x.kind in ("support", "resistance")
@@ -57,6 +68,11 @@ def classify_snapshot(d1, cfg, session):
             if (x.kind == "support" and side == "long"
                     or x.kind == "resistance" and side == "short"):
                 role_aligned.append((x, side))
+    shadow_levels = [
+        (round(x.price, 4), x.kind, side, x.touches,
+         round(x.strength, 2), str(x.valid_from), str(x.formed_at))
+        for x, side in role_aligned
+    ]
     examples = [
         (round(x.price, 4), x.kind,
          "short" if x.price >= price else "long",
@@ -72,7 +88,7 @@ def classify_snapshot(d1, cfg, session):
                 eligible=len(levels), near=len(near),
                 aligned=len(qualified), role_aligned=len(role_aligned),
                 role_conflict=len(qualified)-len(role_aligned),
-                examples=examples)
+                shadow_levels=shadow_levels, examples=examples)
 
 
 class QwctUniverseResearch(QCAlgorithm):
@@ -106,6 +122,9 @@ class QwctUniverseResearch(QCAlgorithm):
         self.full50_near_tickers = set()
         self.full50_bsu_role_tickers = set()
         self.outside10_examples = []
+        self.shadow_picks_logged = []
+        self.shadow_unique_tickers = set()
+        self.shadow_unique_level_origins = set()
         anchor = self.add_equity(
             "SPY", Resolution.MINUTE, fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
@@ -208,6 +227,29 @@ class QwctUniverseResearch(QCAlgorithm):
             passed.append((rank, symbol, obs))
             self.counts["stage2_pass"] += 1
         watchlist = passed[:self.cfg.screener_watchlist_limit]
+        shadow = d1_shadow_shortlist(passed, self.cfg.screener_watchlist_limit)
+        legacy = {symbol for _, symbol, _ in watchlist}
+        overlap = sum(symbol in legacy for _, symbol, _ in shadow)
+        self.counts["shadow_symbol_days"] += len(shadow)
+        self.counts["shadow_legacy_overlap_symbol_days"] += overlap
+        self.counts["shadow_outside_legacy_symbol_days"] += len(shadow)-overlap
+        if shadow:
+            self.counts["shadow_nonempty_days"] += 1
+        for i, (rank, symbol, obs) in enumerate(shadow, start=1):
+            self.shadow_unique_tickers.add(symbol.value)
+            for item in obs["shadow_levels"]:
+                self.shadow_unique_level_origins.add(
+                    (symbol.value, item[0], item[1], item[6]))
+            if len(self.shadow_picks_logged) < 25:
+                self.shadow_picks_logged.append((
+                    day, symbol.value, rank+1, i, obs["shadow_levels"][:3],
+                    len(obs["shadow_levels"])))
+        self.log(
+            f"QWCT SHADOW DAY {day} legacy={len(watchlist)} "
+            f"shadow={len(shadow)} overlap={overlap} "
+            f"outside_legacy={len(shadow)-overlap} "
+            f"rank_tickers={','.join(f'{symbol.value}:{rank+1}' for rank, symbol, _ in shadow)}; "
+            "D1 ONLY / NO M5 / NO ORDERS")
         outside = passed[self.cfg.screener_watchlist_limit:]
         self.counts["full50_near_symbol_days"] += sum(
             bool(row[2]["near"]) for row in passed)
@@ -287,6 +329,26 @@ class QwctUniverseResearch(QCAlgorithm):
             f"{len(self.role_aligned_distinct_tickers)} "
             f"rejects={dict(self.rejections.most_common(4))}; "
             "NO M5 / NO SEC / NO ORDERS")
+        self.log(
+            "QWCT SHADOW SUMMARY "
+            f"cap={self.cfg.screener_watchlist_limit} "
+            f"days={self.counts['days']} "
+            f"nonempty_days={self.counts['shadow_nonempty_days']} "
+            f"shadow_symbol_days={self.counts['shadow_symbol_days']} "
+            f"legacy_overlap_symbol_days="
+            f"{self.counts['shadow_legacy_overlap_symbol_days']} "
+            f"outside_legacy_symbol_days="
+            f"{self.counts['shadow_outside_legacy_symbol_days']} "
+            f"unique_shadow_tickers={len(self.shadow_unique_tickers)} "
+            f"unique_shadow_level_origins={len(self.shadow_unique_level_origins)} "
+            f"pick_rows_logged={len(self.shadow_picks_logged)}; "
+            "D1 ONLY / NO M5 / NO SEC / NO ORDERS")
+        for day, ticker, legacy_rank, shadow_rank, levels, count in self.shadow_picks_logged:
+            self.log(
+                f"QWCT SHADOW PICK {day} {ticker} "
+                f"liquidity_rank={legacy_rank} shadow_rank={shadow_rank} "
+                f"qualified_levels={count} evidence={levels}; "
+                "D1 ONLY / NO M5 / NO ORDERS")
         self.log(
             "QWCT UNIVERSE FULL50 "
             f"stage2_symbol_days={self.counts['stage2_pass']} "

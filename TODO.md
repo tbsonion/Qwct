@@ -1,5 +1,16 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.3: Apr 15 cause IDENTIFIED in native Cloud, RAW origin second-window proven
+
+- [x] **Native full requested interval `b150a7c028111580f879cc75e2512b0d`**, Apr 8–19 2024 (LEAN v2.5.0.0.18179); 10 scheduled equity scans / 9 scanned, `candidate_days=450`, `d1_ready=446`, `stage2_pass=412`, `shadow_symbol_days=14`, `unique_shadow_level_origins=11`, 3 baseline Top10 overlaps. No orders. Confirms previous separate-window totals.
+- [x] **Apr15 mechanism identified:** the previous Friday Apr12 Fundamental dataset generated a real callback **Saturday Apr13 00:00** (50 selections, underlying sample end Apr13). No new callback before Monday Apr15 09:29. Research code indexed selection by **Saturday callback calendar date**, but Monday scanner expected **Monday date**; `missing_same_day_universe` is therefore a strict-key/timing mismatch, not proof of missing market data or a no-candidates session. QuantConnect explains post-close Friday universe delivery can occur Saturday. **Do not fabricate a Monday candidate count** or silently reuse prior-day selection.
+- [x] **RAW source audit Apr8–19:** `raw_only_pass=13 fail=1 unknown=0`, same WMT **61.565 / .01 tick** repeated. In both separate historical windows, **21 PASS / 2 FAIL stock-day rows** out of 23, with the two failures sharing **one distinct WMT RAW origin**. These are *not* 21 trades or independently reconciled BSU levels.
+- [ ] **Next P0 implementation, standalone research-only:** read-only **SCALED_RAW vs already fetched RAW D1** origin/last bar/timestamps for Shadow candidates and WMT, using one bounded batch as necessary, without altering selection or adding M5/orders. Different price bases must be clearly labeled, and no auto-rounding.
+- [ ] **Optional after explicit research design**: separate **effective-next-trading-session** PIT replay for a *real* Saturday selection (Apr13 → Apr15) to measure omitted coverage while preserving canonical original nine-session counters and accounting for Monday no new selection.
+- [ ] **After source reconciliation**: independent manually labeled Gerchik D1 pivot comparison, then existing BsuDetector and native M5 research only for fully eligible origins. No inferred TVX/fills/profit.
+- [x] **Do not rerun April 8–19 solely to diagnose the missing callback**; delivered timestamps already identify the specific Saturday-to-Monday mismatch.
+
+
 ## 2026-10-15 — QWCT 2.3 latest compact Cloud run: Apr 1–5 REPEATED
 
 - [x] **Native compact-log check** `2e5f65fc65c3467e0534a794b8a6e3f8` ran **April 1–5**, not April 8–19. Compact log was complete; baseline 250 / 246 / 227, 9 Shadow rows, 7 origins, RAW 8 PASS / 1 FAIL (WMT 61.565; native tick 0.01) reproduced. No orders.

@@ -11,6 +11,7 @@ from strategy.config import StrategyConfig
 from strategy import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.patterns_bsu import Bar as ClosedBar, BsuDetector
 from strategy.native_m5_validation import validate_m5_tradebar
+from strategy.timing_gate import next_session_fundamentals, freeze_fundamental_event
 from strategy.levels import levels_for_session, _confirmed_swings, native_cluster_tolerance
 from strategy.indicators import trend_direction, global_trend
 
@@ -60,9 +61,6 @@ def classify_snapshot(d1, cfg, session):
     qualified = []
     role_aligned = []
     for x in near:
-        # Canonical ScenarioEvaluator bounce side depends on prior close.
-        # The separate BsuDetector arm instead uses source kind:
-        # support => long, resistance => short. Never equate them.
         side = "short" if x.price >= price else "long"
         matching = (gt == lt == (1 if side == "long" else -1))
         if matching:
@@ -144,15 +142,10 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
         if not isfinite(tick) or tick <= 0:
             return done("UNKNOWN", "NATIVE_SECURITY_TICK_INVALID")
         if abs(origin - round(origin / tick)*tick) > tick*1e-5:
-            # Daily RAW TradeBars contain executed trades. SEC Rule 612
-            # allows midpoint/sub-penny executions even when limit/order
-            # quotes have a larger minimum tick. An off-grid print is NOT
-            # automatically a bad source, but cannot arm exact-tick BPU.
             return done("UNKNOWN", "RAW_TRADE_EXTREME_SUBTICK_NOT_ORDER_PRICE")
     except (TypeError, ValueError, KeyError, IndexError, OverflowError) as exc:
         return done("UNKNOWN", "RAW_ORIGIN_AUDIT_ERROR:" + str(exc)[:40])
     return done("PASS", "RAW_D1_ONLY;SCALED_RAW_UNVERIFIED")
-
 
 
 def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
@@ -221,8 +214,6 @@ def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
     return done("MATCH", "ORIGIN_AND_LATEST_MATCH_WITHIN_HALF_TICK")
 
 
-
-
 class QwctM5CohortResearch(QCAlgorithm):
     """Freeze native D1 selection at 09:29; AFTER CLOSE replay native M1->M5."""
 
@@ -238,12 +229,17 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.set_time_zone("America/New_York")
         self.set_cash(25_000)
         self.cfg = StrategyConfig()
+        self.timing_mode = (
+            self.get_parameter("timing_mode") or "next_session").lower()
+        if self.timing_mode not in ("strict", "next_session"):
+            raise ValueError("invalid timing_mode: expected strict or next_session")
         self.universe_settings.resolution = Resolution.DAILY
         self.universe_settings.fill_forward = False
         self.universe_settings.asynchronous = False
         self.universe_settings.data_normalization_mode = DataNormalizationMode.RAW
         self.by_day = {}
         self.callback_at = {}
+        self.callback_events = []
         self.active = {}
         self.all_cases = []
         self.quarantined = set()
@@ -255,10 +251,10 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.basis = Counter()
         self.origin = Counter()
         self.events = []
-        self.tail_examples = []
         anchor = self.add_equity(
             "SPY", Resolution.MINUTE, fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
+        self.anchor = anchor
         self.add_universe(self._select)
         self.schedule.on(self.date_rules.every_day(anchor),
                          self.time_rules.before_market_open(anchor, 1),
@@ -268,15 +264,18 @@ class QwctM5CohortResearch(QCAlgorithm):
                          self._finish)
         self.debug(
             f"QWCT 2.6 COHORT ACTIVE {start.date()}..{end.date()} "
-            "native Fundamental50 + D1 Shadow10; strict same-day callbacks; "
+            f"native Fundamental50 + D1 Shadow10; timing={self.timing_mode}; "
             "after-close RAW M1 -> native M5 replay; NO M5-at-open, "
             "NO SEC / NO TVX / NO ORDERS")
 
     def _select(self, fundamentals):
-        day = et(self.time).date()
-        selected = tuple(select_liquid_fundamentals(fundamentals, self.cfg))
+        at = et(self.time)
+        event = freeze_fundamental_event(
+            fundamentals, self.cfg, at, select_liquid_fundamentals, et)
+        day, selected = at.date(), event["symbols"]
         self.by_day[day] = selected
-        self.callback_at[day] = et(self.time)
+        self.callback_at[day] = at
+        self.callback_events.append(event)
         self.summary["callbacks"] += 1
         if day.weekday() >= 5:
             self.summary["weekend_callbacks"] += 1
@@ -337,12 +336,30 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.scanned.add(day)
         self.summary["scheduled_scans"] += 1
         members = self.by_day.get(day)
-        if (not members or self.callback_at[day] > et(self.time)):
+        label = "SAME_DAY"
+        if not members and self.timing_mode == "next_session":
+            event, reason = next_session_fundamentals(
+                self.callback_events, et(self.time),
+                self.securities[self.anchor].exchange.hours, et)
+            if event is not None:
+                members = event["symbols"]
+                label = "NEXT_SESSION"
+                self.summary["next_session_days"] += 1
+                self.log(
+                    f"QWCT TIMING VERIFIED {day} callback={event['at']} "
+                    f"source={event['source_min']}..{event['source_max']} "
+                    f"members={len(members)}; native_next_open/09:29 OK")
+            else:
+                self.rejects[reason] += 1
+        if not members or (label == "SAME_DAY"
+                           and self.callback_at[day] > et(self.time)):
             self.rejects["NO_SAME_DAY_FUNDAMENTAL_CALLBACK"] += 1
-            self.log(f"QWCT COHORT SKIP {day} NO_SAME_DAY_CALLBACK; "
-                     "not zero qualified stocks; Saturday never auto-carried")
+            self.log(f"QWCT COHORT SKIP {day} NO_VERIFIED_SELECTION; "
+                     f"mode={self.timing_mode}; not zero candidates")
             self.active, self.active_day = {}, day
             return
+        if label == "SAME_DAY":
+            self.summary["strict_days"] += 1
         self.summary["selection_days"] += 1
         self.summary["candidate_stock_days"] += len(members)
         self.active, self.active_day = {}, day
@@ -395,8 +412,6 @@ class QwctM5CohortResearch(QCAlgorithm):
                 proof = compare_raw_scaled(
                     d1, level, day, scaled.get(symbol), tick)
                 self.basis[proof["status"]] += 1
-                # REBASED is tagged rather than silently mistaken for MATCH.
-                # Historical RAW source remains the ONLY pivot for RAW M5.
                 if proof["status"] not in ("MATCH", "REBASED"):
                     self.rejects["BASIS_" + proof["status"] + ":" +
                                  proof["why"][:40]] += 1
@@ -492,12 +507,6 @@ class QwctM5CohortResearch(QCAlgorithm):
                 self.rejects["BAD_OR_UNORDERED_M1_" + symbol.value] += 1
                 return
             times.append(start)
-        first_m1_end = et(minute_bars[0].end_time)
-        last_m1_end = et(minute_bars[-1].end_time)
-        if last_m1_end == et(close):
-            self.summary["m1_tail_at_close"] += 1
-        else:
-            self.summary["m1_tail_before_close"] += 1
         emitted = []
         consolidator = TradeBarConsolidator(timedelta(minutes=5))
         def collect(sender, bar):
@@ -509,8 +518,6 @@ class QwctM5CohortResearch(QCAlgorithm):
         except Exception as exc:
             self.rejects["M5_CONSOLIDATOR:" + str(exc)[:45]] += 1
             return
-        # LEAN needs Scan to emit last [15:55,16:00) bar.
-        # Only complete native M1 coverage may produce that M5 candle.
         tail_ok = len(minute_bars) >= 5
         if tail_ok:
             try:
@@ -526,7 +533,6 @@ class QwctM5CohortResearch(QCAlgorithm):
         if tail_ok:
             n = len(emitted)
             try:
-                # Native DateTime, never a manufactured price or bar.
                 consolidator.scan(minute_bars[-1].end_time)
             except Exception as exc:
                 self.rejects["M5_CLOSE_SCAN:" + str(exc)[:45]] += 1
@@ -541,17 +547,6 @@ class QwctM5CohortResearch(QCAlgorithm):
             self.rejects["M1_CLOSE_FIVE_NOT_COMPLETE"] += 1
         self.summary["native_m1"] += len(minute_bars)
         self.summary["m5_emitted"] += len(emitted)
-        last_m5_end = et(emitted[-1].end_time) if emitted else None
-        if last_m5_end == et(close):
-            self.summary["m5_tail_at_close"] += 1
-        else:
-            self.summary["m5_tail_before_close"] += 1
-        if len(self.tail_examples) < 4:
-            self.tail_examples.append((
-                str(day), symbol.value, len(minute_bars),
-                len(emitted), str(last_m1_end.time()),
-                str(last_m5_end.time()) if last_m5_end is not None else "NA",
-                str(et(close).time())))
         if not emitted:
             self.rejects["NO_NATIVE_M5_" + symbol.value] += 1
             return
@@ -632,6 +627,8 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"callbacks={self.summary['callbacks']} "
             f"weekend_callbacks={self.summary['weekend_callbacks']} "
             f"days={self.summary['selection_days']} "
+            f"strict_days={self.summary['strict_days']} "
+            f"next_days={self.summary['next_session_days']} "
             f"stock_days={self.summary['candidate_stock_days']} "
             f"d1_ready={self.summary['d1_ready']} "
             f"stage2={self.summary['stage2_pass']} "
@@ -645,10 +642,6 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"replay_days={self.summary['after_close_replay_days']} "
             f"m1={self.summary['native_m1']} "
             f"m5={self.summary['valid_m5']} "
-            f"m1_tail_close={self.summary['m1_tail_at_close']} "
-            f"m1_tail_early={self.summary['m1_tail_before_close']} "
-            f"m5_tail_close={self.summary['m5_tail_at_close']} "
-            f"m5_tail_early={self.summary['m5_tail_before_close']} "
             f"close_scanned={self.summary['close_scanned']} "
             f"bpu1={self.summary['bpu1']} "
             f"strict_bpu1={self.summary['strict_bpu1']} "
@@ -657,11 +650,6 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"strict_window={self.summary['strict_bpu2_window']} "
             f"invalid={self.summary['invalidated']}; NO ORDERS")
         self.log(f"QWCT COHORT REJECTS {dict(self.rejects.most_common(12))}")
-        for day, ticker, m1, m5, last_m1, last_m5, close in self.tail_examples:
-            self.log(
-                f"QWCT COHORT TAIL {day} {ticker} m1={m1} m5={m5} "
-                f"m1_last={last_m1} m5_last={last_m5} close={close}; "
-                "TIMING AUDIT ONLY / NO SYNTHETIC BAR")
         rows = sorted(
             (c for c in self.all_cases if c["best_ticks"] is not None),
             key=lambda c: (c["best_ticks"], c["day"], c["ticker"]))

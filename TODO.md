@@ -1,5 +1,15 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.6 FINAL M5 close coverage proven natively (+12 M5); 5 missed universe days next
+
+- [x] **Successful native rerun** `b6ec6049eff86d7f021293eca42410c3` (LEAN 2.5.0.0.18184, June 2024): `m1=4521 m5=936 m1_tail_close=12 m1_tail_early=0 m5_tail_close=12 m5_tail_early=0 close_scanned=12`. PRE-fix identical native cohort had `m5=924 m5_tail_close=0`. All 12 eligible source-day closing M5 candles now end at **16:00 ET**. This establishes guarded native `TradeBarConsolidator.Scan` fix works; **no further June rerun required**.
+- [x] **No changes to historical selection / D1 evidence / results:** `scans=19 callbacks=20 weekend_callbacks=5 days=14 stock_days=700 d1_ready=699 stage2=633 shadow_days=12 origin_pass=12 basis_match=6 basis_rebased=6 ready_origins=12`; `bpu1=0 bpu2=0` among all 936 emitted M5 bars, no orders and no unexpected rejects.
+- [x] **Coverage precision:** ABT June7 `m1=389 m5=78` — full 78 M5 *time buckets* does NOT ensure every one of the 390 minute source candles exists. Final five minutes were individually verified in code. Retain explicit M1 gap/volume concerns for later intrabar validity, not blanket complete 390/390 label.
+- [ ] **NEXT P0 standalone timing-replay A/B design:** resolve 5 skipped June trading sessions **3, 10, 17, 20, 24** by verifying that the real most recent Fundamental callback (often Saturday or holiday) and its underlying source timestamp was actually available by 09:29 of the session. Compare old strict calendar-day (14/19) vs separate causal eligible callback mapping; never silently carry arbitrary prior day or retrospectively select market winners.
+- [ ] **Then** independent wider D1→M5 cohorts without relaxing exact-tick BSU/BPU criteria. Require manual D1 BSU labels and actual SEC/TICK evidence for TVX claims. Current zero BPU1 in 12 June stock-days is not general proof of strategy futility.
+- [ ] GitHub CI remains unverified, but the patched native June LEAN runtime is now demonstrated.
+
+
 ## 2026-10-15 — QWCT 2.6 June native result explains 77/78 M5; guarded LEAN Scan fix COMMITTED, native pending
 
 - [x] **Real June 2024 LEAN v2.5.0.0.18184 backtest `ef9602676ddeeb2f65902cca6edaee72`:** `scans=19 callbacks=20 weekend_callbacks=5 days=14 stock_days=700 d1_ready=699 stage2=633 shadow_days=12 raw_origin_pass=12 origin_unknown=0 origin_fail=0 basis_match=6 basis_rebased=6 ready_origins=12 replay_days=8 m1=4521 m5=924 m1_tail_close=12 m1_tail_early=0 m5_tail_close=0 m5_tail_early=12 bpu1=0 strict_bpu1=0 bpu2=0 strict_bpu2=0 strict_window=0 invalid=0`. Actual minute data ended at 16:00 for all 12 studied symbol-days, while native 5m consolidator emissions stopped at 15:55. **Missing closing M5 candle empirically CONFIRMED**, not merely suspected.

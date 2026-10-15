@@ -1,5 +1,18 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.6 implemented: INDEPENDENT May 2024 D1 Shadow → native M5 cohort (native pending)
+
+- [x] **Ready-solution audit:** reviewed previous proven QWCT 2.4 Fundamental/RAW/SCALED_RAW D1 `research/universe_cloud/main.py`, 2.5 six-case M5 `research/m5_cloud/main.py`, canonical `BsuDetector`, `validate_m5_tradebar`, and QuantConnect native `TradeBarConsolidator`. Reused all original D1 Shadow/risk gates **without changing strategy**. Tested six-case April negative-control logs already recorded.
+- [x] **Create new, isolated** `research/cohort_cloud/main.py` and [seven-file Cloud README](https://github.com/tbsonion/Qwct/blob/main/research/cohort_cloud/README.md). `Qwct-M5-Cohort-Research` is a **new** fifth Cloud project; original 4 remain unmodified. Bounded **May 1–31, 2024** independent observation window (<=35 calendar days configurable).
+- [x] **True 09:29 point-in-time selection:** native Fundamental top50 (same Stage1, daily subscription) → closed RAW D1 (same Stage2, native ATR/SMA) → same original Shadow max10 role-aligned swing levels → native RAW swing/grid/chronology check → native SCALED_RAW 180-bar comparison. Original RAW pivot used for RAW M5, even when separately labeled `REBASED`; WMT sub-tick pivots rejected. Monday without actual Monday Fundamental callback is explicitly **SKIPPED**, never labeled zero or silently supplied from Saturday; weekend callbacks reported.
+- [x] **Lower-cost M1 ingestion:** one **post-selection, exchange-close-only** batched `History[TradeBar]` 09:30-to-real-close **RAW M1 for only qualified Shadow symbols**, not 50 minute subscribers or 10 intraday mutable universe subscriptions. Real LEAN `TradeBarConsolidator(5min)` emits native M5 validated with canonical `validate_m5_tradebar`. Splits quarantined. Call at actual market close 0 minutes rather than +1 minute to avoid QC final-day missed event; respects early-close trading days.
+- [x] **Detector unchanged:** actual `BsuDetector` on closed M5 original exact RAW source, strict BPU1/tick, next-bar BPU2, invalidation and 12–13:30 research window; **no SEC/TICK TVX, no fills, no orders**. Compact `QWCT COHORT SUMMARY / REJECTS / COVERAGE / NEAREST / BPU1 / BPU2` logs, nearest ten original pivots from all days.
+- [x] **Static/pure source guards committed** `tests/test_m5_cohort_research.py`; no CI/native success claim yet.
+- [ ] **NEXT USER NATIVE RUN:** Create **new `Qwct-M5-Cohort-Research`** from [7-file README](https://github.com/tbsonion/Qwct/blob/main/research/cohort_cloud/README.md), run one May1–May31 2024 native LEAN Backtest and send full log. Confirm no `MINUTE_HISTORY`, `M5_CONSOLIDATOR`, or compile errors, and confirm `m5>0` and any genuine strict BPU1/BPU2. No known positive outcome until run.
+- [ ] **If zero after successful M5 replay:** do not loosen exact tick or fabricate price touch; collect more independent monthly cohorts or separately designed frozen-level follow-up with causal expiry. Manual D1 source labels + SEC/TICK -30s are later distinct evidence gates.
+- [ ] Validate GitHub Pure Strategy Checks; native LEAN functional compatibility remains PENDING.
+
+
 ## 2026-10-15 — QWCT 2.5 real native M5 six-case backtest completed
 
 - [x] QuantConnect LEAN `b6c0a9982e638d3f5fd1aa0e56a1f84e`, Apr10–19 2024: six READY_PROXY, 468 valid closed M5 (78 per symbol-day), zero BPU1, strict BPU1, BPU2, strict BPU2, window BPU2, invalidations, rejects; no trades/orders. All historical D1 provenance/basis gates passed.

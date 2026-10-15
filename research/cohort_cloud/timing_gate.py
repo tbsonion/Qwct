@@ -44,3 +44,27 @@ def next_session_fundamentals(events, now, market_hours, localize):
         return None, ("NO_VERIFIED_NEXT_SESSION" if not due
                       else "AMBIGUOUS_NEXT_SESSION_CALLBACKS")
     return due[0], "VERIFIED_NEXT_EXCHANGE_SESSION"
+
+
+def freeze_fundamental_event(fundamentals, cfg, at, selector, localize):
+    """Capture actual PIT universe selection and ALL source EndTime values."""
+    from pandas import isna
+
+    items = list(fundamentals)
+    symbols = tuple(selector(items, cfg))
+    chosen = set(symbols)
+    ends = []
+    for fundamental in items:
+        if fundamental.symbol not in chosen:
+            continue
+        try:
+            stamp = localize(fundamental.end_time)
+            if not isna(stamp):
+                ends.append(stamp)
+        except (ValueError, TypeError, AttributeError):
+            pass
+    return dict(
+        at=at, symbols=symbols,
+        source_min=min(ends) if ends else None,
+        source_max=max(ends) if ends else None,
+        complete=bool(symbols) and len(ends) == len(symbols))

@@ -1,5 +1,21 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15 — NEXT Cloud run: RAW-only origin + April 15 timing diagnostics (GitHub implemented; native run PENDING)
+
+**Scope:** Replace **ONLY** [Qwct-Universe-Research Cloud `main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py). Keep the other four research Cloud files unchanged, and never edit `Qwct-LEAN-Test` or `Qwct-BSU-Research`. This is **read-only D1 research**, not native-verified until the next backtest.
+
+**Period:** first rerun **2024-04-08..2024-04-19** (expected 10 sessions; previous actual 9). Then, for independent confirmation of the 9 initial candidates, rerun **2024-04-01..2024-04-05** if needed. Change only the existing `scan_start`/`scan_end` Cloud parameters between runs.
+
+**New compact logs:**
+- `QWCT UNIVERSE TIMING SELECT` reports each actual Fundamental callback clock and example native data timestamps. `QWCT UNIVERSE TIMING SCAN` distinguishes **NO_CALLBACK_BEFORE_SCAN**, **EMPTY_SELECTION**, **SAME_DAY_SELECTION_READY** at the scheduled 09:29 ET scan. An actual callback after a missed scan is marked **after_missed_scan=True** but **never retroactively analyzed**. `TIMING SUMMARY` reports missing dates and callback counts. Sample data timestamp is observational, not proof of dataset correctness.
+- `QWCT ORIGIN DETAIL` reports each Shadow level's **existing** `first_idx` RAW D1 high/low, original cluster median, `formed_at` (last swing source), last swing confirmation, `valid_from`, LEAN `symbol_properties.minimum_price_variation`, and **PASS/FAIL/UNKNOWN** with reason; up to 30 details are logged. `QWCT ORIGIN SUMMARY` counts results across all scanned Shadow levels (at most 3 per stock-day).
+- `PASS` verifies **only** algorithmic D1 source chronology and RAW origin on the *currently observed* minimum-tick grid, inside the original cluster tolerance. It **does not** certify historical split-adjustment provenance, equivalence to `SCALED_RAW`, a discretionary Gerchik BSU, BPU1/BPU2 or profitability. `FAIL`/ `UNKNOWN` entries are never silently rounded into BSU; a historical native tick-size change could require independent evidence before treating `FAIL` as a definitive feed error.
+
+**Reuse and safety:** No new subscriptions, M5/SEC/RAW history requests, or orders were added. The existing SINGLE batched `History[TradeBar]` RAW D1 request, canonical D1 levels, stage2 filters, liquidity ordering, legacy Top10 and Shadow selection are unchanged. The previous run's April 15 is **unobserved**, not zero matches; logging can distinguish no callback, empty selection and late selection, but cannot infer the reason for a truly absent callback.
+
+**Acceptance:** GitHub unit tests are mock/logic tests **only**. Provide a native LEAN log with `QWCT UNIVERSE TIMING`, `QWCT ORIGIN SUMMARY`, `QWCT ORIGIN DETAIL`, `QWCT SHADOW SUMMARY`, `QWCT UNIVERSE SUMMARY`; compare earlier counts to detect unintended deviations. Do not proceed to M5 or alter rules until these actual outputs have been reviewed.
+
+
 ## NEW independent-period native result: Apr 8–19, 2024 — 9 of 10 trading days covered
 
 **QuantConnect LEAN v2.5.0.0.18179 backtest `37850a5ba8ff6f8cc5383afd21d030ca`**, dated 2024-04-08..2024-04-19, successfully completed **WITHOUT M5, SEC, or orders**. It is a **different time window** from the original Apr 1–5 experiment and uses **unchanged** same-stage D1 filters and original liquidity ranking. **Important integrity exception:** it expected **10 US equity sessions**, but `days=9`, with **2024-04-15 missing** from day logs and `rejects['missing_same_day_universe']=1`. This is a fail-closed missing-native-Universe day; do **not** treat Apr 15 as zero matches, silently fill from a prior day's universe, extrapolate to ten sessions, or claim exhaustive validation.

@@ -554,3 +554,12 @@ def test_research_compact_logs_default_safe_and_verbose_opt_in_only():
                      "QWCT UNIVERSE FULL50"):
         assert critical in code
     assert len(code.encode("utf-8")) < 32_000
+
+
+def test_universe_next_research_window_defaults_to_april15_diagnostic():
+    """Prevent replaying April 1-5 by accidental missing project parameters."""
+    code = APP.read_text(encoding="utf-8")
+    assert 'self.get_parameter("scan_start") or "2024-04-08"' in code
+    assert 'self.get_parameter("scan_end") or "2024-04-19"' in code
+    assert 'self.get_parameter("scan_start") or "2024-04-01"' not in code
+    assert 'self.get_parameter("scan_end") or "2024-04-05"' not in code

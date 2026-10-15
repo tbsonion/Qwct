@@ -1,5 +1,12 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.3 latest compact Cloud run: Apr 1–5 REPEATED
+
+- [x] **Native compact-log check** `2e5f65fc65c3467e0534a794b8a6e3f8` ran **April 1–5**, not April 8–19. Compact log was complete; baseline 250 / 246 / 227, 9 Shadow rows, 7 origins, RAW 8 PASS / 1 FAIL (WMT 61.565; native tick 0.01) reproduced. No orders.
+- [x] **Make next targeted date window harder to miss:** research Cloud-ready `main.py` now has Apr 8–19 **fallback** for `scan_start`/`scan_end` (old Apr 1–5 defaults removed), plus a regression test. Does not override explicitly saved Cloud project parameters.
+- [ ] **P0**: REAL run must start with `QWCT UNIVERSE RESEARCH ACTIVE 2024-04-08..2024-04-19`, and capture **April 15** no-callback / empty / late selection evidence. If opening range still Apr1–5, edit QuantConnect **Project > scan_start/scan_end** settings or remove old overrides.
+- [ ] RAW vs SCALED_RAW independent provenance for failures/UNKNOWN remains open; do not proceed to M5, BPU or trade evidence until covered.
+
 ## 2026-10-15 — Native QWCT 2.3 result, next isolated test
 
 - [x] **Native Cloud run `e52e0c836a0cd349d078dc64775f82bd`**, **Apr 1–5** (user ran this earlier window rather than Apr 8–19), LEAN v2.5.0.0.18179; five same-day Fundamental callbacks; no missing dates in this period; previous D1 Shadow `250/246/227`, `9` symbol-days, `7` source fingerprints, `0` overlap reproduced.

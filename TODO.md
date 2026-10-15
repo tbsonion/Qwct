@@ -1,5 +1,16 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.4 REAL basis result: 6 MATCH / 8 REBASED; 1 WMT RAW ambiguity
+
+- [x] **Native LEAN `89268e691b00a89232be1bf6cb3df3e7` Apr8–19**, successful SCALED_RAW/RAW source-vs-latest as-of D1 audit: `basis match=6 rebased=8 latest_diff=0 unknown=0 fetch_errors=0`; 14 Shadow symbol-days, 11 distinct origins. Baseline **450 / 446 / 412**, nine scanned sessions, three old Top10 overlaps all unchanged, April15 still unobserved; no M5/SEC/orders.
+- [x] **Six MATCH + RAW-PASS origin candidates:** TSLA Apr10 short 182.87, TXN Apr11 long 167.51, AAPL Apr16 short 174.38, AMAT Apr16 long 202.71, META Apr18 long 481.34, NFLX Apr19 long 601.57. **Still just D1 research candidates**, not independently labeled Gerchik BSU or actual BPU1/BPU2.
+- [x] **Eight REBASED stock-day rows** = JNJ (3), CRM (2), INTC (1), MCD (1), WMT (1); historical price-base adjustment while latest RAW/SCALED close matches as-of scan. For WMT March12 RAW high 61.565 vs SCALED 61.3565300, factor 0.9966138228 closely matches March14 $0.2075 dividend factor using March13 raw close ~61.28. Rebase alone is **not a corrupted RAW source** or proof of specific LEAN factor.
+- [x] **Critical methodological correction, code and regression:** historical RAW D1 OHLC summarizes trade **executions**, which may validly be sub-penny (SEC Rule 612); current native order minimum tick .01 is *not* proof WMT historical high 61.565 is invalid. New research audit marks **UNKNOWN** instead of **FAIL**, reason `RAW_TRADE_EXTREME_SUBTICK_NOT_ORDER_PRICE`; detector/entry rules unchanged and WMT remains blocked from exact-tick M5 proxy. Historic Cloud 13PASS/1FAIL/0UNKNOWN was genuine pre-correction log; *expected future* 13PASS/0FAIL/1UNKNOWN is NOT yet native verified.
+- [ ] **P0 next:** use **existing** `strategy/bsu_bridge.py` and `BsuDetector` for bounded read-only native M5 BPU1/BPU2 research of six MATCH+RAW PASS origins after independent manual D1 BSU validation; never infer 30s TVX from M5 closed bars. Separate A/B research may later include four REBASED+RAW PASS origins with explicit as-of price basis. No new trading orders.
+- [ ] **P0 WMT:** compare March12 trade tape or lower-resolution RAW high and quote/order increments if needed; do **not** round `61.565` to nearest cent, fabricate a level, or claim an executable limit price.
+- [ ] **CI:** independently confirm newest GitHub Pure Strategy Checks status. Native basis evidence proves previous research revision, not the NEW sub-penny status correction.
+
+
 ## 2026-10-15 — QWCT 2.4 RAW vs SCALED_RAW price-basis research
 
 - [x] **Implement minimal research-only basis comparison on `main`:** `research/universe_cloud/main.py` uses one additional typed/batched SCALED_RAW daily History request exclusively for the already chosen Shadow tickers, reuses existing RAW historical frames and level `first_idx`; verifies source and latest `EndTime`, timestamp chronology, RAW/scaled source high/low, recent close and ratio.

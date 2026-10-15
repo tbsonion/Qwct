@@ -1,5 +1,14 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — Actual author-book rules checked against source; mirror omission and BSU provenance are next P0
+
+- [x] **Read author primary-written material**, not only 1-minute BSU webpage or video headings: A. Gerchik `Курс активного трейдера`, sections on exact BPU1, unfulfilled/"недобивающие" bars, mirrored BSU role, levels D1, broken models. Full evidence/source-level comparison recorded in [`research/cohort_cloud/GERCHIK_PRIMARY_SOURCE_AUDIT.md`](https://github.com/tbsonion/Qwct/blob/main/research/cohort_cloud/GERCHIK_PRIMARY_SOURCE_AUDIT.md). Exact video spoken transcripts not acquired: Q&A chapter times remain *topics* only, never fabricated direct quotes.
+- [x] **Explicit rule separation now established:** D1 misses can be a positive signal for an ALREADY established fixed level; **do not automatically count them as BPU1**, because the strict equity bounce model still requires exact level price; BPU2 has separate 20% stop-size luft. No widening from 0 to 2 ticks.
+- [x] **Major current research scope omission identified:** `strategy/levels.py` tags D1 `mirror` but `research/cohort_cloud/main.py:classify_snapshot` excludes `kind='mirror'` and requires `support→long/resistance→short`. Gerchik identifies mirrored/reversed price levels as highly informative. Do NOT just remove filter: `mirror.valid_from`, post-breach side, correct BSU source must be causally frozen and independently tested in an isolated read-only research branch.
+- [x] **Level provenance concern confirmed:** software cluster median from historical ATR-tolerant grouped D1 swings and `first_idx` RAW extreme are heuristics, not certified manual BSU. Examples AON (22.75 ticks difference) and CRM (−69.5 ticks) from actual native June2.8 show nontrivial source-vs-cluster gap.
+- [ ] **NEXT** manually review real as-of D1 and correctly normalized native M5 charts for AON June12, DELL June7 (then CRM/ABT); give independent YES/NO/INDETERMINATE for the fixed BSU and price, including mirror and floating level. Only then consider a **separate, read-only** mirror/source-level study; leave native QWCT2.8 June baseline and original detector untouched. No new Backtest or broker execution approved by this source audit.
+
+
 ## 2026-10-15 — QWCT 2.8 REAL native successful; Gerchik official video search completed, answers require viewing
 
 - [x] **June 2024 native 2.8 `4b787847b9e5d2405b2fd97a541fa71e`:** 19/19 scanned sessions, 17 approved D1 BSU *proxies*, 1,326 native real closed M5, `raw_exact=0 short_of=1038 range_crossed=11 beyond_no_span=277 cluster_ranges=14`, crossed original RAW source **11 times across 4 cases** (AON Jun12 2, DELL Jun7 7, CRM Jun27 1, ABT Jun7 1), but **0 BPU1 exact relevant high/low extrema and 0 BPU2**. The no-cross inference from previous nearest-only logs was too broad; this new independent audit corrects it. No fills/orders/TVX.

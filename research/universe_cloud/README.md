@@ -1,5 +1,26 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15 — QWCT 2.4: bounded PIT RAW ↔ SCALED_RAW D1 origin comparison (CODE READY, NATIVE PENDING)
+
+**Reason:** April 8–19 native LEAN run `b150a7c028111580f879cc75e2512b0d` confirmed 14 Shadow symbol-days and repeated the WMT March 12 RAW source `61.565` against current `0.01` tick metadata. Prior checks did NOT compare RAW with SCALED_RAW. This change addresses precisely that gap without jumping to M5.
+
+**Reuse-first design (QuantConnect docs):** `History[TradeBar](symbols, 180, Resolution.DAILY, data_normalization_mode=DataNormalizationMode.SCALED_RAW)` is supported in LEAN and is explicitly a **history-only** normalization mode for price data before the algorithm's current time. References: https://www.quantconnect.com/docs/v2/writing-algorithms/historical-data/history-requests and https://www.quantconnect.com/docs/v2/writing-algorithms/securities/asset-classes/us-equity/requesting-data . No new universe, subscriptions, indicators, trading models, package imports, M5/SEC data or orders.
+
+**Implementation:** Within the existing `research/universe_cloud/main.py`, after building the same historical RAW D1 snapshots and selecting the unchanged Shadow Top10, run exactly **one extra typed/batched SCALED_RAW 180-bar D1 History call per nonempty Shadow session**, exclusively for actual Shadow symbols (max ten). Compare **the same first RAW `first_idx` swing source date + high/low**, the last closed D1 close and matching native `bar.end_time` values between RAW and SCALED_RAW. Reject missing/duplicate/out-of-order/same-day/future SCALED bars as **UNKNOWN**; no synthetic replacement bars or rounding. The existing `origin_d1_audit` status is retained separately: a RAW tick-grid FAIL is still FAIL even if SCALED_RAW matches it.
+
+**New diagnostic classifications (not trading approvals):**
+- `MATCH`: observed source high/low and latest close match within half *current native* tick, and source/latest bar end timestamps match.
+- `REBASED`: historical source differs between RAW and SCALED_RAW while latest close agrees; this is **consistent with a price-basis adjustment**, but **not proof** of a particular split, dividend or valid BSU.
+- `LATEST_DIFF`: recent RAW and SCALED_RAW close disagree; do not equate prices or arm a BPU.
+- `UNKNOWN`: missing data, missing current tick metadata, conflicting/malformed timestamps or failed History request. No inferred RAW/SCALED values.
+
+`QWCT BASIS SUMMARY` and up to 25 `QWCT BASIS DETAIL` rows expose raw/scaled source prices, as-of latest closes, source dates, ratio, native tick, RAW audit result and reconciliation status. On Free, original `QWCT ORIGIN DETAIL` rows are now only emitted with optional `verbose_logs=1` to avoid the 10KB log limit; **RAW ORIGIN SUMMARY** remains default and prior native RAW details are documented. All existing baseline counters, same-day selection constraints (including excluded Apr15), and source selection are unchanged.
+
+**Cloud verification needed:** Replace **ONLY** [`Qwct-Universe-Research/main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) from GitHub `main`; run **2024-04-08..2024-04-19**, with `verbose_logs` absent/off. Check `QWCT UNIVERSE RESEARCH ACTIVE` date range and compare pre-existing baseline `days=9`, `stage2_pass=412`, `shadow_symbol_days=14`, `origin raw_only_pass=13 fail=1`. Bring back `QWCT BASIS SUMMARY` and every `QWCT BASIS DETAIL` row (especially WMT), `QWCT ORIGIN SUMMARY`, `QWCT SHADOW SUMMARY`, and any `QWCT BASIS FETCH ERROR`. A GitHub unit test or syntax check does **NOT** validate native LEAN History overloads/normalization behavior.
+
+**Decision gate:** evaluate real native output first, especially WMT RAW `61.565`, its SCALED_RAW pivot, end times and closing basis. Do not change WMT tick rules, invent a corporate-action explanation, promote to M5, calculate fills, or infer trading expectancy.
+
+
 ## 2026-10-15 — Native Apr 8–19 confirms Saturday callback explains the missed Monday scan
 
 **REAL QuantConnect LEAN v2.5.0.0.18179 run `b150a7c028111580f879cc75e2512b0d`** ran the correct **2024-04-08..2024-04-19** window. Ten intended exchange sessions generated **nine actually scanned sessions**, with the tenth being **Monday 2024-04-15, unobserved**. This is a calendar-keying problem, *not evidence that April 15 had zero qualified stocks*. Metrics **reproduced the previous same-window run**: 450 Fundamental stock-days, 446 usable D1, 412 stage2, 14 Shadow D1-qualified stock-days, 11 original level fingerprints, 3 legacy Top10 overlaps, 11 Shadow observations outside Top10. This is NOT 14 BSU/BPU setups or trades.

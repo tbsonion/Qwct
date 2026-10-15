@@ -6,6 +6,7 @@ from math import isfinite
 from zoneinfo import ZoneInfo
 import pandas as pd
 from AlgorithmImports import *
+from QuantConnect.Research import QuantBook
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance
 
@@ -100,6 +101,12 @@ def mirror_inventory(d1, levels, session, swing_k, tolerance, lookback=60):
 
 # Uses original QuantConnect D1 TradeBar objects and built-in LEAN indicators,
 # NOT reconstructed/synthetic market bars or hand-written ATR.
+# Self-contained: a fresh Research kernel may not have run the earlier chart cell.
+qb=QuantBook()
+qb.set_start_date(2024, 7, 1)
+qb.set_end_date(2024, 7, 2)
+qb.set_time_zone("America/New_York")
+
 cfg=StrategyConfig()
 et_zone=ZoneInfo("America/New_York")
 REVIEW_CASES = [

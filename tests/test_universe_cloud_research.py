@@ -508,7 +508,7 @@ def test_missing_universe_diagnostic_distinguishes_no_callback_empty_and_late():
     env["_screen"](algo, [SimpleNamespace(time=algo.time, end_time=algo.time)])
     assert algo.counts["selection_after_missed_scan"] == 1
     assert day not in algo.covered_days  # no hindsight backfill/retry
-    assert any("after_missed_scan=True" in row for row in log)
+    assert any("late=1" in row for row in log)
     # Empty callback is observably different from no callback.
     empty_log = []
     other = SimpleNamespace(
@@ -537,3 +537,20 @@ def test_origin_diagnostic_cloud_scope_and_no_orders():
                       "self.set_holdings(", "self.buy(", "self.sell(",
                       "Resolution.SECOND", "Resolution.TICK"):
         assert forbidden not in code
+
+
+def test_research_compact_logs_default_safe_and_verbose_opt_in_only():
+    code = APP.read_text(encoding="utf-8")
+    assert 'self.verbose_logs = (self.get_parameter("verbose_logs") == "1")' in code
+    assert code.count('if getattr(self, "verbose_logs", False):') >= 2
+    assert 'self.shadow_picks_logged if getattr(self, "verbose_logs", False) else []' in code
+    assert 'self.outside10_examples if getattr(self, "verbose_logs", False) else []' in code
+    assert 'self.example_rows if getattr(self, "verbose_logs", False) else []' in code
+    for critical in ("QWCT ORIGIN DETAIL", "QWCT ORIGIN SUMMARY",
+                     "QWCT UNIVERSE TIMING SUMMARY",
+                     "QWCT UNIVERSE TIMING SELECT",
+                     "QWCT UNIVERSE TIMING SCAN",
+                     "QWCT SHADOW DAY", "QWCT SHADOW SUMMARY",
+                     "QWCT UNIVERSE FULL50"):
+        assert critical in code
+    assert len(code.encode("utf-8")) < 32_000

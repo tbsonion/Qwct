@@ -9,6 +9,8 @@ from AlgorithmImports import *
 from QuantConnect.Research import QuantBook
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance
+from strategy import passes_gerchik_screener
+from strategy.indicators import global_trend, trend_direction
 
 """Independent read-only validation of Qwct D1 mirror candidates as-of session.
 
@@ -181,10 +183,46 @@ for ticker,day_text,source_text,pivot in REVIEW_CASES:
         print(f"\nQWCT MIRROR REVIEW {ticker} {day_text} "
               f"full_d1={len(d1)} levels={len(frozen)} mirrors={len(mirrors)} "
               f"native_ATR_cluster_tol={tol:.4f}")
+        # Mirrors exist independently of today's suitability. Keep those
+        # questions separate and re-use the existing ORIGINAL screener limits.
+        latest=d1.iloc[-1]
+        close=float(latest["close"])
+        current_atr=float(latest[f"atr{cfg.atr_period}"])
+        native_volume=float(latest["volume_sma"])
+        stage2=passes_gerchik_screener(close,current_atr,native_volume,cfg)
+        gt=global_trend(d1,len(d1)-1,cfg)
+        lt=trend_direction(d1,len(d1)-1,cfg)
+        print("QWCT MIRROR FILTERS",
+              ticker,day_text,"prior_close",round(close,4),
+              "ATR14",round(current_atr,4),
+              "stage2",int(stage2),"global_trend",gt,"local_trend",lt,
+              "native_tick_grid_for_cluster_NOT_BSU_PROOF")
         if not mirrors:
             print("NO AUTO-MIRRORS AS-OF. This does not prove no manual Gerchik BSU.")
         for l in sorted(mirrors,key=lambda z:abs(z.price-pivot))[:12]:
             e=audit_mirror(d1,l,day.date(),cfg.swing_k,tol,cfg.mirror_lookback)
+            new_role=("resistance" if e["original_kind"]=="support"
+                     else "support" if e["original_kind"]=="resistance"
+                     else "UNKNOWN")
+            side="short" if l.price>=close else "long"
+            role_ok=(new_role=="support" and side=="long" or
+                     new_role=="resistance" and side=="short")
+            proximity=abs(float(l.price)-close)/current_atr if (
+                isfinite(current_atr) and current_atr>0) else float("inf")
+            near=proximity<=cfg.level_proximity_atr
+            trend_ok=gt==lt==(1 if side=="long" else -1)
+            d1_strength=(l.touches>=cfg.min_touches and
+                         l.strength>=cfg.min_level_strength)
+            diagnostic_ready=(stage2 and near and trend_ok and role_ok and
+                              d1_strength and e["status"]=="PROXY_VERIFIED")
+            print("QWCT MIRROR ELIGIBILITY",
+                  ticker,day_text,"price",round(float(l.price),4),
+                  "new_role",new_role,"side",side,
+                  "distance_ATR",round(proximity,3),"near",int(near),
+                  "role_ok",int(role_ok),"trend_ok",int(trend_ok),
+                  "strength_ok",int(d1_strength),
+                  "research_shortlist_only",int(diagnostic_ready),
+                  "NOT_CANONICAL_BSU / NOT_BPU1 / NO_ORDERS")
             print("QWCT MIRROR CASE",
                   "price",round(l.price,4),
                   "source",e["source"],

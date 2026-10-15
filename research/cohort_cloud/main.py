@@ -263,7 +263,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                          self.time_rules.before_market_open(anchor, 1),
                          self._prepare)
         self.schedule.on(self.date_rules.every_day(anchor),
-                         self.time_rules.after_market_close(anchor, 1),
+                         self.time_rules.after_market_close(anchor, 0),
                          self._finish)
         self.debug(
             f"QWCT 2.6 COHORT ACTIVE {start.date()}..{end.date()} "
@@ -452,12 +452,13 @@ class QwctM5CohortResearch(QCAlgorithm):
             if (sym, day) not in self.quarantined]
         if not symbols:
             return
-        # Request ONLY today's REAL minute bars AFTER market close. There
-        # were no M5 observations available to the 09:29 D1 selector.
+        # Replay at the ACTUAL exchange close (half-days too). A +1
+        # minute schedule may never execute on the final backtest day.
+        # Completed native minutes were NEVER used by the 09:29 selector.
         start = datetime.combine(day, time(9, 30), ET)
-        end = datetime.combine(day, time(16, 0), ET)
-        if et(self.time) <= et(end):
-            self.rejects["NOT_AFTER_CLOSE"] += 1
+        end = et(self.time).to_pydatetime()
+        if et(end) <= et(start):
+            self.rejects["INVALID_SESSION_CLOSE"] += 1
             return
         minute = {symbol: [] for symbol in symbols}
         try:

@@ -348,7 +348,7 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.summary["scheduled_scans"] += 1
         members = self.by_day.get(day)
         label = "SAME_DAY"
-        if not members and self.timing_mode == "next_session":
+        if day not in self.by_day and self.timing_mode == "next_session":
             event, reason = next_session_fundamentals(
                 self.callback_events, et(self.time),
                 self.securities[self.anchor].exchange.hours, et)

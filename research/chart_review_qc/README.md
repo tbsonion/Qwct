@@ -1,5 +1,12 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## 2026-10-15 — Native mirror-level result VERIFIED; eligibility still open
+
+Real QuantConnect Research `MIRROR_AON_DELL_ONE_CELL.py` output has been submitted. **AON June12: 9 as-of D1 levels, five software `kind=mirror` levels with independent as-of `PROXY_VERIFIED` source/breach/retest trace** (prices **285.95, 312.97, 317.68, 317.945, 329.21**). **DELL Jun7: six levels, zero automatic mirrors**. Native ATR-based D1 cluster tolerance **1.3060** AON, **0.5519** DELL. Full native case table and cautious interpretation are in [`NATIVE_MIRROR_AON_DELL_JUNE_2024.md`](./NATIVE_MIRROR_AON_DELL_JUNE_2024.md). A mirror here is only an explanatory D1 **software proxy**, neither 1) a manual Gerchik-fixed level nor 2) a demonstrated near-price/trend-qualified active bounce setup or BPU1.
+
+**One remaining decisive diagnostic:** the latest [`MIRROR_AON_DELL_ONE_CELL.py`](./MIRROR_AON_DELL_ONE_CELL.py) now also logs `QWCT MIRROR FILTERS` and **`QWCT MIRROR ELIGIBILITY`**. It reads original D1 prior close, native ATR, original Stage2, global/local SMA trend, role reversal and existing proximity / level strength filters. **Native execution of this revised code is pending**, so don't assume AON five passed the morning screener. If continuing, update and run **only that single mirror notebook cell**, and return `QWCT MIRROR FILTERS` / `QWCT MIRROR ELIGIBILITY` lines. No new project, no backtest, no change in trading logic.
+
+
 ## Next single step — actual D1 mirror audit from native LEAN indicators (no new Backtest)
 
 **Ready one-cell addon:** [`MIRROR_AON_DELL_ONE_CELL.py`](./MIRROR_AON_DELL_ONE_CELL.py). Paste as a **new** cell underneath the successful AON/DELL RAW charts in the same `Qwct-M5-Cohort-Research` QuantConnect Research Notebook, press Shift+Enter, send `QWCT MIRROR REVIEW` and `QWCT MIRROR CASE` or `QWCT MIRROR ERROR` lines. Do **not** replace the previous working cell and do **not** launch a new Backtest.

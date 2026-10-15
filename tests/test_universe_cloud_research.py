@@ -91,6 +91,11 @@ def test_cloud_source_uses_existing_screening_and_native_daily_indicators():
     source = APP.read_text(encoding="utf-8")
     ast.parse(source)
     assert len(source.encode("utf-8")) < 32_000
+    assert "from strategy import select_liquid_fundamentals, passes_gerchik_screener" in source
+    pkg = (APP.parent / "strategy_init_cloud.py").read_text(encoding="utf-8")
+    root_screen = (ROOT / "strategy" / "screener.py").read_text(encoding="utf-8")
+    assert pkg.startswith((ROOT / "strategy" / "__init__.py").read_text(encoding="utf-8").rstrip())
+    assert root_screen[root_screen.index("def _positive("):] in pkg
     assert "select_liquid_fundamentals(fundamentals, self.cfg)" in source
     assert "passes_gerchik_screener(price, a, v, cfg)" in source
     assert "self.cfg.screener_watchlist_limit" in source

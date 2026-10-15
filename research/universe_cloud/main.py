@@ -8,8 +8,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from strategy.config import StrategyConfig
-from strategy.screener import (
-    select_liquid_fundamentals, passes_gerchik_screener)
+from strategy import select_liquid_fundamentals, passes_gerchik_screener
 from strategy.levels import levels_for_session
 from strategy.indicators import trend_direction, global_trend
 

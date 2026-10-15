@@ -137,6 +137,8 @@ def test_2_7_next_session_has_strict_ab_mode_and_native_calendar_only():
     assert 'f"strict_days={self.summary[' in s
     assert 'f"next_days={self.summary[' in s
     assert "self.callback_events.append(event)" in s
+    assert "QWCT TIMING EVENT" in s  # actual callback price-data EndTimes
+    assert "QWCT TIMING VERIFIED" in s  # verified native next-open A/B
     assert "VERIFIED_NEXT_EXCHANGE_SESSION" not in s  # separate pure helper
     assert "datetime(2024, 6, 3" not in s  # no hard-coded market days
 

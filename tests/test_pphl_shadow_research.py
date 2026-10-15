@@ -179,7 +179,7 @@ def test_pphl_shadow_preserves_native_m5_proof_for_real_window_event():
     def candle(hour, minute, op, hi, lo, cl):
         end = datetime(2024, 3, 21, hour, minute, tzinfo=ET)
         c = SimpleNamespace(
-            open=op, high=hi, low=lo, close=cl, volume=1000.)
+            symbol=k, open=op, high=hi, low=lo, close=cl, volume=1000.)
         on_m5(agent, c, pd.Timestamp(end))
 
     candle(13, 10, 179.49, 179.53, 179.45, 179.47)

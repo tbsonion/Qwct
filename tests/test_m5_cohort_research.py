@@ -97,3 +97,23 @@ def test_2_6_not_modified_original_three_strategies():
     # BsuDetector is read-only: no synthetic fill/trade intent/profit.
     assert "detector.on_bar(ClosedBar(" in s
     assert "research" not in s[:90].lower() or "QWCT" in s
+
+
+def test_native_m1_m5_replay_tail_diagnostic_never_invents_last_bar():
+    code = APP.read_text(encoding="utf-8")
+    assert "def _replay(self, symbol, minute_bars, day, close):" in code
+    assert "self._replay(symbol, minute[symbol], day, end)" in code
+    for phrase in (
+        'last_m1_end = et(minute_bars[-1].end_time)',
+        'last_m5_end = et(emitted[-1].end_time) if emitted else None',
+        'self.summary["m1_tail_at_close"]',
+        'self.summary["m1_tail_before_close"]',
+        'self.summary["m5_tail_at_close"]',
+        'self.summary["m5_tail_before_close"]',
+        "QWCT COHORT TAIL",
+        "TIMING AUDIT ONLY / NO SYNTHETIC BAR",
+    ):
+        assert phrase in code
+    assert "consolidator.scan(" not in code  # never flush an unclosed M5
+    assert "TradeBar(" not in code  # don't create artificial boundary bars
+    assert len(code.encode("utf-8")) < 32_000

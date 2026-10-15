@@ -1,5 +1,16 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.4 RAW vs SCALED_RAW price-basis research
+
+- [x] **Implement minimal research-only basis comparison on `main`:** `research/universe_cloud/main.py` uses one additional typed/batched SCALED_RAW daily History request exclusively for the already chosen Shadow tickers, reuses existing RAW historical frames and level `first_idx`; verifies source and latest `EndTime`, timestamp chronology, RAW/scaled source high/low, recent close and ratio.
+- [x] **Fail closed:** `MATCH / REBASED / LATEST_DIFF / UNKNOWN` are data-basis *observations*, not valid BSU approvals. Original RAW off-grid WMT still flagged separately; no auto-rounding, stale bars, same-day bars, M5/SEC, or orders; same-day Fundamental selection bug Apr15 not silently repaired.
+- [x] **Keep QuantConnect Free logs compact:** `QWCT BASIS SUMMARY/DETAIL` emitted by default (up to 25 details); old `ORIGIN DETAIL` now verbose-only; all existing selection/Shadow/UNIVERSE summary counts unchanged. Source file stays under 32KB.
+- [x] **Add pure regression tests:** same/rebased/latest mismatch, missing and invalid timestamps, no tick, future/duplicate SCALED history, bounded typed History overload, no orders.
+- [ ] **Check latest GitHub Actions Pure Strategy Checks result** (not equivalent to native LEAN).
+- [ ] **NEXT native Cloud:** update ONLY [`Qwct-Universe-Research/main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) and run **2024-04-08..2024-04-19**. Expected OLD baselines: `days=9`, `stage2_pass=412`, `shadow_symbol_days=14`, `RAW 13 PASS/1 FAIL`. NEW `QWCT BASIS` results unknown until real backtest; send all BASIS rows, including WMT.
+- [ ] **After native basis proof:** independently check corporate-action/tick applicability and manual Gerchik origin labels before any read-only M5 BPU research. Never claim earnings or trades from D1 observations.
+
+
 ## 2026-10-15 — QWCT 2.3: Apr 15 cause IDENTIFIED in native Cloud, RAW origin second-window proven
 
 - [x] **Native full requested interval `b150a7c028111580f879cc75e2512b0d`**, Apr 8–19 2024 (LEAN v2.5.0.0.18179); 10 scheduled equity scans / 9 scanned, `candidate_days=450`, `d1_ready=446`, `stage2_pass=412`, `shadow_symbol_days=14`, `unique_shadow_level_origins=11`, 3 baseline Top10 overlaps. No orders. Confirms previous separate-window totals.

@@ -133,8 +133,14 @@ def review_geometry(case, d, m1, m5):
     expected=pd.date_range(pd.Timestamp(case["day"]+" 09:35",tz="America/New_York"),
                            pd.Timestamp(case["day"]+" 16:00",tz="America/New_York"),
                            freq="5min")
-    valid_counts=(m5.index.equals(expected)
-                  and int(m5.iloc[-1]["native_m1_count"])==5)
+    full_buckets=(m5["native_m1_count"]==5)
+    incomplete=m5.loc[~full_buckets,"native_m1_count"]
+    valid_counts=(m5.index.equals(expected) and full_buckets.all())
+    if not incomplete.empty:
+        print("INCOMPLETE M5 SOURCE MINUTE BUCKETS (ET):",
+              [(t.strftime("%H:%M"),int(n)) for t,n in incomplete.items()])
+        print("WARNING: Full 78-bar M5 SOURCE coverage is NOT verified; "
+              "a missing minute bar need not mean a feed outage.")
     print("\n==",case["ticker"],case["day"],case["side"],"==")
     print("D1 original:",case["src"],"recorded:",raw,
           "native source:",actual_source,"MATCH" if raw_ok else "MISMATCH")
@@ -148,7 +154,7 @@ def review_geometry(case, d, m1, m5):
     print("Cross count vs June2.8 native:",same_cross,
           "first crossing:",str(first_cross),
           "first timestamp match:",first_expected,
-          "FULL 78 M5:",valid_counts)
+          "ALL 78 M5 HAVE 5 ORIGINAL M1:",valid_counts)
     print("MANUAL BSU/TVX status: INDETERMINATE / UNVERIFIED.")
     if not raw_ok or not same_cross or not first_expected or not valid_counts:
         print("WARNING: SOURCE/GEOMETRY CHECK FAILED. Do not mark BSU; "

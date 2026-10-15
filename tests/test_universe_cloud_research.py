@@ -110,3 +110,72 @@ def test_cloud_source_uses_existing_screening_and_native_daily_indicators():
     for cmd in ("self.market_order(", "self.limit_order(",
                 "self.set_holdings(", "self.buy(", "self.sell("):
         assert cmd not in source
+
+
+def test_universe_history_receives_list_not_unmarshallable_tuple():
+    """Reproduce native Cloud error: typed History overload rejected tuple.
+
+    This only tests Python call shape; actual C#/Python binding remains
+    to be verified in the next real QuantConnect Cloud backtest.
+    """
+    from collections import Counter
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    parsed = ast.parse(APP.read_text(encoding="utf-8"))
+    cls = next(x for x in parsed.body if isinstance(x, ast.ClassDef)
+               and x.name == "QwctUniverseResearch")
+    func = next(x for x in cls.body if isinstance(x, ast.FunctionDef)
+                and x.name == "_history_asof")
+    timezone = ZoneInfo("America/New_York")
+
+    def as_et(value):
+        return pd.Timestamp(value).tz_convert(timezone)
+
+    env = {
+        "TradeBar": object,
+        "Resolution": SimpleNamespace(DAILY="daily"),
+        "DataNormalizationMode": SimpleNamespace(RAW="raw"),
+        "et": as_et,
+    }
+    module = ast.fix_missing_locations(ast.Module(body=[func], type_ignores=[]))
+    exec(compile(module, str(APP), "exec"), env)
+    history_asof = env["_history_asof"]
+
+    class TypedHistory:
+        def __init__(self):
+            self.symbol_arg = None
+
+        def __getitem__(self, kind):
+            assert kind is object
+
+            def get(symbols, bars, resolution, fill_forward,
+                    data_normalization_mode):
+                assert type(symbols) is list  # LEAN's typed overload
+                assert symbols == ["AAPL", "MSFT"]
+                assert bars == 180
+                assert resolution == "daily"
+                assert fill_forward is False
+                assert data_normalization_mode == "raw"
+                self.symbol_arg = symbols
+                prev = SimpleNamespace(
+                    time=datetime(2024, 3, 29, 9, 30, tzinfo=timezone),
+                    end_time=datetime(2024, 3, 29, 16, 0, tzinfo=timezone))
+                return [{"AAPL": prev, "MSFT": prev}]
+            return get
+
+    history = TypedHistory()
+    algo = SimpleNamespace(history=history, rejections=Counter())
+    result = history_asof(algo, ("AAPL", "MSFT"), date(2024, 4, 1))
+    assert history.symbol_arg == ["AAPL", "MSFT"]
+    assert len(result["AAPL"]) == len(result["MSFT"]) == 1
+    assert not algo.rejections
+
+
+def test_new_universe_history_fix_does_not_expand_cloud_files():
+    source = APP.read_text(encoding="utf-8")
+    assert "list(symbols), 180, Resolution.DAILY" in source
+    assert len(source.encode("utf-8")) < 32_000
+    for bad in ("self.market_order(", "self.limit_order(",
+                "self.set_holdings(", "self.buy(", "self.sell("):
+        assert bad not in source

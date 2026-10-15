@@ -1,7 +1,7 @@
 """Read-only LEAN point-in-time Qwct dynamic screener diagnostic; no orders."""
 from AlgorithmImports import *
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -9,7 +9,7 @@ import pandas as pd
 
 from strategy.config import StrategyConfig
 from strategy import select_liquid_fundamentals, passes_gerchik_screener
-from strategy.levels import levels_for_session
+from strategy.levels import levels_for_session, _confirmed_swings, native_cluster_tolerance
 from strategy.indicators import trend_direction, global_trend
 
 ET = ZoneInfo("America/New_York")
@@ -43,7 +43,7 @@ def classify_snapshot(d1, cfg, session):
     if not stage2:
         return dict(stage2=False, price=price, atr=a, volume=v,
                     eligible=0, near=0, aligned=0, role_aligned=0,
-                    role_conflict=0, shadow_levels=[], examples=[])
+                    role_conflict=0, shadow_levels=[], examples=[], _role_levels=[])
     levels = [x for x in levels_for_session(d1, session, cfg)
               if (x.source == "swing_cluster"
                   and x.kind in ("support", "resistance")
@@ -88,7 +88,64 @@ def classify_snapshot(d1, cfg, session):
                 eligible=len(levels), near=len(near),
                 aligned=len(qualified), role_aligned=len(role_aligned),
                 role_conflict=len(qualified)-len(role_aligned),
-                shadow_levels=shadow_levels, examples=examples)
+                shadow_levels=shadow_levels, examples=examples, _role_levels=role_aligned)
+
+def origin_d1_audit(d1, lvl, session, cfg, native_tick):
+    """PASS = RAW D1 pivot/grid/chronology ONLY, not canonical BSU."""
+    r = dict(status="UNKNOWN", reason="", cluster=lvl.price,
+             origin=None, source_date=None, confirmed_at=None,
+             formed_at=str(lvl.formed_at), valid_from=str(lvl.valid_from),
+             tick=native_tick, basis="RAW_ONLY_SCALED_RAW_UNCHECKED")
+
+    def done(status, reason):
+        r["status"], r["reason"] = status, reason
+        return r
+
+    if lvl.source != "swing_cluster" or lvl.kind not in ("support", "resistance"):
+        return done("FAIL", "NOT_ORIGINAL_SUPPORT_RESISTANCE_SWING")
+    if (d1 is None or d1.empty
+            or not isinstance(d1.index, pd.DatetimeIndex)
+            or d1.index.tz is None or not d1.index.is_unique
+            or not d1.index.is_monotonic_increasing
+            or d1.index[-1].date() >= session):
+        return done("FAIL", "NON_CAUSAL_OR_INVALID_RAW_D1")
+    i, j, k = lvl.first_idx, lvl.last_idx, cfg.swing_k
+    if i < k or j <= i or j+k >= len(d1) or lvl.touches < cfg.min_touches:
+        return done("FAIL", "INVALID_CONFIRMED_SWING_INDICES")
+    r["source_date"] = str(d1.index[i].date())
+    field = "low" if lvl.kind == "support" else "high"
+    try:
+        swings = _confirmed_swings(d1, k)[0 if field == "high" else 1]
+        confirmations = {idx: date for idx, _, date in swings}
+        if i not in confirmations or j not in confirmations:
+            return done("FAIL", "ORIGIN_OR_LAST_IS_NOT_CONFIRMED_SWING")
+        last_confirm = confirmations[j]
+        r["confirmed_at"] = str(last_confirm)
+        if (d1.index[j].date() != lvl.formed_at
+                or lvl.valid_from != last_confirm + timedelta(days=1)
+                or lvl.valid_from > session or confirmations[i] > last_confirm):
+            return done("FAIL", "FORMATION_OR_VALID_FROM_CHRONOLOGY")
+        origin = float(d1.iloc[i][field])
+        r["origin"] = origin
+        if not isfinite(origin) or origin <= 0:
+            return done("FAIL", "INVALID_RAW_ORIGIN_EXTREME")
+        if not isfinite(float(lvl.price)) or lvl.price <= 0:
+            return done("FAIL", "INVALID_CLUSTER_PRICE")
+        tolerance = native_cluster_tolerance(d1, cfg)
+        if tolerance is None:
+            return done("UNKNOWN", "NATIVE_CLUSTER_TOLERANCE_UNAVAILABLE")
+        if abs(origin - lvl.price) > tolerance + 1e-7:
+            return done("FAIL", "RAW_ORIGIN_OUTSIDE_NATIVE_CLUSTER")
+        if native_tick is None:
+            return done("UNKNOWN", "NATIVE_SECURITY_TICK_UNAVAILABLE")
+        tick = float(native_tick)
+        if not isfinite(tick) or tick <= 0:
+            return done("UNKNOWN", "NATIVE_SECURITY_TICK_INVALID")
+        if abs(origin - round(origin / tick)*tick) > tick*1e-5:
+            return done("FAIL", "RAW_ORIGIN_OFF_NATIVE_TICK_GRID")
+    except (TypeError, ValueError, KeyError, IndexError, OverflowError) as exc:
+        return done("UNKNOWN", "RAW_ORIGIN_AUDIT_ERROR:" + str(exc)[:40])
+    return done("PASS", "RAW_PIVOT_ONLY;SCALED_RAW_SPLITS_UNVERIFIED")
 
 
 class QwctUniverseResearch(QCAlgorithm):
@@ -110,6 +167,10 @@ class QwctUniverseResearch(QCAlgorithm):
         self.universe_settings.data_normalization_mode = (
             DataNormalizationMode.RAW)
         self.screen_by_day = {}
+        self.selection_events = []
+        self.scan_missing_days = set()
+        self.origin_counts = Counter()
+        self.origin_details = []
         self.counts = Counter()
         self.rejections = Counter()
         self.example_rows = []
@@ -143,6 +204,21 @@ class QwctUniverseResearch(QCAlgorithm):
         day = et(self.time).date()
         selected = select_liquid_fundamentals(fundamentals, self.cfg)
         self.screen_by_day[day] = tuple(selected)
+        first = next(iter(fundamentals), None)
+        sample_at = (str(getattr(first, "time", "NA"))[:32]
+                     if first is not None else "NO_INPUT")
+        sample_end = (str(getattr(first, "end_time", "NA"))[:32]
+                      if first is not None else "NO_INPUT")
+        late = day in self.scan_missing_days
+        if late:
+            self.counts["selection_after_missed_scan"] += 1
+        self.selection_events.append((day, et(self.time).isoformat(),
+                                      len(selected), sample_at, sample_end))
+        self.log(
+            f"QWCT UNIVERSE TIMING SELECT day={day} "
+            f"clock={et(self.time).isoformat()} sample_time={sample_at} "
+            f"sample_end={sample_end} selected={len(selected)} "
+            f"after_missed_scan={late}")
         return selected
 
     def _history_asof(self, symbols, day):
@@ -200,10 +276,22 @@ class QwctUniverseResearch(QCAlgorithm):
         day = et(self.time).date()
         if day in self.covered_days:
             return
+        self.counts["scheduled_scans"] += 1
+        callback_seen = day in self.screen_by_day
         members = self.screen_by_day.get(day)
         if not members:
             self.rejections["missing_same_day_universe"] += 1
+            self.scan_missing_days.add(day)
+            self.log(
+                f"QWCT UNIVERSE TIMING SCAN day={day} "
+                f"clock={et(self.time).isoformat()} "
+                f"status={'EMPTY_SELECTION' if callback_seen else 'NO_CALLBACK_BEFORE_SCAN'} "
+                "no prior-day fallback; NOT zero candidates")
             return
+        self.log(
+            f"QWCT UNIVERSE TIMING SCAN day={day} "
+            f"clock={et(self.time).isoformat()} "
+            "status=SAME_DAY_SELECTION_READY")
         self.covered_days.add(day)
         self.counts["days"] += 1
         self.counts["candidate_days"] += len(members)
@@ -213,6 +301,7 @@ class QwctUniverseResearch(QCAlgorithm):
             self.rejections["native_history_error:" + str(exc)[:70]] += 1
             return
         passed = []
+        qualified_d1 = {}
         for rank, symbol in enumerate(members):
             try:
                 d1 = self._native_frame(bucket[symbol], day)
@@ -225,6 +314,8 @@ class QwctUniverseResearch(QCAlgorithm):
                 self.counts["stage2_reject"] += 1
                 continue
             passed.append((rank, symbol, obs))
+            if obs["role_aligned"]:
+                qualified_d1[symbol] = d1
             self.counts["stage2_pass"] += 1
         watchlist = passed[:self.cfg.screener_watchlist_limit]
         shadow = d1_shadow_shortlist(passed, self.cfg.screener_watchlist_limit)
@@ -237,6 +328,17 @@ class QwctUniverseResearch(QCAlgorithm):
             self.counts["shadow_nonempty_days"] += 1
         for i, (rank, symbol, obs) in enumerate(shadow, start=1):
             self.shadow_unique_tickers.add(symbol.value)
+            tick = None
+            try:
+                tick = float(self.securities[symbol].symbol_properties.minimum_price_variation)
+            except Exception:
+                pass
+            for lvl, side in obs.get("_role_levels", [])[:3]:
+                report = origin_d1_audit(
+                    qualified_d1[symbol], lvl, day, self.cfg, tick)
+                self.origin_counts[report["status"]] += 1
+                if len(self.origin_details) < 30:
+                    self.origin_details.append((day, symbol.value, side, report))
             for item in obs["shadow_levels"]:
                 self.shadow_unique_level_origins.add(
                     (symbol.value, item[0], item[1], item[6]))
@@ -302,6 +404,31 @@ class QwctUniverseResearch(QCAlgorithm):
             "NO M5 / NO ORDERS")
 
     def on_end_of_algorithm(self):
+        self.log(
+            "QWCT UNIVERSE TIMING SUMMARY "
+            f"scans={self.counts['scheduled_scans']} "
+            f"selection_callbacks={len(self.selection_events)} "
+            f"selection_days={len(self.screen_by_day)} "
+            f"missed_scan_days={sorted(str(d) for d in self.scan_missing_days)} "
+            f"late_callbacks={self.counts['selection_after_missed_scan']}; "
+            "missing scan != zero candidates")
+        self.log(
+            "QWCT ORIGIN SUMMARY "
+            f"raw_only_pass={self.origin_counts['PASS']} "
+            f"fail={self.origin_counts['FAIL']} "
+            f"unknown={self.origin_counts['UNKNOWN']} "
+            f"printed={len(self.origin_details)}; "
+            "PASS means RAW D1 pivot/grid/chronology ONLY; "
+            "SCALED_RAW, split history, canonical BSU and M5 UNVERIFIED")
+        for day, ticker, side, row in self.origin_details:
+            self.log(
+                f"QWCT ORIGIN DETAIL {day} {ticker} side={side} "
+                f"cluster={row['cluster']:.6f} "
+                f"raw_extreme={row['origin']} source={row['source_date']} "
+                f"formed_at={row['formed_at']} confirmed={row['confirmed_at']} "
+                f"valid_from={row['valid_from']} tick={row['tick']} "
+                f"status={row['status']} reason={row['reason']} "
+                f"basis={row['basis']}")
         self.log(
             "QWCT UNIVERSE SUMMARY "
             f"days={self.counts['days']} "

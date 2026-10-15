@@ -1,5 +1,15 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.5 real native M5 six-case backtest completed
+
+- [x] QuantConnect LEAN `b6c0a9982e638d3f5fd1aa0e56a1f84e`, Apr10–19 2024: six READY_PROXY, 468 valid closed M5 (78 per symbol-day), zero BPU1, strict BPU1, BPU2, strict BPU2, window BPU2, invalidations, rejects; no trades/orders. All historical D1 provenance/basis gates passed.
+- [x] Nearest M5 wick to original RAW pivot in ticks: TSLA 793 ($7.93), TXN 60 ($0.60), AAPL 62 ($0.62), AMAT 299 ($2.99), META 1778 ($17.78), NFLX 2994 ($29.94). This is same-day six-case research, not a frequency study.
+- [x] Existing code ran in true LEAN. Do not adjust BPU1 tick tolerance/cluster median or call 0 BPU2 a detector error. Closed M5 cannot certify the -30 second TVX nor a real fill.
+- [ ] Next bounded development: independent multi-session **point-in-time** Shadow D1 cohort with unchanged RAW/SCALED basis and existing M5 BsuDetector, exact original pivot and rules, no orders. Broaden dates rather than alter exact-touch threshold; report explicit rejected/invalid cases and possible strict positive BPU1/BPU2.
+- [ ] Independently manually label true Gerchik BSU geometry for positive findings, then separate actual SEC/TICK preclose study only for strict positive cases. No profit inference.
+- [ ] GitHub Actions Pure Strategy Checks status unverified, though native six-case run succeeded.
+
+
 ## 2026-10-15 — QWCT 2.5 isolated six-case native M5 study IMPLEMENTED (native run pending)
 
 - [x] **Ready-solution-first review:** existing `strategy/patterns_bsu.py` supplies `BsuDetector`; `strategy/native_m5_validation.py` supplies native M5 admission; original `research/bsu_cloud/main.py` proves the LEAN consolidator pattern. Do NOT clone/change the old Cloud BSU project. Reviewed `strategy/bsu_bridge.py`: canonical bridge requires actual accepted `ScenarioDecision(model="bounce")`, NOT established by QWCT 2.4 Shadow selection, so don't invent canonical acceptance.

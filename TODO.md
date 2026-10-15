@@ -17,6 +17,12 @@
 
 **Последняя проверенная Cloud-сборка (март–апрель 2024) — код менять НЕ нужно. GitHub-ссылки остаются историческими ссылками для восстановления, а НЕ обязательным обновлением:** [`main.py`](https://github.com/tbsonion/Qwct/blob/main/deploy/quantconnect_free_20261014_bounce_audit/main.py), [`strategy/scenarios.py`](https://github.com/tbsonion/Qwct/blob/main/deploy/quantconnect_free_20261014_bounce_audit/strategy/scenarios.py), [`strategy/reporting.py`](https://github.com/tbsonion/Qwct/blob/main/deploy/quantconnect_free_20261014_bounce_audit/strategy/reporting.py). Это **Cloud-ready снимки**, особенно bundled `strategy/reporting.py`, а НЕ raw GitHub reporting.py. Заменить эти **три** существующих пути и оставить `strategy/m5_runtime.py` из уже работавшего скана без изменений. [Полная инструкция](deploy/quantconnect_free_20261014_bounce_audit/README.md). По следующим изменениям создавать НОВЫЕ verified GitHub-ссылки под действительно затронутые файлы.
 
+## 2026-10-15: QuantConnect Cloud save failure (>32000 main.py) fixed
+
+- [x] Native Cloud editor rejected `Qwct-BSU-Research/main.py` at **35,714 characters**; Backtest did not start. No valid SEC results or failed strategy signal should be inferred from that build/save error.
+- [x] Compacted **only** [research/bsu_cloud/main.py](research/bsu_cloud/main.py) to **31,319 characters** by pruning comments/docstrings and blank lines, retaining SEC/PPHL research functionality and unchanged rules, six shared modules and original Qwct-LEAN-Test. Added CI size and syntax guard in `tests/test_pphl_shadow_research.py`.
+- [ ] In Cloud update only `Qwct-BSU-Research/main.py`; Save and Backtest same 2024-03-16..2024-04-26 period, returning `BSU PPHL SEC RETRO` and `BSU PPHL SEC SUMMARY`. Native SEC availability remains unverified until that real run.
+
 ## 2026-10-14/15: native PPHL proof завершён, следующий узкий SEC retrospective audit
 
 - [x] **Нативный Cloud LEAN 2.5.0.0.18179, run `f06cb8adcd437c8d647d99f01ee5fd88`, 2024-03-16..2024-04-26:** `strict_in_window_events=3`, **`unique_level_day_episodes=3`**, `pphl_only_BPU1_strict=22`, `pphl_only_BPU2_strict=6`, `pphl_only_strict_in_window=3`; оригинальный Qwct не изменился `BPU1_strict=6`, `BPU2_with_strict_BPU1=1`, `strict_in_bounce_window=0`, `rejects={}`, нет ордеров. Новые native OHLC пары настоящие, но это **только** кандидаты `PPHL-only`, не прошедшие все D1/model/trend/4R/3R/SEC/OMS.

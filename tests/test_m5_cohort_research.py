@@ -76,7 +76,7 @@ def test_missing_and_split_days_never_fabricate_m5():
     s = APP.read_text(encoding="utf-8")
     for required in (
         "self.by_day.get(day)",
-        "NO_SAME_DAY_CALLBACK",
+        "NO_VERIFIED_SELECTION",
         "self.quarantined.add((sym, et(self.time).date()))",
         "SPLIT_OCCURRED_QUARANTINE",
         "if (sym, day) not in self.quarantined",
@@ -123,7 +123,7 @@ def test_native_close_scan_keeps_completed_origin_candles():
     assert len(code.encode("utf-8")) < 32_000
 
 
-def test_2_7_next_session_is_opt_in_ab_mode_and_native_calendar_only():
+def test_2_7_next_session_has_strict_ab_mode_and_native_calendar_only():
     s = APP.read_text(encoding="utf-8")
     assert 'self.get_parameter("timing_mode") or "next_session"' in s
     assert 'self.timing_mode not in ("strict", "next_session")' in s

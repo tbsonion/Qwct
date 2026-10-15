@@ -1,5 +1,13 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — Actual user-supplied QWCT 2.9 native D1/M5 Research evidence reviewed
+
+- [x] **AON and DELL real QuantBook notebook screenshots received**; original May 2024 RAW D1 extrema match native 2.8. **AON Jun12 SHORT** original $293.5900, D1 median $293.8175: first M5 range crosses downward at 09:35, OHLC O/H $293.920 L $292.340 C $292.400, 2 case range crosses, zero strict relevant wick exact touch. **DELL Jun7 LONG** original $128.7500, median $128.6750: first source M5 range crosses downward at 14:15, O/H $130.225 L/C $128.520, 7 case M5 range crosses, zero strict relevant wick exact touch. These two initial crosses are *downward penetrations*, not exact BPU1 bounces; do NOT infer any TVX/trade.
+- [x] **Important as-of source-coverage bug corrected in notebook only:** AON 389 native minute tradebars yielded 78 M5 time buckets but only **77 full M5**, whereas old validator incorrectly showed `FULL 78 M5: True` by checking the last period only. DELL 390 M1, **78 full M5**. New validator checks five original M1 in **every** period; prints the one missing-bucket ET close for future screenshots. A no-fill-forward missing original minute could simply be a zero-trade minute; no fabricated price or feed outage assumption.
+- [x] Assessment stored: [`research/chart_review_qc/NATIVE_VISUAL_REVIEW_AON_DELL_JUNE_2024.md`](https://github.com/tbsonion/Qwct/blob/main/research/chart_review_qc/NATIVE_VISUAL_REVIEW_AON_DELL_JUNE_2024.md). D1 BSU manual author-label, independent mirror detection and SEC/TICK preclose all still **UNVERIFIED**.
+- [ ] **NEXT research task:** Check separately if actual frozen D1 `kind='mirror'` proxies exist for either session, with pure mirror chronology/valid_from and clear role reversal, and independently compare to author D1-level annotated examples. Do not change `strategy/patterns_bsu.py` or relax source equality.
+
+
 ## 2026-10-15 — QWCT chart-first BSU + MIRROR audit implemented; awaiting actual native figure review
 
 - [x] **Native chart capture methodology built, WITHOUT touching baseline 2.8 or executing a new strategy run:** [`research/chart_review_qc/BSU_D1_M5_REVIEW.ipynb`](https://github.com/tbsonion/Qwct/blob/main/research/chart_review_qc/BSU_D1_M5_REVIEW.ipynb) for the existing QuantConnect Cloud project **Research Notebook**. Defaults to AON Jun12 and DELL Jun7; optional CRM Jun27, ABT Jun7. Four real source/median/cross timestamps pre-loaded from native LEAN `4b787847b9e5d2405b2fd97a541fa71e`.

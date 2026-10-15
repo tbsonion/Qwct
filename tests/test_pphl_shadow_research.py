@@ -195,7 +195,7 @@ def test_pphl_shadow_preserves_native_m5_proof_for_real_window_event():
     assert proof[0] == k
     assert proof[3] == 179.53
     assert proof[7][2] == 179.53
-    assert proof[8][2] == 179.50
+    assert proof[8][1] == 179.50
     assert proof[5] > proof[4]
     assert agent.pphl_rejects == {}
 

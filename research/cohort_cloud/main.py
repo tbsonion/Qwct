@@ -245,6 +245,8 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.by_day = {}
         self.callback_at = {}
         self.active = {}
+        self.all_cases = []
+        self.quarantined = set()
         self.active_day = None
         self.scanned = set()
         self.finished = set()
@@ -418,6 +420,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                     bpu1=0, strict_bpu1=0, bpu2=0, strict_bpu2=0,
                     invalid=0, n_m5=0, best_ticks=None, first_strict=False)
                 self.active.setdefault(symbol, []).append(case)
+                self.all_cases.append(case)
                 self.summary["ready_origins"] += 1
         if self.active:
             self.log(
@@ -426,6 +429,17 @@ class QwctM5CohortResearch(QCAlgorithm):
                 f"basis_M={self.basis['MATCH']} "
                 f"basis_R={self.basis['REBASED']}; retrospective M5 ONLY")
 
+    def on_data(self, data):
+        """Quarantine real split days; never replay a mixed native price basis."""
+        splits = getattr(data, "splits", None)
+        if splits is None:
+            return
+        for sym, event in splits.items():
+            if (sym in self.active and
+                    getattr(event, "type", None) == SplitType.SPLIT_OCCURRED):
+                self.quarantined.add((sym, et(self.time).date()))
+                self.rejects["SPLIT_OCCURRED_QUARANTINE"] += 1
+
     def _finish(self):
         day = et(self.time).date()
         if day in self.finished:
@@ -433,7 +447,11 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.finished.add(day)
         if day != self.active_day or not self.active:
             return
-        symbols = list(self.active)
+        symbols = [
+            sym for sym in self.active
+            if (sym, day) not in self.quarantined]
+        if not symbols:
+            return
         # Request ONLY today's REAL minute bars AFTER market close. There
         # were no M5 observations available to the 09:29 D1 selector.
         start = datetime.combine(day, time(9, 30), ET)
@@ -586,10 +604,15 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"invalid={self.summary['invalidated']}; NO ORDERS")
         self.log(f"QWCT COHORT REJECTS {dict(self.rejects.most_common(12))}")
         # Distinct observed cases only. Free 10KB log budget.
-        rows = [c for cases in self.active.values() for c in cases]
+        rows = sorted(
+            (c for c in self.all_cases if c["best_ticks"] is not None),
+            key=lambda c: (c["best_ticks"], c["day"], c["ticker"]))
+        self.log(
+            f"QWCT COHORT COVERAGE tracked={len(self.all_cases)} "
+            f"observed={len(rows)} nearest_samples={min(10, len(rows))}")
         for c in rows[:10]:
             self.log(
-                f"QWCT COHORT LASTDAY {c['day']} {c['ticker']} "
+                f"QWCT COHORT NEAREST {c['day']} {c['ticker']} "
                 f"{c['side']} basis={c['basis']} "
                 f"m5={c['n_m5']} closest_ticks={c['best_ticks']} "
                 f"bpu1={c['bpu1']} bpu2={c['bpu2']}")

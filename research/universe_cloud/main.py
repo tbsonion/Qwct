@@ -151,9 +151,9 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
 class QwctUniverseResearch(QCAlgorithm):
     def initialize(self):
         start = datetime.strptime(
-            self.get_parameter("scan_start") or "2024-04-01", "%Y-%m-%d")
+            self.get_parameter("scan_start") or "2024-04-08", "%Y-%m-%d")
         end = datetime.strptime(
-            self.get_parameter("scan_end") or "2024-04-05", "%Y-%m-%d")
+            self.get_parameter("scan_end") or "2024-04-19", "%Y-%m-%d")
         if end < start or (end-start).days > 14:
             raise ValueError("Universe research requires <=14 calendar days")
         self.set_start_date(start.year, start.month, start.day)

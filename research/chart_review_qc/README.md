@@ -1,5 +1,12 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## Next single step — actual D1 mirror audit from native LEAN indicators (no new Backtest)
+
+**Ready one-cell addon:** [`MIRROR_AON_DELL_ONE_CELL.py`](./MIRROR_AON_DELL_ONE_CELL.py). Paste as a **new** cell underneath the successful AON/DELL RAW charts in the same `Qwct-M5-Cohort-Research` QuantConnect Research Notebook, press Shift+Enter, send `QWCT MIRROR REVIEW` and `QWCT MIRROR CASE` or `QWCT MIRROR ERROR` lines. Do **not** replace the previous working cell and do **not** launch a new Backtest.
+
+The earlier optional mirror inventory in the multi-cell notebook cannot be treated as validated: the price-chart D1 DataFrame lacked the **native LEAN** `atr14` and `sma50` columns required by `strategy.levels`. This addon corrects that by re-fetching original RAW `TradeBar` D1 objects before the session's 09:29 cutoff and calculating exact *native* Wilder ATR/SMA from these original 180 bars, matching the cohort architecture; no fabricated bars, synthetic fills, fake mirror levels or home-grown indicators. It then uses unchanged `levels_for_session` and the independent `audit_mirror` chronology validator. A valid `PROXY_VERIFIED` label is **only algorithmic**, not a confirmed manual Gerchik BSU/BPU1. The actual native addon run is **pending user output**.
+
+
 ## 2026-10-15 — Real AON/DELL native Research screenshots received and reviewed
 
 The QuantBook notebook **ran successfully and plotted both actual RAW D1/M5 histories**. [Read the real chart-based OHLC assessment](./NATIVE_VISUAL_REVIEW_AON_DELL_JUNE_2024.md). Both historical original RAW pivots MATCHED prior 2.8 LEAN provenance; both original source M5 high/low extremum exact-touch counts remain zero. **AON 2024-06-12 short: first M5 range crossed RAW $293.59 downward 09:35 (O/H $293.92, L $292.34, C $292.40); 2 price-range straddles but no exact high touch. DELL 2024-06-07 long: first M5 range crossed RAW $128.75 downward 14:15 (O/H $130.225, L/C $128.52); 7 price-range straddles but no exact low touch**. A breakout through the level is not a confirmed original exact BPU1. Neither source is yet independently certified as a true manually selected Gerchik D1 BSU; mirror status and SEC/TICK TVX unverified.

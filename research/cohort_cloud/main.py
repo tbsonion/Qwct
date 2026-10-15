@@ -279,6 +279,17 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.summary["callbacks"] += 1
         if day.weekday() >= 5:
             self.summary["weekend_callbacks"] += 1
+        if self.timing_mode == "next_session":
+            try:
+                closed = not self.securities[self.anchor].exchange.hours.is_date_open(
+                    at.replace(tzinfo=None), extended_market_hours=False)
+            except Exception:
+                closed = False
+            if closed:
+                self.log(
+                    f"QWCT TIMING EVENT {day} n={len(selected)} "
+                    f"source={event['source_min']}..{event['source_max']} "
+                    f"complete={int(event['complete'])}")
         return selected
 
     def _daily_history(self, symbols, day, mode):

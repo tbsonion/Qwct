@@ -112,7 +112,7 @@ class QwctUniverseResearch(QCAlgorithm):
         """ONE batched LEAN History call; reject future or same-day bars."""
         bucket = {s: [] for s in symbols}
         for packet in self.history[TradeBar](
-                symbols, 180, Resolution.DAILY, fill_forward=False,
+                list(symbols), 180, Resolution.DAILY, fill_forward=False,
                 data_normalization_mode=DataNormalizationMode.RAW):
             for symbol, bar in packet.items():
                 if symbol not in bucket:

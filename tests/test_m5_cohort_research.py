@@ -120,6 +120,8 @@ def test_native_close_scan_keeps_completed_origin_candles():
     ):
         assert phrase in code
     assert "TradeBar(" not in code
+    assert "best_signed" in code and "best_at" in code
+    assert "signed=" in code and "closest_ticks=" in code
     assert len(code.encode("utf-8")) < 32_000
 
 

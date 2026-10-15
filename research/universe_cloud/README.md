@@ -1,10 +1,50 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15: Native Shadow Top10 VERIFIED — nine D1-only rows / seven original-level origins
+
+**Real native QuantConnect LEAN 2.5.0.0.18179 run `925f9cad95176a12269bae8b9f8f030d`**, 2024-04-01..2024-04-05, **completed 31.53 s with no orders**. Shadow comparison added to the existing `Qwct-Universe-Research` project, all prior Top10 and full50 counters unchanged:
+
+| Cohort | 5-session symbol-days | Unique tickers | Notes |
+|---|---:|---:|---|
+| Original liquidity-only Top10 | 50 | not separately reported | 10 per day; 0 with source-role+trend D1 combination |
+| Full Top50, original stage2 qualified | 227 | not separately reported | 246 historical D1 rows valid of 250 stage1, four insufficient |
+| Near a confirmed two-touch D1 level in full50 | 42 | 24 | Within original 1xATR proximity |
+| D1 source-role AND global/local SMA trend aligned in full50 | **9** | **7** | D1-only premarket candidates, *not* patterns or trades |
+| **New filtered-first Shadow Top10** | **9** | **7** | Same results as full50; per-day cap 10 never reached |
+| Overlap with original liquidity-only Top10 | **0** | — | All 9 would be omitted by current liquidity-first top10 |
+
+**Exact day-by-day real Shadow selections (liquidity ranks are ORIGINAL daily Fundamental ranks):**
+
+| Session 2024 | Candidate/rank | Source swing-cluster D1 level and hypothetical side | Provenance `valid_from` / `formed_at` |
+|---|---|---|---|
+| Apr 1 | UNH #21 | resistance **496.125**, SHORT, 3 touches, strength 4 | Mar 27 / Mar 21 |
+| Apr 1 | MCD #49 | resistance **285.60**, SHORT, 3 touches, strength 3 | Mar 27 / Mar 21 |
+| Apr 2 | UNH #21 | same resistance 496.125, SHORT | Mar 27 / Mar 21 |
+| Apr 2 | MMM #26 | resistance **94.94**, SHORT, 2 touches, strength 2 | Feb 16 / Feb 12 |
+| Apr 2 | PG #46 | support **159.915**, LONG, 2 touches, strength 2 | Mar 29 / Mar 25 |
+| Apr 2 | WMT #50 | resistance **61.6075**, SHORT, 2 touches, strength 2 | Mar 27 / Mar 21 |
+| Apr 3 | PG #48 | same support 159.915, LONG | Mar 29 / Mar 25 |
+| Apr 4 | ABBV #40 | support **175.56**, LONG, 2 touches, strength 2 | Mar 26 / Mar 20 |
+| Apr 5 | **MA #47** | support **464.74**, LONG, 2 touches, strength 2 | Mar 15 / Mar 11 |
+
+`QWCT SHADOW DAY` counts were **2,4,1,1,1** (five non-empty days); summary: `shadow_symbol_days=9`, `unique_shadow_tickers=7`, `unique_shadow_level_origins=7`, `legacy_overlap_symbol_days=0`. **The ninth MA candidate is now fully identified**; previous `OUTSIDE10` diagnostic omitted it only because examples were capped at eight. UNH and PG are repeated *same-level* across dates, not separate origins. No market orders, M5, preclose SEC, trades or P&L.
+
+### What is established / what is still missing
+
+The test **establishes a premarket Top10 liquidity-rank coverage bottleneck**, because filtering within the already fetched historical Top50 by the original D1 preconditions would preserve all nine D1-only symbol-days in this specific five-day period, without exceeding 10. **It does not establish** positive edge, a completed Gerchik setup, native exact BPU1, next-bar BPU2, exact -30-second TVX, target/room or executable entry. These nine were selected by a shadow policy invented for research and then reproduced on the **same development window**; wider independent windows are still required before policy acceptance.
+
+**Critical next validation before native M5:** `shadow_levels` values are **D1 cluster centroids**, not guaranteed **RAW native source pivots or exchange tick-grid prices**. Examples include `UNH 496.125`, `PG 159.915` and `WMT 61.6075`. A half-cent/quarter-cent cluster cannot be silently used as an exact-touch BSU trade price; the original `bsu_bridge.py` requires the historical origin extreme, native tick-size, verified RAW-vs-SCALED_RAW provenance and source timestamps, separately. A genuine native M5 BSU detector **must** use a verified RAW origin, not the cluster median. Corporate actions/splits and missing as-of factors must fail closed. No rule relaxation is justified by the nine premarket cases.
+
+**Recommended next controlled research:** freeze this five-day set; then verify **RAW D1 first swing source / tick grid / date, valid-from and corporate-action provenance for these seven original cluster origins**, then run **read-only native M5 BPU1/BPU2** only on a validated point-in-time Shadow shortlist. Do not mix retrospective OHLC M5 with genuinely event-driven -30s TVX or infer fills. In parallel, test the unchanged shadow policy on an **independent date window** (e.g. 2024-04-08..2024-04-19) rather than optimizing repeatedly on the exact same five days. The default 5-day scan parameters remain unchanged; the current native Cloud version need not be reinstalled.
+
+**Cloud action: NONE.** This last shadow `main.py` is native-verified. No change to `Qwct-LEAN-Test`, `Qwct-BSU-Research`, or the four supporting research Cloud files.
+
+
 ## 2026-10-15: NEXT EXPERIMENT IMPLEMENTED — D1-aware shadow Top10 (native run pending)
 
 **Purpose:** the real native full50 run `5497a648495b409e7cea19ff98f21d85` on 2024-04-01..05 found **9 D1-only source-role+trend-qualified symbol-days from 7 distinct tickers among the top50**, but **all 9 were outside the original liquidity-first Top10**. This is evidence of a watchlist **coverage bottleneck** during this five-day sample, *not* evidence that any BSU/BPU/TVX trading signal or profit was missed.
 
-**GitHub code change: ONLY [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py).** In the **existing** `Qwct-Universe-Research` Cloud project, replace **only `main.py`**, keep the four `strategy/` files unchanged, and run **2024-04-01..2024-04-05** unchanged. Do **not** change `Qwct-LEAN-Test` or `Qwct-BSU-Research`. The code passed **369 pure GitHub tests**, but the **new shadow stage has not run in native LEAN yet**.
+**HISTORICAL Cloud instruction, completed successfully by native run `925f9cad...`:** the shadow experiment previously required replacing only [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) in existing `Qwct-Universe-Research`. Do **not** change `Qwct-LEAN-Test` or `Qwct-BSU-Research`. The new shadow stage subsequently **ran in native LEAN successfully** (see current verified result at top), in addition to the preceding **369 GitHub tests**.
 
 The added **`d1_shadow_shortlist(passed, max_results)`** uses the **same point-in-time daily Fundamental Top50**, **same one already proven batch of RAW native D1 TradeBars** and **already calculated** unmodified price / ATR / average share-volume stage2, confirmed historical minimum 2-touch D1 cluster, morning `valid_from`, <=1 native D1 ATR proximity, sided native SMA global+local trend, and strict **source support+long or resistance+short** evidence. **No re-ranking by pattern "strength" or historical returns.** It filters first and takes at most the original `cfg.screener_watchlist_limit=10` in existing highest-liquidity order (`rank`, then symbol). **If only 2 meet the D1-only criteria, shadow contains 2: it NEVER pads empty slots with unqualified names.**
 

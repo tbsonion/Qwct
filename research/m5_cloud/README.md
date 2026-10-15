@@ -1,6 +1,24 @@
 # QWCT 2.5 — Six-case native D1 → M5 Gerchik proxy research
 
-**Status: source and pure regression tests committed; QuantConnect native Cloud run NOT YET PERFORMED.** Read-only study. This is a **new fourth Cloud project**, not a modification of `Qwct-LEAN-Test`, `Qwct-BSU-Research`, or `Qwct-Universe-Research`. Do not place orders.
+## 2026-10-15 — Real native LEAN six-case result: 0 BPU1 / 0 BPU2
+
+**Backtest ID `b6c0a9982e638d3f5fd1aa0e56a1f84e`, LEAN 2.5.0.0.18179, Apr10–19 2024.** All **six** original D1 Shadow proxy cases were READY with successful RAW / SCALED_RAW source checks. **468 genuine closed native M5 bars** passed validation, exactly **78 per selected session**, with **zero BPU1 touches, zero BPU2, zero invalidations, and zero rejected cases**. No SEC/TVX, orders, fills or profitability evidence.
+
+| Day | Stock | Side | RAW D1 pivot | Closest M5 wick-to-pivot gap | Distance (native 0.01 ticks) |
+| --- | --- | --- | ---: | ---: | ---: |
+| Apr10 | TSLA | short | 182.87 | $7.93 | 793 |
+| Apr11 | TXN | long | 167.51 | $0.60 | 60 |
+| Apr16 | AAPL | short | 174.38 | $0.62 | 62 |
+| Apr16 | AMAT | long | 202.71 | $2.99 | 299 |
+| Apr18 | META | long | 481.34 | $17.78 | 1778 |
+| Apr19 | NFLX | long | 601.57 | $29.94 | 2994 |
+
+The distances are absolute differences from the observed completed M5 high (short) / low (long) to the **original RAW source pivot**. They do not identify a preclose entry or a manual Gerchik BSU. TXN and AAPL came nearest, but neither reached the exact original pivot **on its selected day**. The result is **six negative symbol-days**, not proof that native M5 detection fails in general; detector's native positive-case sensitivity still needs real positive data. No code defect follows from these logs.
+
+**Next:** keep the exact tick-touch rule fixed. Broaden the native read-only, morning-frozen Shadow cohort across independent dates (with D1 provenance, SCALED_RAW, timing and rejection controls) to find actual exact BPU1 and BPU2. Consider forward-follow-up of frozen D1 candidates only as a separately designed causal experiment with level-expiration and invalidation rules; do not backfill/retrofit candidates using future candles. Separately manually check BSU source geometry before calling a positive proxy a real Gerchik setup. No rerun of unchanged six-case code is needed.
+
+
+**Status: real native six-case LEAN Cloud run completed; six D1 proxies passed and zero M5 BPU1/BPU2 observed.** Read-only study. This is a **new fourth Cloud project**, not a modification of `Qwct-LEAN-Test`, `Qwct-BSU-Research`, or `Qwct-Universe-Research`. Do not place orders.
 
 ## Why a fourth project
 

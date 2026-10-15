@@ -1,5 +1,24 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15 — Native Apr 8–19 confirms Saturday callback explains the missed Monday scan
+
+**REAL QuantConnect LEAN v2.5.0.0.18179 run `b150a7c028111580f879cc75e2512b0d`** ran the correct **2024-04-08..2024-04-19** window. Ten intended exchange sessions generated **nine actually scanned sessions**, with the tenth being **Monday 2024-04-15, unobserved**. This is a calendar-keying problem, *not evidence that April 15 had zero qualified stocks*. Metrics **reproduced the previous same-window run**: 450 Fundamental stock-days, 446 usable D1, 412 stage2, 14 Shadow D1-qualified stock-days, 11 original level fingerprints, 3 legacy Top10 overlaps, 11 Shadow observations outside Top10. This is NOT 14 BSU/BPU setups or trades.
+
+**New evidence identifying the mechanism:**
+- `2024-04-12 00:00` Fundamental callback: sample window Apr11..Apr12 (normal Friday selection).
+- **`2024-04-13 00:00` (SATURDAY)**: a real `QWCT UNIVERSE TIMING SELECT` callback picked **50 stocks** from **Friday Apr12 00:00..Saturday Apr13 00:00** underlying source data.
+- **`2024-04-15 09:29` (MONDAY)**: `NO_CALLBACK_BEFORE_SCAN`, because no new callback on Monday. `_screen` stores callbacks as `screen_by_day[et(self.time).date()]`, so Friday-close data selected Saturday was stored under **Apr13**; `_prepare` exclusively looks up **Apr15**. Thus the existing strict same-calendar-day research scan skipped Monday.
+- `TIMING SUMMARY scans=10 selection_callbacks=10 selection_days=10 missed_scan_days=['2024-04-15'] late_callbacks=0`: **10 callbacks include the Saturday callback, not 10 weekday callbacks.**
+- QuantConnect staff documentation explains that daily US Equity universe data can be delivered **after the trading session** and that a **Friday** session's callback can run **Saturday**. Sources: https://www.quantconnect.com/forum/discussion/918/feature-coarse-universe-selection/p2 and https://www.quantconnect.com/forum/discussion/2727/bug-or-intended-universe-selection-doesn-039-t-occur-until-one-trading-day-has-passed/ . Consequently, there is **no evidence of a missing underlying Friday data set** or a late Monday callback. The precise weekend delivery timing is runtime behavior, not a user strategy parameter.
+- **Safety boundary:** The weekend-selected list is a real point-in-time pre-Monday snapshot, but it has NOT been treated as Monday's **same-day** selection, and the historical Apr15 Shadow/BPU candidate count is **unknown**. Before adopting a next-exchange-session effective-date policy in the canonical strategy, independently prove timestamp freshness and any position/universe side effects. **Do not silently fill Monday from Friday/Saturday selections or rewrite the original Top10.**
+
+**RAW-origin result:** `raw_only_pass=13 fail=1 unknown=0`, 14 *symbol-day observations* / 11 distinct original level fingerprints. The single failure is the **same recurring WMT March 12 RAW pivot 61.565** (Apr11 observation), compared with current native tick metadata 0.01. The other 13 are only RAW D1 swing/grid/chronology checks; **SCALED_RAW, corporate-action factor reconciliation and manual Gerchik BSU validity remain unverified**. All 9 originally measured sessions, 14 Shadow rows and prior counts remain unchanged.
+
+**Next engineering priority (do NOT leap to M5):** a bounded, read-only, native `SCALED_RAW` comparison for the **existing actual Shadow RAW pivot dates**, latest as-of D1 close, timestamps, and native tick metadata. Reuse `strategy/bsu_bridge.py` methodology rather than change the BsuDetector or Stage1/2. A targeted single batched extra D1 History call for observed Shadow symbols is preferable to a new subscription or an unbounded market-wide search. The WMT half-cent source is UNKNOWN for historical executable tick provenance; never auto-round it. After that, decide whether a *separately labeled research* effective-next-session replay of Apr15 using the **recorded real Saturday selection** is warranted; **do not silently alter baseline counters**.
+
+**Action now:** No Cloud change or repeat backtest necessary for this Apr15 timing diagnosis. Original `Qwct-LEAN-Test` and `Qwct-BSU-Research` remain untouched.
+
+
 ## 2026-10-15 — Second native compact-log run completed; April 15 STILL not measured
 
 User's latest real LEAN 2.5.0.0.18179 backtest `2e5f65fc65c3467e0534a794b8a6e3f8` ran **Apr 1–5, 2024 again**. Compact logging works and finishes without the earlier QuantConnect Free 10KB truncation. It reproduces 5 scans/5 native selection callbacks, 250 candidates, 246 ready RAW D1, 227 stage2 PASS, 9 Shadow stock-days (7 original level fingerprints), and **RAW origin 8 PASS / 1 FAIL (WMT original RAW 61.565 off observed 0.01 tick)**. **It does NOT investigate the April 15, 2024 missing Fundamental callback.** No M5 or orders were run.

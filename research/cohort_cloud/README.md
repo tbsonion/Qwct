@@ -1,5 +1,18 @@
 # QWCT 2.6 — Native dynamic D1 → M5 research cohort (May 2024)
 
+## 2026-10-15 — NATIVE VALIDATION SUCCESS: guarded LEAN Scan recovers all 12 real closing M5 bars
+
+**LEAN Cloud run `b6ec6049eff86d7f021293eca42410c3`, June 1–30 2024, LEAN 2.5.0.0.18184.** User ran the patched `research/cohort_cloud/main.py`. The previously missing **15:55–16:00 native M5 bar is now emitted for all 12 eligible symbol-days**, with **real, existing M1 history**, no artificial TradeBar and no new orders. Direct native evidence: `m1=4521 m5=936 m1_tail_close=12 m1_tail_early=0 m5_tail_close=12 m5_tail_early=0 close_scanned=12`. All four printed `QWCT COHORT TAIL` examples report `m5_last=16:00`. Old run without Scan had `m5=924 m5_tail_close=0`. Thus **+12/12 real close M5 candles**, no changed selection or price thresholds.
+
+**Unchanged D1/Universe comparison to original June:** `scans=19 callbacks=20 weekend_callbacks=5 days=14 stock_days=700 d1_ready=699 stage2=633 shadow_days=12 raw_origin_pass=12 origin_unknown=0 origin_fail=0 basis_match=6 basis_rebased=6 ready_origins=12 replay_days=8`. **Five sessions excluded due to no same-calendar-day Fundamental callback: June 3, 10, 17, 20, 24**. One separate `D1_INSUFFICIENT_CLOSED_RAW`. Do **not** call the month fully covered or those five days 0 qualified names.
+
+**Validated observed M5 outcome:** `bpu1=0 strict_bpu1=0 bpu2=0 strict_bpu2=0 strict_window=0 invalid=0`. Nearest original RAW pivots remained **AON June 12 short 2 ticks, CRM June 27 short 4 ticks, DELL June 7 long 7 ticks, ABT June 7 short 7.5 ticks**; these are not exact BPU1 touches. Native Scan correction did **not** produce a spurious signal or change those closest recorded examples.
+
+**Important nuance:** The ABT June 7 diagnostic reports **389 M1 bars but 78 emitted M5**; 78 period-end timestamps demonstrate all 78 time buckets exist, **not** 390/390 original minute observations for that symbol. Native 5-minute consolidator can emit a bucket with fewer than five observed minute bars. The final five minutes were separately checked for completeness before the close Scan. If any future success depends on exact intrabar trade coverage in an M5 bucket, treat minute gaps explicitly instead of claiming every bucket complete.
+
+**Next priority is NOT rerunning June or reducing the BPU1 tick tolerance.** Preserve this native pass as baseline; next do separately labeled, causally verified **Saturday/holiday Fundamental callback → next tradeable session** mapping so June 3/10/17/20/24 can be analyzed without hindsight. Compare with existing strict-same-day baseline **A/B**, confirm source data ends before 09:29, prevent stale selections and double counting. Only then broaden independent monthly cohorts with the same fixed BSU/BPU exact-touch rules. Manual Gerchik BSU qualification, actual -30s TVX, and profits remain unverified.
+
+
 ## 2026-10-15 — Native JUNE 2024 diagnosis: last M5 bar confirmed missing, targeted native LEAN fix committed
 
 **Actual independent June native LEAN 2.5.0.0.18184 run `ef9602676ddeeb2f65902cca6edaee72` (2024-06-01..2024-06-30):**

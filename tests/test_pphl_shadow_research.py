@@ -69,7 +69,10 @@ def _fixture():
         "bar_end": [bar.end_time for bar in raw],
         "atr14": [2.0] * 7,
     })
-    sym = SimpleNamespace(value="TEST")
+    class FakeSymbol:
+        value = "TEST"
+
+    sym = FakeSymbol()
     # Named temporary class helps emulate Qwct's actual Symbol-keyed dict.
     agent = SimpleNamespace(
         cfg=StrategyConfig(),
@@ -80,7 +83,7 @@ def _fixture():
         pphl_unique=set(),
         pphl_only_unique=set(),
     )
-    agent._raw_d1[id(sym)] = raw
+    agent._raw_d1[sym] = raw
     return agent, sym, raw, d1
 
 
@@ -90,10 +93,7 @@ def test_pphl_shadow_uses_native_event_and_origin_not_confirmation_bar(monkeypat
     monkeypatch.setitem(sys.modules, "AlgorithmImports", module)
     method = _shadow_method()
     agent, symbol, raw, d1 = _fixture()
-    # Substitute a hashable LEAN-Symbol stand-in.
-    key = "TEST-SYMBOL"
-    agent._raw_d1 = {key: raw}
-    cases = method(agent, key, d1, [], .01, date(2024, 3, 12))
+    cases = method(agent, symbol, d1, [], .01, date(2024, 3, 12))
     assert len(cases) == 1
     case = cases[0]
     assert case["side"] == "short"
@@ -112,14 +112,12 @@ def test_pphl_shadow_exact_origin_match_is_not_double_counted(monkeypatch):
     monkeypatch.setitem(sys.modules, "AlgorithmImports", module)
     method = _shadow_method()
     agent, symbol, raw, d1 = _fixture()
-    key = "TEST-SYMBOL"
-    agent._raw_d1 = {key: raw}
     old = [{
         "side": "short",
         "origin_time": raw[3].end_time.isoformat(),
         "origin": 180.14,
     }]
-    cases = method(agent, key, d1, old, .01, date(2024, 3, 12))
+    cases = method(agent, symbol, d1, old, .01, date(2024, 3, 12))
     assert cases == []
     assert agent.pphl_counts["overlap_level_days"] == 1
     assert agent.pphl_counts["only_level_days"] == 0

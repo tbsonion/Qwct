@@ -20,6 +20,22 @@ In the new **Qwct-BSU-Research** project, replace the default `main.py` and crea
 
 For the current native PPHL A/B smoke test, default dates are back to **2024-03-16 through 2024-04-26**, with fixed MSFT/AMZN/AAPL. Cloud scan parameters override the defaults if set. Do not change Qwct-LEAN-Test.
 
+## Latest native PPHL OHLC proof (Cloud run f06cb8adcd437c8d647d99f01ee5fd88)
+
+Run succeeded on LEAN v2.5.0.0.18179, 2024-03-16..2024-04-26, same MSFT/AMZN/AAPL RAW D1 + native M5. The added independent evidence confirmed **3 distinct symbol+day+side+original RAW origin episodes** (not merely three repeated M5 passes), all **strict BPU1**, immediately following **closed-M5 BPU2**, within the current 12:00–13:30 ET bounce window. **It did not verify SEC preclose, D1 trend/strength/room, orders or returns.** Original Qwct baseline stayed 6 strict BPU1 / 1 strict-followed BPU2 / zero in-window.
+
+| Symbol & session | Source pivot / confirmed (ET) | BSU | BPU1 close (ET) | BPU1 relevant extreme | BPU2 close (ET) | BPU2 relevant extreme | BPU2 stop / luft |
+|---|---|---:|---|---:|---|---:|---|
+| **AMZN 2024-03-21 short** | 2024-03-14 / 2024-03-19 | **179.53** | 13:10 | high **179.53** | **13:15** | high **179.50** | 180.41 / 0.176 |
+| **AAPL 2024-04-03 long** | 2024-03-15 / 2024-03-20 | **170.28** | 12:15 | low **170.28** | **12:20** | low **170.345** | 169.46 / 0.164 |
+| **AAPL 2024-04-12 long** | 2023-08-25 / 2023-08-30 | **175.82** | 12:20 | low **175.82** | **12:25** | low **175.83** | 175.02 / 0.160 |
+
+These source dates precede the respective BPU1 by several days or months. The oldest AAPL source deserves additional manual D1 quality/relevance review rather than being assumed tradeable.
+
+Off-grid: **87 pivot×day exclusion observations arise from only 3 unique original RAW daily pivots**: AMZN 2024-03-08 resistance 178.785, AAPL 2023-09-20 resistance 179.695, AAPL 2023-12-04 support 187.455, with reported native reference minimum tick 0.01. They are **not evidence of 87 independent bad bars** and are not silently rounded. Subpenny historical trade extrema can exist; investigate market-data basis before labeling defective.
+
+**Next gate:** request **real historical one-second TradeBars** from the official LEAN History API for only the three confirmed patterns, reconstruct *retrospective* preclose trade-price extrema up to **30 seconds before BPU2 closes** with no fill-forward, and report an explicit **UNKNOWN / NO DATA** if no exact cutoff observation is available. This is *not* a simulated live timestamped order or execution, and no independent D1/model eligibility can yet be concluded. Do not connect trading code. Exact SEC access on Cloud Free still unverified.
+
 ## Native PPHL Cloud test: CONFIRMED / strict-and-window cases found
 
 The user's actual QuantConnect **LEAN Engine v2.5.0.0.18179** log, **2024-03-16 through 2024-04-26**, run `c87716354f4706f73666bf18add82885`, confirms the first end-to-end **native PivotPointsHighLow(3,3,100)** A/B research run:

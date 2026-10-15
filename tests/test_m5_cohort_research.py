@@ -89,7 +89,7 @@ def test_missing_and_split_days_never_fabricate_m5():
         "TVX_UNVERIFIED NO ORDERS",
         "QWCT COHORT SUMMARY",
         "QWCT COHORT COVERAGE",
-        "QWCT COHORT NEAREST",
+        "audit_report(self.all_cases)",
     ):
         assert required in s, required
 
@@ -121,7 +121,9 @@ def test_native_close_scan_keeps_completed_origin_candles():
         assert phrase in code
     assert "TradeBar(" not in code
     assert "best_signed" in code and "best_at" in code
-    assert "signed=" in code and "closest_ticks=" in code
+    assert "TouchAudit(" in code and "audit_report(self.all_cases)" in code
+    assert 'case["audit"].observe(bar, at)' in code
+    assert "QWCT COHORT NEAREST" not in code
     assert len(code.encode("utf-8")) < 32_000
 
 

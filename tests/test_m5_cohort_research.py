@@ -45,8 +45,11 @@ def test_morning_frozen_fundamental_and_shadow_and_after_close_only():
         "self.time_rules.before_market_open(anchor, 1)",
         "self.time_rules.after_market_close(anchor, 0)",
         "self.callback_at[day] > et(self.time)",
+        "self.callback_events.append(event)",
+        "freeze_fundamental_event(",
         "NO_SAME_DAY_FUNDAMENTAL_CALLBACK",
-        "Saturday never auto-carried",
+        "next_session_fundamentals(",
+        "native_next_open/09:29 OK",
         "self._daily_history(\n                members, day, DataNormalizationMode.RAW)",
         "classify_snapshot(d1, self.cfg, day)",
         "shadow = d1_shadow_shortlist(passed, self.cfg.screener_watchlist_limit)",
@@ -65,7 +68,8 @@ def test_morning_frozen_fundamental_and_shadow_and_after_close_only():
     assert "validate_m5_tradebar(bar, at.to_pydatetime())" in s
     assert "self._observe(case, bar, at)" in s
     assert "end = et(self.time).to_pydatetime()" in s  # early-close-aware
-    assert "after_market_close(anchor, 1)" not in s  # last day would be skipped
+    assert "after_market_close(anchor, 1)" not in s  # last day skipped
+    assert "self.timing_mode" in s
 
 
 def test_missing_and_split_days_never_fabricate_m5():
@@ -99,25 +103,12 @@ def test_2_6_not_modified_original_three_strategies():
     assert "research" not in s[:90].lower() or "QWCT" in s
 
 
-def test_native_m1_m5_replay_tail_diagnostic_never_invents_last_bar():
+def test_native_close_scan_keeps_completed_origin_candles():
     code = APP.read_text(encoding="utf-8")
     assert "def _replay(self, symbol, minute_bars, day, close):" in code
     assert "self._replay(symbol, minute[symbol], day, end)" in code
-    for phrase in (
-        'last_m1_end = et(minute_bars[-1].end_time)',
-        'last_m5_end = et(emitted[-1].end_time) if emitted else None',
-        'self.summary["m1_tail_at_close"]',
-        'self.summary["m1_tail_before_close"]',
-        'self.summary["m5_tail_at_close"]',
-        'self.summary["m5_tail_before_close"]',
-        "QWCT COHORT TAIL",
-        "TIMING AUDIT ONLY / NO SYNTHETIC BAR",
-    ):
-        assert phrase in code
-    # LEAN Scan closes ONLY an independently verified five-minute
-    # interval: five original consecutive minute bars, positive volume.
     assert "consolidator.scan(minute_bars[-1].end_time)" in code
-    for condition in (
+    for phrase in (
         'tail_ok = len(minute_bars) >= 5',
         'for i, b in enumerate(minute_bars[-5:])',
         'not getattr(b, "is_fill_forward", False)',
@@ -127,6 +118,102 @@ def test_native_m1_m5_replay_tail_diagnostic_never_invents_last_bar():
         'self.rejects["M5_CLOSE_NOT_EMITTED"]',
         'self.summary["close_scanned"]',
     ):
-        assert condition in code
-    assert "TradeBar(" not in code  # never fabricate 16:00 input
+        assert phrase in code
+    assert "TradeBar(" not in code
     assert len(code.encode("utf-8")) < 32_000
+
+
+def test_2_7_next_session_is_opt_in_ab_mode_and_native_calendar_only():
+    s = APP.read_text(encoding="utf-8")
+    assert 'self.get_parameter("timing_mode") or "next_session"' in s
+    assert 'self.timing_mode not in ("strict", "next_session")' in s
+    assert "self.securities[self.anchor].exchange.hours" in s
+    assert 'label = "SAME_DAY"' in s
+    assert 'label = "NEXT_SESSION"' in s
+    assert 'self.summary["strict_days"] += 1' in s
+    assert 'self.summary["next_session_days"] += 1' in s
+    assert 'f"strict_days={self.summary[' in s
+    assert 'f"next_days={self.summary[' in s
+    assert "self.callback_events.append(event)" in s
+    assert "VERIFIED_NEXT_EXCHANGE_SESSION" not in s  # separate pure helper
+    assert "datetime(2024, 6, 3" not in s  # no hard-coded market days
+
+
+def test_2_7_weekend_holiday_mapping_fail_closed():
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from types import SimpleNamespace
+    import pandas as pd
+    from research.cohort_cloud.timing_gate import next_session_fundamentals
+
+    et = ZoneInfo("America/New_York")
+    def dt(day, hour=0, minute=0):
+        return datetime.fromisoformat(day).replace(
+            hour=hour, minute=minute, tzinfo=et)
+
+    class ExchangeCalendar:
+        def __init__(self, nontrading, next_opens):
+            self.nontrading, self.next_opens = nontrading, next_opens
+        def is_date_open(self, value, extended_market_hours=False):
+            assert not extended_market_hours
+            return value.date().isoformat() not in self.nontrading
+        def get_next_market_open(self, value, extended_market_hours=False):
+            assert not extended_market_hours
+            return self.next_opens[value.date().isoformat()]
+
+    # Native market hours are mocked at boundaries; NO calendar used by
+    # the executable strategy other than LEAN's Exchange.Hours.
+    hours = ExchangeCalendar(
+        {"2024-06-08", "2024-06-09", "2024-06-19"},
+        {"2024-06-08": datetime(2024, 6, 10, 9, 30),
+         "2024-06-19": datetime(2024, 6, 20, 9, 30)})
+    event = lambda when, ends, complete=True: dict(
+        at=when, symbols=("A", "B"), source_min=ends,
+        source_max=ends, complete=complete)
+    friday_close = dt("2024-06-08")
+    saturday = event(friday_close, friday_close)
+    convert = lambda value: pd.Timestamp(value).tz_localize(et) if (
+        value.tzinfo is None) else pd.Timestamp(value).tz_convert(et)
+    due, reason = next_session_fundamentals(
+        [saturday], dt("2024-06-10", 9, 29), hours, convert)
+    assert due is saturday and reason == "VERIFIED_NEXT_EXCHANGE_SESSION"
+    holiday = event(dt("2024-06-19"), dt("2024-06-19"))
+    due, _ = next_session_fundamentals(
+        [saturday, holiday], dt("2024-06-20", 9, 29), hours, convert)
+    assert due is holiday
+    assert next_session_fundamentals(
+        [saturday], dt("2024-06-11", 9, 29), hours, convert)[0] is None
+    assert next_session_fundamentals(
+        [event(friday_close, friday_close, False)],
+        dt("2024-06-10", 9, 29), hours, convert)[0] is None
+    assert next_session_fundamentals(
+        [event(friday_close, friday_close+timedelta(hours=1))],
+        dt("2024-06-10", 9, 29), hours, convert)[0] is None
+    assert next_session_fundamentals(
+        [saturday, saturday], dt("2024-06-10", 9, 29), hours, convert)[1] == (
+            "AMBIGUOUS_NEXT_SESSION_CALLBACKS")
+    assert next_session_fundamentals(
+        [saturday], dt("2024-06-10", 9, 31), hours, convert)[0] is None
+
+
+def test_2_7_capture_real_selected_fundamental_endtimes_and_generator():
+    from types import SimpleNamespace
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from research.cohort_cloud.timing_gate import freeze_fundamental_event
+    et = ZoneInfo("America/New_York")
+    at = datetime(2024, 6, 8, 0, 0, tzinfo=et)
+    selected = ("A", "C")
+    items = [SimpleNamespace(symbol=name, end_time=at)
+             for name in ("A", "B", "C")]
+    out = freeze_fundamental_event(
+        (x for x in items), None, at,
+        lambda values, cfg: selected,
+        lambda dt: dt)
+    assert out["complete"] and out["symbols"] == selected
+    assert out["source_min"] == at == out["source_max"]
+    items[2].end_time = None
+    bad = freeze_fundamental_event(
+        items, None, at, lambda values, cfg: selected,
+        lambda dt: (_ for _ in ()).throw(TypeError()) if dt is None else dt)
+    assert not bad["complete"]

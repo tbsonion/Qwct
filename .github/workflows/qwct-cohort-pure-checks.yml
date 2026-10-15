@@ -11,6 +11,8 @@ on:
       - 'tests/test_m5_cohort_research.py'
       - 'tests/test_m5_six_case_research.py'
       - 'tests/test_bsu_touch_audit.py'
+      - 'tests/test_mirror_asof_audit.py'
+      - 'research/chart_review_qc/**'
   pull_request:
     paths:
       - 'research/cohort_cloud/**'
@@ -20,6 +22,8 @@ on:
       - 'tests/test_m5_cohort_research.py'
       - 'tests/test_m5_six_case_research.py'
       - 'tests/test_bsu_touch_audit.py'
+      - 'tests/test_mirror_asof_audit.py'
+      - 'research/chart_review_qc/**'
   workflow_dispatch:
 
 jobs:
@@ -36,4 +40,4 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest pandas numpy
       - name: Verify causal Fundamental gate and original M5 detector
-        run: python -m pytest -q tests/test_m5_cohort_research.py tests/test_m5_six_case_research.py tests/test_patterns_bsu.py tests/test_bsu_touch_audit.py
+        run: python -m pytest -q tests/test_m5_cohort_research.py tests/test_m5_six_case_research.py tests/test_patterns_bsu.py tests/test_bsu_touch_audit.py tests/test_mirror_asof_audit.py

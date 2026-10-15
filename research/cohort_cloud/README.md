@@ -1,5 +1,30 @@
 # QWCT 2.6 — Native dynamic D1 → M5 research cohort (May 2024)
 
+## 2026-10-15 — QWCT 2.7 built: native-calendar Fundamental callback A/B, native LEAN proof PENDING
+
+**Problem:** The fully closed June 2024 baseline run `b6ec6049eff86d7f021293eca42410c3` covered **14/19 scheduled equity sessions** with strict same-calendar-day Fundamental callbacks. June **3, 10, 17, 20, 24** were skipped, even though the native LEAN Fundamental selection can deliver Friday data on Saturday and preholiday data on a closed market date. Trading-day eligibility for the callback has not previously been proved. All 12 observed price-level proxy cases produced 936 genuine native M5 bars and zero exact BPU1/BPU2. No legitimate signal may be invented by changing that rule.
+
+**What is NOW implemented, without changing any strategy or detector source:**
+- **New module** [`research/cohort_cloud/timing_gate.py`](./timing_gate.py) (copy to the new Cloud file `strategy/timing_gate.py`). This pure, fail-closed filter accepts only a **REAL previous Fundamental callback**, retaining its original selected symbol list, actual selection `at` timestamp and **ALL 50 source `Fundamental.EndTime`** values. It rejects missing source ends, future source data, callbacks more than five days old, repeated/ambiguous callbacks, callbacks occurring on a trading date, and dates that are not **the next real regular stock-market open**.
+- Exchange dates are **not hard-coded**: the algorithm calls LEAN's native `self.securities[self.anchor].exchange.hours.is_date_open` and `get_next_market_open` (regular session only). The chosen source must already exist **BEFORE 09:29 ET**, and that session's actual exchange open must be **09:30 ET the same calendar day**. No arbitrary prior selection, historical reconstruction, lookahead or inferred Fundamental stock membership.
+- [`research/cohort_cloud/main.py`](./main.py) introduces the optional user parameter `timing_mode = next_session | strict`. The **current default is `next_session`** for the new A/B research. `strict` reproduces the old same-calendar-day rule. If there is a genuine SAME-DAY callback, it ALWAYS takes precedence in either mode. Missing coverage is still logged as **SKIP**, never a zero-candidate day.
+- Only the source of **morning candidate membership** changes for uncovered sessions. Original `classify_snapshot`, D1 Stage2, D1 Shadow Top10, raw-origin validation, SCALED_RAW comparison, original RAW pivot, native M1→M5 consolidation with previously LEAN-verified five-real-minute close `Scan()`, `BsuDetector`, exact BPU1/BPU2, split quarantine and no-order policy remain unchanged.
+- New logs include **`QWCT TIMING VERIFIED`** (date, original callback time, min/max selected source EndTimes and number of members), `timing=<strict|next_session>` in startup, `strict_days` / `next_days` in `QWCT COHORT SUMMARY`, and reasons `NO_VERIFIED_NEXT_SESSION` / `AMBIGUOUS_NEXT_SESSION_CALLBACKS` if needed. Previously completed final-bar tail diagnostic was removed from daily logging to keep main.py under **32KB**, but verified `close_scanned` remains in the summary.
+- **Pure fixture checks:** recorded Saturday→Monday and holiday→Thursday, rejected stale/future/ambiguous callbacks and late-after-open use; **7 isolated smoke assertions passed locally** with a fake exchange calendar. These do **NOT** confirm native LEAN source EndTime or calendar marshaling. Full project CI remains unverified.
+
+**QWCT 2.7 Cloud action — existing project, 2 file changes only:**
+1. In the EXISTING `Qwct-M5-Cohort-Research` Cloud project, **replace only `main.py`** from [updated `research/cohort_cloud/main.py`](./main.py).
+2. **Create one new file `strategy/timing_gate.py`** and copy the entirety of [`research/cohort_cloud/timing_gate.py`](./timing_gate.py). Keep all seven previous files otherwise unchanged.
+3. Run **the SAME June 1–30, 2024** dates, necessary for the timing A/B comparison; set project parameter `timing_mode=next_session` (or omit if unset). Verify startup log `timing=next_session`. Saved parameters `scan_start`, `scan_end`, `timing_mode` override defaults.
+4. Send **ALL** `QWCT TIMING VERIFIED` rows, `QWCT COHORT SUMMARY`, `QWCT COHORT REJECTS` and any BPU1/BPU2 logs. First gate: whether 5 historically skipped dates pass the actual native calendar and source cutoff. Do **not** assume `days=19`, all callbacks are populated, or positive BPU1. If a skipped day stays skipped, the sources determine whether it should.
+
+**A/B reference (previous independently observed strict June):** `scans=19 days=14 stock_days=700 d1_ready=699 stage2=633 shadow_days=12 ready_origins=12 m5=936 close_scanned=12 bpu1=0 bpu2=0` with 5 missing-session skips. The same-time strict path remains available as `timing_mode=strict`; no claim that the new mode has been native backtested.
+
+**Future priorities after genuine native 2.7 proof:** independent month-by-month cohorts with exact BSU/BPU rules unchanged, explainable 8 strategy filters, manually labeled true D1 BSU sources, genuine SEC/TICK -30s TVX, and only then portfolio execution/risk acceptance. Current QWCT state is **research only, zero proven strategy signals or fills**.
+
+**Official LEAN APIs:** https://www.quantconnect.com/docs/v2/writing-algorithms/securities/market-hours and https://www.quantconnect.com/docs/v2/writing-algorithms/universes/equity/fundamental-universes .
+
+
 ## 2026-10-15 — NATIVE VALIDATION SUCCESS: guarded LEAN Scan recovers all 12 real closing M5 bars
 
 **LEAN Cloud run `b6ec6049eff86d7f021293eca42410c3`, June 1–30 2024, LEAN 2.5.0.0.18184.** User ran the patched `research/cohort_cloud/main.py`. The previously missing **15:55–16:00 native M5 bar is now emitted for all 12 eligible symbol-days**, with **real, existing M1 history**, no artificial TradeBar and no new orders. Direct native evidence: `m1=4521 m5=936 m1_tail_close=12 m1_tail_early=0 m5_tail_close=12 m5_tail_early=0 close_scanned=12`. All four printed `QWCT COHORT TAIL` examples report `m5_last=16:00`. Old run without Scan had `m5=924 m5_tail_close=0`. Thus **+12/12 real close M5 candles**, no changed selection or price thresholds.
@@ -71,7 +96,7 @@ New QWCT 2.6 is a **different, independent, continuously-selected Fundamental/D1
 
 **Ready-solution review:** We reused the actual, previously native-verified QWCT 2.4 functions `d1_shadow_shortlist`, `classify_snapshot`, `origin_d1_audit` and `compare_raw_scaled` **unchanged** (copied from `research/universe_cloud/main.py`). Reused canonical `strategy/__init__.py` Cloud selector, `strategy.levels`, native `AverageTrueRange` / `SimpleMovingAverage`, `BsuDetector`, `validate_m5_tradebar`, and LEAN native `TradeBarConsolidator(timedelta(minutes=5))`. No new indicator, separate broker, homemade candle generator or execution engine.
 
-## Create a NEW QuantConnect Python LEAN Cloud project — seven files
+## Original QWCT 2.6 installation — seven original files, now PLUS one timing gate for QWCT 2.7
 
 Project: **`Qwct-M5-Cohort-Research`**. Do not modify or replace `Qwct-LEAN-Test`, `Qwct-BSU-Research`, `Qwct-Universe-Research`, or `Qwct-M5-SixCase-Research`.
 
@@ -84,6 +109,7 @@ Project: **`Qwct-M5-Cohort-Research`**. Do not modify or replace `Qwct-LEAN-Test
 | `strategy/levels.py` | [`strategy/levels.py`](../../strategy/levels.py) |
 | `strategy/patterns_bsu.py` | [`strategy/patterns_bsu.py`](../../strategy/patterns_bsu.py) |
 | `strategy/native_m5_validation.py` | [`strategy/native_m5_validation.py`](../../strategy/native_m5_validation.py) |
+| `strategy/timing_gate.py` **(NEW in 2.7)** | [`research/cohort_cloud/timing_gate.py`](./timing_gate.py) |
 
 **IMPORTANT:** The bundled Universe selector `strategy_init_cloud.py` **is NOT the nearly empty `strategy_init_cloud.py` from the six-case project.** Use precisely the link above. It provides canonical `select_liquid_fundamentals` and `passes_gerchik_screener`.
 

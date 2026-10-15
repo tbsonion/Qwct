@@ -1,5 +1,17 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.5 isolated six-case native M5 study IMPLEMENTED (native run pending)
+
+- [x] **Ready-solution-first review:** existing `strategy/patterns_bsu.py` supplies `BsuDetector`; `strategy/native_m5_validation.py` supplies native M5 admission; original `research/bsu_cloud/main.py` proves the LEAN consolidator pattern. Do NOT clone/change the old Cloud BSU project. Reviewed `strategy/bsu_bridge.py`: canonical bridge requires actual accepted `ScenarioDecision(model="bounce")`, NOT established by QWCT 2.4 Shadow selection, so don't invent canonical acceptance.
+- [x] **New standalone research project source** [`research/m5_cloud/main.py`](https://github.com/tbsonion/Qwct/blob/main/research/m5_cloud/main.py), seven-file Cloud installation [README](https://github.com/tbsonion/Qwct/blob/main/research/m5_cloud/README.md). Exactly six PREVIOUSLY REAL LEAN RAW/SCALED `MATCH` Shadow origin proxies: TSLA Apr10 short, TXN Apr11 long, AAPL + AMAT Apr16, META Apr18, NFLX Apr19. Never add WMT or REBASED source into this initial sample.
+- [x] **D1 provenance gate** on real native 09:29 RAW and SCALED_RAW 180-bar history: known original pivot day/price, full `levels_for_session` confirmation, historical cluster median, `valid_from`, native ATR/SMA/trend, price grid and matching closed original/latest native D1 basis `EndTime`; no lookahead, rounding or invented BSU.
+- [x] **Read-only native six-minute subscriptions**: actually six equity MINUTE RAW subscriptions, each native `self.consolidate(... timedelta(minutes=5))`, strict `validate_m5_tradebar`; existing `BsuDetector` consumes genuine closed M5, reports exact BPU1, immediate BPU2, invalidations, 12:00–13:30 window separately. NO 30-second TVX confirmation, trades, fills, SEC/TICK requests or profit claims.
+- [x] **Pure regression tests committed:** [`tests/test_m5_six_case_research.py`](https://github.com/tbsonion/Qwct/blob/main/tests/test_m5_six_case_research.py) for exact historical cases, native source/tick/chronology gates, RAW/SCALED price basis, existing closed M5 detector, no orders. Native LEAN and GitHub CI remain unverified.
+- [ ] **NEXT user Cloud step:** Create NEW `Qwct-M5-SixCase-Research` project with [seven-file mapping](https://github.com/tbsonion/Qwct/blob/main/research/m5_cloud/README.md); run dates **2024-04-10..2024-04-19**; send full `QWCT M5 SUMMARY`, six `QWCT M5 CASE` lines and BPU events. Do not edit other three QuantConnect projects.
+- [ ] **Manual BSU verification remains open** for every D1 origin. A READY_PROXY or closed BPU2 is **not** a manually certified Gerchik pattern, actual TVX, fill or backtested profitability. If native results show no BPU1/BPU2, preserve zero results without speculative tweaks.
+- [ ] Check GitHub Pure Strategy Checks actual result and native LEAN API compatibility before advancing.
+
+
 ## 2026-10-15 — QWCT 2.4 REAL basis result: 6 MATCH / 8 REBASED; 1 WMT RAW ambiguity
 
 - [x] **Native LEAN `89268e691b00a89232be1bf6cb3df3e7` Apr8–19**, successful SCALED_RAW/RAW source-vs-latest as-of D1 audit: `basis match=6 rebased=8 latest_diff=0 unknown=0 fetch_errors=0`; 14 Shadow symbol-days, 11 distinct origins. Baseline **450 / 446 / 412**, nine scanned sessions, three old Top10 overlaps all unchanged, April15 still unobserved; no M5/SEC/orders.

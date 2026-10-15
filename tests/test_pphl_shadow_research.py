@@ -228,3 +228,70 @@ def test_pphl_win_proofs_are_logged_separately_from_capped_event_logs():
         'self.pphl_window_unique.add(episode_key)',
     ):
         assert term in src
+
+
+def test_sec_retro_native_second_history_cutoff_and_no_lookahead():
+    """Historical seconds after cutoff must not contaminate audit."""
+    tree = ast.parse(APP.read_text(encoding="utf-8"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+               and n.name == "QwctBsuResearch")
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef)
+                  and n.name == "_audit_native_sec_preclose")
+    def aware(t):
+        t = pd.Timestamp(t)
+        return t.tz_localize(ET) if t.tzinfo is None else t.tz_convert(ET)
+    env = {
+        "datetime": datetime, "timedelta": timedelta, "pd": pd,
+        "isfinite": isfinite, "et": aware, "TradeBar": object,
+        "Resolution": SimpleNamespace(SECOND="sec"),
+        "DataNormalizationMode": SimpleNamespace(RAW="raw"),
+    }
+    exec(compile(ast.Module(body=[method], type_ignores=[]),
+                 str(APP), "exec"), env)
+    audit = env["_audit_native_sec_preclose"]
+    class Sym:
+        value = "AMZN"
+    sym = Sym()
+    def bar(sec, high, low, close):
+        end = datetime(2024, 3, 21, 13, 14, sec, tzinfo=ET)
+        return SimpleNamespace(time=end-timedelta(seconds=1),
+                               end_time=end, high=high, low=low,
+                               close=close, volume=100.)
+    rows = [bar(29, 179.49, 179.42, 179.45),
+            bar(30, 179.50, 179.43, 179.43),
+            bar(31, 999., 1., 999.)]
+    class History:
+        def __getitem__(self, typ):
+            def get(symbols, start, end, resolution, fill_forward,
+                    data_normalization_mode):
+                assert symbols == [sym] and resolution == "sec"
+                assert start == datetime(2024, 3, 21, 13, 10)
+                assert end == datetime(2024, 3, 21, 13, 14, 31)
+                assert not fill_forward
+                return [{sym: x} for x in rows]
+            return get
+    self = SimpleNamespace(symbols_to_scan=(sym,), history=History())
+    proof = ("AMZN", "2024-03-21 13:15", "short", 179.53,
+             "2024-03-14T16:00:00-04:00", "2024-03-19T16:00:00-04:00",
+             .01, ("2024-03-21 13:10", 179.475, 179.53,
+                    179.42, 179.46, 1000.),
+             (179.45, 179.50, 179.42, 179.43, 1000.),
+             180.41, .176)
+    assert audit(self, proof) == (
+        "RETROSPECTIVE_RULE_PASS", 2, 179.42, 179.50, 179.43)
+    rows.pop(1)
+    assert audit(self, proof)[0] == "NO_TRADE_AT_EXACT_CUTOFF"
+    rows[:] = [bar(30, 179.55, 179.43, 179.44)]
+    assert audit(self, proof)[0] == "M5_SEC_RAW_MISMATCH"
+    rows.clear()
+    assert audit(self, proof)[0] == "NO_SECOND_TRADES"
+
+
+def test_sec_retro_never_claims_executable_tvx_or_orders():
+    source = APP.read_text(encoding="utf-8")
+    for term in ("BSU PPHL SEC RETRO", "BSU PPHL SEC SUMMARY",
+                 "Resolution.SECOND", "fill_forward=False",
+                 "RETROSPECTIVE_RULE_PASS",
+                 "NO_TRADE_AT_EXACT_CUTOFF",
+                 "NO REAL-TIME TVX / NO ORDERS"):
+        assert term in source

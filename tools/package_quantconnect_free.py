@@ -16,6 +16,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 OPTIONAL_RESEARCH = {
     "strategy/opening_volume_research.py",
     "strategy/tvx_observation.py",
+    "strategy/d1_bridge_audit.py",  # separate BSU research-only; not in main Qwct Cloud ZIP
 }
 # Bundled into existing sources; no corresponding .py files in Cloud ZIP.
 BUNDLED = {

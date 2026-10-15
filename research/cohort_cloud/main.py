@@ -282,7 +282,7 @@ class QwctM5CohortResearch(QCAlgorithm):
         if self.timing_mode == "next_session":
             try:
                 closed = not self.securities[self.anchor].exchange.hours.is_date_open(
-                    at.replace(tzinfo=None), extended_market_hours=False)
+                    at.to_pydatetime().replace(tzinfo=None), extended_market_hours=False)
             except Exception:
                 closed = False
             if closed:

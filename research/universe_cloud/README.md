@@ -1,5 +1,20 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15 — REAL Cloud RAW origin smoke: 2024-04-01..05 (8 PASS / 1 FAIL), compact logging now ready
+
+Native LEAN **v2.5.0.0.18179** completed run **`e52e0c836a0cd349d078dc64775f82bd`** for **2024-04-01..2024-04-05**, *NOT the requested April 8–19 missing-date investigation*. One Fundamental selection callback at midnight and same-day selection at 09:29 ET on each of the five sessions: `scans=5`, `selection_callbacks=5`, `missed_scan_days=[]`. April 15 is therefore **STILL UNTESTED** in this run.
+
+Existing baseline results reproduced **exactly**: 250 candidate-stock-days; 246 RAW D1 ready; 227 stage2 passed; 9 Shadow symbol-days across 7 unique level-origin fingerprints; legacy Top10 overlap 0; zero orders.
+
+New `QWCT ORIGIN SUMMARY`: **8 RAW-only PASS, 1 FAIL, 0 UNKNOWN**, covering nine *symbol-days*, **not nine different origins**. Six of the seven distinct original swing sources passed this read-only RAW/tick/chronology audit; the single failed origin was **WMT, Apr 2**, resistance-cluster `61.6075`, **actual first RAW D1 swing high `61.565` on Mar 12, 2024**, minimum tick metadata `0.01`, reason `RAW_ORIGIN_OFF_NATIVE_TICK_GRID` (0.005 gap to nearest $0.01 grid). **DO NOT ROUND OR ARM WMT BSU**. Walmart's 3:1 split began split-adjusted trading on Feb 26, 2024, *before this March 12 swing*; split alone is therefore **not an established explanation**. The other observed RAW-only origin prices: UNH `496.61` (Apr 1 and Apr 2), MCD `286.08`, MMM `94.82`, PG `160.10` (Apr 2 and Apr 3), ABBV `175.39`, MA `464.64`.
+
+These are **RAW-only algorithmic swing checks**, not independent SCALED_RAW comparisons, verified corporate-action price-basis reconcilations, manual Gerchik BSUs, M5 BPU setups or trades. Even eight PASS observations **prove no profitability**.
+
+The actual log hit **QuantConnect Free's 10KB per-backtest cap** after its second legacy OUTSIDE10 row. To prevent the April 8–19 10-session run from truncating critical ORIGIN evidence, the **latest GitHub** `research/universe_cloud/main.py` now defaults to **compact logging**. It retains per-callback TIMING SELECT, missed-scan TIMING SCAN, SHADOW DAY, TIMING/ORIGIN/UNIVERSE/SHADOW/FULL50 summaries and capped ORIGIN DETAIL. Verbose routine scan success and legacy UNIVERSE DAY / SHADOW PICK / OUTSIDE10 / EXAMPLE rows require optional **`verbose_logs=1`**, which is **NOT recommended on Free**. This adjustment affects *only logging*, not selection, history, indicators, rules or orders. New GitHub revision **not yet tested in native Cloud**.
+
+**NEXT single Cloud step:** In **Qwct-Universe-Research**, replace **only** [`main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py); set `scan_start=2024-04-08`, `scan_end=2024-04-19`, leave `verbose_logs` absent (or not `1`). Inspect `QWCT UNIVERSE TIMING` Apr 15 and `QWCT ORIGIN SUMMARY/DETAIL`. Keep both older Cloud projects untouched. No M5/SEC/orders yet.
+
+
 ## 2026-10-15 — NEXT Cloud run: RAW-only origin + April 15 timing diagnostics (GitHub implemented; native run PENDING)
 
 **Scope:** Replace **ONLY** [Qwct-Universe-Research Cloud `main.py`](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py). Keep the other four research Cloud files unchanged, and never edit `Qwct-LEAN-Test` or `Qwct-BSU-Research`. This is **read-only D1 research**, not native-verified until the next backtest.

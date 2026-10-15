@@ -255,6 +255,7 @@ class QwctM5CohortResearch(QCAlgorithm):
         self.basis = Counter()
         self.origin = Counter()
         self.events = []
+        self.tail_examples = []
         anchor = self.add_equity(
             "SPY", Resolution.MINUTE, fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
@@ -474,9 +475,9 @@ class QwctM5CohortResearch(QCAlgorithm):
             return
         self.summary["after_close_replay_days"] += 1
         for symbol in symbols:
-            self._replay(symbol, minute[symbol], day)
+            self._replay(symbol, minute[symbol], day, end)
 
-    def _replay(self, symbol, minute_bars, day):
+    def _replay(self, symbol, minute_bars, day, close):
         """Actual LEAN TradeBarConsolidator from historical native TradeBars."""
         cases = self.active[symbol]
         if not minute_bars:
@@ -494,6 +495,12 @@ class QwctM5CohortResearch(QCAlgorithm):
                 self.rejects["BAD_OR_UNORDERED_M1_" + symbol.value] += 1
                 return
             times.append(start)
+        first_m1_end = et(minute_bars[0].end_time)
+        last_m1_end = et(minute_bars[-1].end_time)
+        if last_m1_end == et(close):
+            self.summary["m1_tail_at_close"] += 1
+        else:
+            self.summary["m1_tail_before_close"] += 1
         emitted = []
         consolidator = TradeBarConsolidator(timedelta(minutes=5))
         def collect(sender, bar):
@@ -507,6 +514,17 @@ class QwctM5CohortResearch(QCAlgorithm):
             return
         self.summary["native_m1"] += len(minute_bars)
         self.summary["m5_emitted"] += len(emitted)
+        last_m5_end = et(emitted[-1].end_time) if emitted else None
+        if last_m5_end == et(close):
+            self.summary["m5_tail_at_close"] += 1
+        else:
+            self.summary["m5_tail_before_close"] += 1
+        if len(self.tail_examples) < 4:
+            self.tail_examples.append((
+                str(day), symbol.value, len(minute_bars),
+                len(emitted), str(last_m1_end.time()),
+                str(last_m5_end.time()) if last_m5_end is not None else "NA",
+                str(et(close).time())))
         if not emitted:
             self.rejects["NO_NATIVE_M5_" + symbol.value] += 1
             return
@@ -597,6 +615,10 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"replay_days={self.summary['after_close_replay_days']} "
             f"m1={self.summary['native_m1']} "
             f"m5={self.summary['valid_m5']} "
+            f"m1_tail_close={self.summary['m1_tail_at_close']} "
+            f"m1_tail_early={self.summary['m1_tail_before_close']} "
+            f"m5_tail_close={self.summary['m5_tail_at_close']} "
+            f"m5_tail_early={self.summary['m5_tail_before_close']} "
             f"bpu1={self.summary['bpu1']} "
             f"strict_bpu1={self.summary['strict_bpu1']} "
             f"bpu2={self.summary['bpu2_closed']} "
@@ -604,6 +626,11 @@ class QwctM5CohortResearch(QCAlgorithm):
             f"strict_window={self.summary['strict_bpu2_window']} "
             f"invalid={self.summary['invalidated']}; NO ORDERS")
         self.log(f"QWCT COHORT REJECTS {dict(self.rejects.most_common(12))}")
+        for day, ticker, m1, m5, last_m1, last_m5, close in self.tail_examples:
+            self.log(
+                f"QWCT COHORT TAIL {day} {ticker} m1={m1} m5={m5} "
+                f"m1_last={last_m1} m5_last={last_m5} close={close}; "
+                "TIMING AUDIT ONLY / NO SYNTHETIC BAR")
         # Distinct observed cases only. Free 10KB log budget.
         rows = sorted(
             (c for c in self.all_cases if c["best_ticks"] is not None),

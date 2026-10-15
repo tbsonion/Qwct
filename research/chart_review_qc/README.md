@@ -1,5 +1,12 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## 2026-10-15 — Real AON/DELL native Research screenshots received and reviewed
+
+The QuantBook notebook **ran successfully and plotted both actual RAW D1/M5 histories**. [Read the real chart-based OHLC assessment](./NATIVE_VISUAL_REVIEW_AON_DELL_JUNE_2024.md). Both historical original RAW pivots MATCHED prior 2.8 LEAN provenance; both original source M5 high/low extremum exact-touch counts remain zero. **AON 2024-06-12 short: first M5 range crossed RAW $293.59 downward 09:35 (O/H $293.92, L $292.34, C $292.40); 2 price-range straddles but no exact high touch. DELL 2024-06-07 long: first M5 range crossed RAW $128.75 downward 14:15 (O/H $130.225, L/C $128.52); 7 price-range straddles but no exact low touch**. A breakout through the level is not a confirmed original exact BPU1. Neither source is yet independently certified as a true manually selected Gerchik D1 BSU; mirror status and SEC/TICK TVX unverified.
+
+**Important validator correction:** AON shows `389` rather than `390` original native RAW M1 tradebars: only **77/78** M5 time buckets are backed by five minute tradebars. The earlier notebook misleadingly displayed `FULL 78 M5: True` because it only verified the FINAL time bucket. Corrected **both** notebook sources so `ALL 78 M5 HAVE 5 ORIGINAL M1` checks *every* bucket and prints which ET-close bucket lacks one M1. **DELL has full 390/390 M1 and 78/78 M5**, whereas AON's completeness is partial; absence of one M1 does NOT prove a vendor feed outage (fill-forward is disabled). No missing prices are fabricated. Existing QWCT 2.8 native baseline, simulator and original BPU detector unchanged.
+
+
 **Status 2026-10-15:** The QuantConnect Python Research Notebook and independent mirror chronology auditor are **implemented but have NOT been executed in the user's native QuantConnect Research Environment**. **No real visual Gerchik BSU labels are certified yet.** QWCT 2.8 native June baseline and production trading code remain unchanged.
 
 ## Why this is next

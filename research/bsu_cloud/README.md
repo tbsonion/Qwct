@@ -1,5 +1,22 @@
 # Qwct-BSU-Research — separate empty QuantConnect Cloud Python project
 
+## LATEST ACTUAL CLOUD PROOF (2024-03-16..2024-04-26): D1 bridge finished successfully
+
+**QuantConnect native LEAN v2.5.0.0.18179 run `61c134f14f24691fce277aac8730bf3e`:** the existing-package `strategy/__init__.py` fallback fixed the previous import failure. All three `BSU D1 BRIDGE` rows completed, PPHL and SEC historic results were unchanged, zero orders. **This result supersedes the earlier "run required" directions below.**
+
+| PPHL-only candidate | Source origin | Two-touch original Qwct level | Premarket proximity | Original global/local trend vs proposed direction | Level room 4R | Historic SEC at -30s |
+|---|---|---|---|---|---|---|
+| AMZN short 2024-03-21 13:15, BSU 179.53 | PASS | **FAIL** | PASS | **FAIL**, SMA up/up vs short | **PASS**, 7.06R to next D1 | UNKNOWN, no TradeBar at exact cutoff |
+| AAPL long 2024-04-03 12:20, BSU 170.28 | PASS | **FAIL** | PASS | **FAIL**, SMA down/down vs long | **FAIL**, 3.18R | Historic partial price-rule PASS only |
+| AAPL long 2024-04-12 12:25, BSU 175.82 | PASS | **FAIL** | PASS | **FAIL**, SMA down/down vs long | **PASS**, 4.36R | Historic partial price-rule PASS only |
+
+**Nothing is trade-approved.** `PPHL-only` was defined by **not already appearing in original accepted Qwct D1 swing-cluster origins**, so `cluster2touch=FAIL` is **expected by selection**, not three independent bugs. The independent trend gate in canonical `strategy/signals.py` requires both native SMA trend signs to match the intended side, with `allow_countertrend=False`. **All three violate that gate**. No change to this canonical rule is justified from a small, selected countertrend sample.
+
+**Important distinction:** `room3R=PASS` in the separate audit is an *illustrative next-level-distance calculation*; it is **not** certification that canonical `target_at_least_3r` passed, and `entry=BSU±luft` was not a proven fill. Actual per-case model score, real-time executable TVX, limit fill, 14-feature intraday selection, costs, P&L remain unknown.
+
+**Next:** independent date-labelled Gerchik positive/negative chart annotations for original D1 level validity and the correct trend model; then, if justified, larger read-only point-in-time market screening through **existing** Qwct liquidity universe rather than more fixed-three-symbol runs. Source-grounded analysis: [full D1 research](https://github.com/tbsonion/Qwct/blob/main/docs/research/bsu_pphl_d1_gate_audit_20261015.md). No Python Cloud file updates or another backtest are required now.
+
+
 ## FIX for Cloud "No module named strategy.d1_bridge_audit" (backtest initializer)
 
 A real user QuantConnect backtest showed this exact import exception at `main.py` line 14 **even though** the new module appeared under `project/strategy/` and the Cloud terminal had printed `All files saved`. The exact reason it was missing from the backtest Python module registry is not proven; do not claim that new D1 logic has run or that the strategy failed. The **new file must not be relied on**.
@@ -19,7 +36,7 @@ Old `strategy/d1_bridge_audit.py` in the project can remain unused; it is no lon
 
 **After native PPHL and SEC historical research successfully found three events,** the next code change adds an independent **D1/filter audit** for those **same three cases**, without changing symbols, date range or trade rules. GitHub CI: **352 pure tests passed**, and the main Qwct **24-Python-file Free package also passed**; the **new D1 report is not yet native LEAN-verified**.
 
-**SUPERSEDED instructions (original direct module attempt failed in native Cloud; use the workaround at the top of this README instead):**
+**HISTORICAL instructions (prior to now-confirmed native D1 bridge run):**
 
 | Cloud path | Exact GitHub source |
 |---|---|

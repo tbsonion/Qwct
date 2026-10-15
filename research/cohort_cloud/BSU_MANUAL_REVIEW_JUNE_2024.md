@@ -1,5 +1,10 @@
 # QWCT 2.8 — Historical BSU and BPU1 manual-review packet (June 2024)
 
+## Video cross-check required before approving ANY of the four patterns
+
+See [`GERCHIK_VIDEO_EVIDENCE_REVIEW.md`](./GERCHIK_VIDEO_EVIDENCE_REVIEW.md) for the verified official Alexander Gerchik YouTube channel and actual video URLs. Particularly scrutinize these public *topic markers* (NOT verified spoken rules): the question about bars not reaching a level at **04:20** and when to shift a level at **12:17** in the mirrored "Что такое уровни? Ответы на вопросы" episode, plus **11:13/27:50** BSU/BPU questions in the mirrored 2019 Q&A. Watch original Gerchik seminars on levels and the official BSU/BPU video lesson; these might explain a source-price choice not captured by our `swing_cluster.first_idx` proxy. **The existence of these questions does NOT prove BPU1 overshoot is acceptable.** Record an actual visible chart example and/or timestamped spoken explanation for each nonstandard level decision before suggesting a detector change.
+
+
 **Evidence status:** Native LEAN Cloud run `4b787847b9e5d2405b2fd97a541fa71e`, engine `2.5.0.0.18184`, 2024-06-01 through 2024-06-30. **Real run complete. Manual Gerchik chart labels NOT YET PERFORMED.** This is a *read-only four-case review*, not a trade signal, retrospective strategy optimization or an invitation to loosen thresholds.
 
 ## What the real Cloud result establishes

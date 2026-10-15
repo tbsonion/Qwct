@@ -119,7 +119,12 @@ def test_cloud_wiring_and_no_order_path_added():
            "bsu_cloud" / "main.py").read_text(encoding="utf-8")
     mod = (Path(__file__).parents[1] / "strategy" /
            "d1_bridge_audit.py").read_text(encoding="utf-8")
-    assert "from strategy.d1_bridge_audit import premarket_audit" in app
+    assert "from strategy import premarket_audit" in app
+    pkg = (Path(__file__).parents[1] / "research" / "bsu_cloud" /
+           "strategy_init_cloud.py").read_text(encoding="utf-8")
+    assert "def premarket_audit(" in pkg
+    assert "def evaluate_d1(" in pkg
+    assert len(pkg.encode("utf-8")) < 32_000
     assert "BSU D1 BRIDGE" in app
     assert "Resolution.DAILY" in mod
     assert "data_normalization_mode=DataNormalizationMode.RAW" in mod
@@ -130,3 +135,18 @@ def test_cloud_wiring_and_no_order_path_added():
     for cmd in ("market_order(", "limit_order(", "set_holdings(",
                 "self.buy(", "self.sell("):
         assert cmd not in mod
+
+def test_cloud_package_reuses_existing_module_without_touching_canonical_init():
+    from pathlib import Path
+    import ast
+    root = Path(__file__).resolve().parents[1]
+    original = (root / "strategy" / "__init__.py").read_text(encoding="utf-8")
+    cloud = (root / "research" / "bsu_cloud" /
+             "strategy_init_cloud.py").read_text(encoding="utf-8")
+    assert cloud.startswith(original.rstrip())
+    assert "from strategy.levels import levels_for_session" in cloud
+    assert "from strategy.indicators import global_trend" in cloud
+    assert "def premarket_audit(" in cloud
+    assert "def evaluate_d1(" in cloud
+    assert "market_order(" not in cloud
+    ast.parse(cloud)

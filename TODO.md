@@ -1,5 +1,17 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 2.6 real LEAN MAY backtest COMPLETE, 13 ready proxies / zero observed BPU1, incomplete-day audit NEXT
+
+- [x] **Native QuantConnect LEAN v2.5.0.0.18184** backtest `e30da5e09d7fc0b9507871f63f7536c7` May 1–31 2024, successful end-to-end runtime: `scans=22 callbacks=22 weekend_callbacks=4 days=18 stock_days=900 d1_ready=900 stage2=813 shadow_days=13 raw_origin_pass=13 origin_unknown=0 origin_fail=0 basis_match=8 basis_rebased=5 ready_origins=13 replay_days=10 m1=5000 m5=1001 bpu1=0 strict_bpu1=0 bpu2=0 strict_bpu2=0 strict_window=0 invalid=0`; `REJECTS={'NO_SAME_DAY_FUNDAMENTAL_CALLBACK':4}`. **NOT 22 independently covered trading sessions.**
+- [x] **May 6, 13, 20, 28** scanned session **skipped** because Saturday-dated Fundamental delivery had no corresponding same-day callback before 09:29. We must not label them zero candidates or casually backfill them from Saturday; separately design/test causal effective-session mapping if implemented.
+- [x] **Closest two native M5 wick-to-original-pivot cases** ADBE May 3 short 2 ticks ($0.02), FTNT May 8 short 2 ticks ($0.02): exact BPU1 was still zero. JNJ May 2 8 ticks ($0.08). Do not loosen BPU1 tolerance, silently substitute cluster medians, or claim true discretionary BSU.
+- [x] **Coverage defect/uncertainty FOUND:** every ready proxy had **77** native validated M5 candles, `13×77=1001`, but a full 09:30–16:00 equity session comprises **78** 5m intervals. `m1=5000` across 13 symbol-days versus maximal `5070` possible minute bars. **Do not assert the last 15:55–16:00 M5 is present or missing without timestamps**. Historical zero means zero among the **observed 1,001**, not zero over complete sessions or all Monday sessions.
+- [x] **Focused no-behavior-change diagnostics added to GitHub `research/cohort_cloud/main.py`:** count final closed M1 and emitted M5 end timestamps vs actual exchange close, plus up to four compact `QWCT COHORT TAIL` rows. No synthetic bars, no `scan()` flush, no new orders, no widened rules. Added source-level regression. **Native test of these additional diagnostics pending.**
+- [ ] **NEXT run:** once user replaces ONLY cohort `main.py`, use next independent **Jun 1–30, 2024** window (parameters `scan_start`, `scan_end` override old May defaults). Collect `QWCT COHORT TAIL` and summary `m1_tail_*` / `m5_tail_*`, then establish cause of 77/78 anomaly before claiming full-session BPU rate. **Do not rerun unchanged May backtest.** If last M5 truly is missed, implement safe verified close flush/timestamp completeness policy and retest one bounded segment.
+- [ ] Expand cohort only once consistent native M5 coverage proven; separately research Saturday callback effective-next-market-session mapping for skipped Mondays with point-in-time event ordering and comparison to baseline. Manual BSU labeling and -30s SEC/TICK TVX are later distinct steps.
+- [ ] GitHub CI status unknown; native May successful run proves old committed code path, not the new tail audit.
+
+
 ## 2026-10-15 — QWCT 2.6 implemented: INDEPENDENT May 2024 D1 Shadow → native M5 cohort (native pending)
 
 - [x] **Ready-solution audit:** reviewed previous proven QWCT 2.4 Fundamental/RAW/SCALED_RAW D1 `research/universe_cloud/main.py`, 2.5 six-case M5 `research/m5_cloud/main.py`, canonical `BsuDetector`, `validate_m5_tradebar`, and QuantConnect native `TradeBarConsolidator`. Reused all original D1 Shadow/risk gates **without changing strategy**. Tested six-case April negative-control logs already recorded.

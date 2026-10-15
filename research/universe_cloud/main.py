@@ -103,6 +103,9 @@ class QwctUniverseResearch(QCAlgorithm):
         self.bsu_role_aligned_day_ids = set()
         self.aligned_distinct_tickers = set()
         self.role_aligned_distinct_tickers = set()
+        self.full50_near_tickers = set()
+        self.full50_bsu_role_tickers = set()
+        self.outside10_examples = []
         anchor = self.add_equity(
             "SPY", Resolution.MINUTE, fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
@@ -205,6 +208,25 @@ class QwctUniverseResearch(QCAlgorithm):
             passed.append((rank, symbol, obs))
             self.counts["stage2_pass"] += 1
         watchlist = passed[:self.cfg.screener_watchlist_limit]
+        outside = passed[self.cfg.screener_watchlist_limit:]
+        self.counts["full50_near_symbol_days"] += sum(
+            bool(row[2]["near"]) for row in passed)
+        self.counts["full50_scenario_aligned_symbol_days"] += sum(
+            bool(row[2]["aligned"]) for row in passed)
+        self.counts["full50_bsu_role_aligned_symbol_days"] += sum(
+            bool(row[2]["role_aligned"]) for row in passed)
+        self.counts["outside10_near_symbol_days"] += sum(
+            bool(row[2]["near"]) for row in outside)
+        self.counts["outside10_bsu_role_aligned_symbol_days"] += sum(
+            bool(row[2]["role_aligned"]) for row in outside)
+        self.full50_near_tickers.update(
+            symbol.value for _, symbol, obs in passed if obs["near"])
+        self.full50_bsu_role_tickers.update(
+            symbol.value for _, symbol, obs in passed if obs["role_aligned"])
+        for rank, symbol, obs in outside:
+            if obs["role_aligned"] and len(self.outside10_examples) < 8:
+                self.outside10_examples.append((
+                    day, symbol.value, rank+1, obs, obs["examples"][:3]))
         self.counts["watchlist_days"] += len(watchlist)
         for rank, symbol, obs in watchlist:
             label = (day.isoformat(), symbol.value)
@@ -265,6 +287,29 @@ class QwctUniverseResearch(QCAlgorithm):
             f"{len(self.role_aligned_distinct_tickers)} "
             f"rejects={dict(self.rejections.most_common(4))}; "
             "NO M5 / NO SEC / NO ORDERS")
+        self.log(
+            "QWCT UNIVERSE FULL50 "
+            f"stage2_symbol_days={self.counts['stage2_pass']} "
+            f"near_symbol_days={self.counts['full50_near_symbol_days']} "
+            f"scenario_aligned_symbol_days="
+            f"{self.counts['full50_scenario_aligned_symbol_days']} "
+            f"bsu_role_aligned_symbol_days="
+            f"{self.counts['full50_bsu_role_aligned_symbol_days']} "
+            f"outside10_near_symbol_days="
+            f"{self.counts['outside10_near_symbol_days']} "
+            f"outside10_bsu_role_aligned_symbol_days="
+            f"{self.counts['outside10_bsu_role_aligned_symbol_days']} "
+            f"unique_near_tickers={len(self.full50_near_tickers)} "
+            f"unique_bsu_role_aligned_tickers="
+            f"{len(self.full50_bsu_role_tickers)}; "
+            "D1 ONLY / NO M5 / NO ORDERS")
+        for day, ticker, rank, obs, levels in self.outside10_examples:
+            self.log(
+                f"QWCT UNIVERSE OUTSIDE10 {day} {ticker} "
+                f"rank={rank} close={obs['price']:.4f} "
+                f"atr={obs['atr']:.4f} "
+                f"bsu_role_aligned={obs['role_aligned']} "
+                f"near_levels={levels}; D1 ONLY / NO ORDERS")
         for day, ticker, rank, obs, levels in self.example_rows:
             self.log(
                 f"QWCT UNIVERSE EXAMPLE {day} {ticker} rank={rank} "

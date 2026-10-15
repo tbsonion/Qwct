@@ -20,6 +20,20 @@ In the new **Qwct-BSU-Research** project, replace the default `main.py` and crea
 
 For the current native PPHL A/B smoke test, default dates are back to **2024-03-16 through 2024-04-26**, with fixed MSFT/AMZN/AAPL. Cloud scan parameters override the defaults if set. Do not change Qwct-LEAN-Test.
 
+## Next read-only Cloud test: native SECOND history 30-second-preclose check
+
+The **three completed M5 proof pairs are confirmed** from the native LEAN run below. The sole newer change in [research/bsu_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py) is a **historical native ONE-SECOND TradeBar audit of those same three cases**, using the official LEAN typed History API. **The one-second branch has not yet been verified in native Cloud**; the full prior PPHL baseline and real OHLC evidence have.
+
+- Calls `self.history[TradeBar]([symbol], bpu1_end, bpu2_end-29s, Resolution.SECOND, fill_forward=False, data_normalization_mode=DataNormalizationMode.RAW)` **only for the 3 previously found strict+time-window events** (capped at 12) at backtest END. Every observed TradeBar **end time must be <= BPU2 close minus 30 seconds**. The end datetime is one second after the intended cutoff solely because API date-ranges can be end-exclusive; an additional time guard prevents any future sample.
+- Verifies that native SEC TradeBars are genuine **one-second, positive-volume** trades with strictly increasing end times; requires an actual trade bar ending **exactly** at the -30s cutoff, otherwise logs `NO_TRADE_AT_EXACT_CUTOFF`. Missing history is reported as `NO_SECOND_TRADES` or `HISTORY_ERROR:`, **never replaced by minute/OHLC interpolation**.
+- Compares earlier-second observed cumulative high/low to the independently completed **native RAW M5 BPU2** high/low; `M5_SEC_RAW_MISMATCH` is reported if they disagree. Uses existing BPU1 high/low and saved BSU/luft to check only the **same read-only BPU2 extrema rules**. It never infers a quote, book, order, fill or measured profitability.
+- Logs one `BSU PPHL SEC RETRO ... status=... seconds=... low=... high=... last=...` per qualifying case and one `BSU PPHL SEC SUMMARY`. `RETROSPECTIVE_RULE_PASS` means **historical TradeBar reconstruction** at the cutoff only, **NOT an actual event-driven TVX observed live**. If SECOND data is unavailable, all results remain UNKNOWN. This has no effect on signals.
+- Does **not** change old `Qwct-LEAN-Test`, the six reused `strategy/` modules, the confirmed PPHL candidate set, time windows, detector tolerance, D1 scoring or orders.
+
+**User action:** replace **only `Qwct-BSU-Research/main.py`** and rerun **2024-03-16..2024-04-26**. Paste `BSU PPHL SEC RETRO`, `BSU PPHL SEC SUMMARY`, `BSU PPHL EVIDENCE`, `BSU PPHL COMPARE` and `BSU RESEARCH ELIGIBILITY`. Any runtime error or absent SECOND data must be handled based on actual Cloud output; CI verifies Python/unit logic but not historical SECOND access.
+
+**Independent follow-up remains required**: 3 PPHL-only single-pivot results are **not** automatically eligible under original 2-touch Qwct strength/model/trend/4R and 3R gates. Official Gerchik examples need expert ground-truth validation before changing any canonical rule.
+
 ## Latest native PPHL OHLC proof (Cloud run f06cb8adcd437c8d647d99f01ee5fd88)
 
 Run succeeded on LEAN v2.5.0.0.18179, 2024-03-16..2024-04-26, same MSFT/AMZN/AAPL RAW D1 + native M5. The added independent evidence confirmed **3 distinct symbol+day+side+original RAW origin episodes** (not merely three repeated M5 passes), all **strict BPU1**, immediately following **closed-M5 BPU2**, within the current 12:00–13:30 ET bounce window. **It did not verify SEC preclose, D1 trend/strength/room, orders or returns.** Original Qwct baseline stayed 6 strict BPU1 / 1 strict-followed BPU2 / zero in-window.

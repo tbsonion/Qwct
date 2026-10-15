@@ -142,7 +142,11 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
         if not isfinite(tick) or tick <= 0:
             return done("UNKNOWN", "NATIVE_SECURITY_TICK_INVALID")
         if abs(origin - round(origin / tick)*tick) > tick*1e-5:
-            return done("FAIL", "RAW_ORIGIN_OFF_NATIVE_TICK_GRID")
+            # Daily RAW TradeBars contain executed trades. SEC Rule 612
+            # allows midpoint/sub-penny executions even when limit/order
+            # quotes have a larger minimum tick. An off-grid print is NOT
+            # automatically a bad source, but cannot arm exact-tick BPU.
+            return done("UNKNOWN", "RAW_TRADE_EXTREME_SUBTICK_NOT_ORDER_PRICE")
     except (TypeError, ValueError, KeyError, IndexError, OverflowError) as exc:
         return done("UNKNOWN", "RAW_ORIGIN_AUDIT_ERROR:" + str(exc)[:40])
     return done("PASS", "RAW_D1_ONLY;SCALED_RAW_UNVERIFIED")

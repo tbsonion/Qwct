@@ -18,7 +18,19 @@ In the new **Qwct-BSU-Research** project, replace the default `main.py` and crea
 
 **Do not paste the old 24-file Cloud bundle into this new project**; it would run a different algorithm and consume unnecessary Free quota. New project uses only 7 files plus the editor's optional template `research.ipynb`.
 
-After a successful native LEAN scan of **2024-03-16 through 2024-04-26** (verified below), the current **new-project** `research/bsu_cloud/main.py` now defaults to the **next nonoverlapping 2024-04-27 through 2024-06-07** window. It still scans only **MSFT / AMZN / AAPL**, and no parameter UI is necessary. If Cloud project parameters `scan_start` / `scan_end` are already set, they override these defaults. `Qwct-LEAN-Test` is unchanged.
+For the current native PPHL A/B smoke test, default dates are back to **2024-03-16 through 2024-04-26**, with fixed MSFT/AMZN/AAPL. Cloud scan parameters override the defaults if set. Do not change Qwct-LEAN-Test.
+
+## CURRENT Cloud task: native LEAN PPHL versus existing Qwct pivots (research-only)
+
+**Update only the new research project's main.py:** [Cloud-ready research main.py](https://github.com/tbsonion/Qwct/blob/main/research/bsu_cloud/main.py). Defaults are **2024-03-16 to 2024-04-26** (a previously tested window, deliberately replayed for an A/B comparison). Leave the six strategy modules and Qwct-LEAN-Test untouched.
+
+The new shadow uses LEAN's **actual PivotPointsHighLow(3,3,100)**, manually updated on sequential already-closed historical **RAW daily TradeBars** at 09:29 ET. Each native pivot event is recorded **only after the third right-hand daily bar has closed**, preserving both original D1 pivot price/time and the later confirmation time. It compares original RAW swing origins against the existing two-touch Qwct cluster-origin list. Only PPHL-only origins are separately observed on the same native, already validated M5 bars with the existing read-only BsuDetector. A split quarantines both branches. Original Qwct signal rules, session hours, half-tick tolerance, and orders are unchanged.
+
+**Bring back the lines:** BSU PPHL COMPARE, BSU RESEARCH SUMMARY, BSU RESEARCH ELIGIBILITY, and any BSU PPHL ONLY BPU1/BPU2 entries. The PPHL summary separately reports pivot level-days, unique original pivots, overlap, PPHL-only observations, exact M5 BPU1, closed BPU2 and time eligibility, as well as PPHL Python binding/data failures. It must show a nonempty native PPHL denominator with no failure. The already-native-verified baseline from this window should stay at BPU1_strict=6 and BPU2_with_strict_BPU1=1.
+
+**Status:** 339 GitHub unit tests passed; **new PPHL Cloud branch not yet native LEAN-verified**. The tests use a mock native pivot event to check pivot/confirmation chronology; they do not certify the QuantConnect binding. Do not infer complete Gerchik pattern, SEC TVX, live execution or returns. Reusing the same three tickers isolates the pivot change; a subsequent separate experiment will compare point-in-time native Qwct/Universe.Top(50) screening rather than mixing both changes here.
+
+**Source links:** [PPHL documentation](https://www.quantconnect.com/docs/v2/writing-algorithms/indicators/supported-indicators/pivot-points-high-low), [native PPHL implementation](https://github.com/QuantConnect/Lean/blob/master/Indicators/PivotPointsHighLow.cs), [original Gerchik BSU definition](https://gerchik.com/torgovye-patterny/bsu-bpu-teoriya), [time-of-day guide](https://gerchik.com/journal/fondovye-rynki/torgovyj-algoritm-aleksandra-gerchika/).
 
 ## Research mechanics
 

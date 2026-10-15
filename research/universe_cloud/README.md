@@ -1,5 +1,30 @@
 # Qwct Universe D1 Research — a new, separate QuantConnect LEAN Cloud project
 
+## 2026-10-15: REAL native BSU ROLE check complete — zero eligible in watchlist, next full50 check ready
+
+Actual native **QuantConnect LEAN v2.5.0.0.18179 run `06f195f83e949fa1a1e65ca77885aed0`**, April 1–5 2024; 32.41s, no runtime errors or orders. **This confirms the previous role-audit code ran in genuine Cloud.** Prior funnel remained stable: stage1 **250 candidate-stock-days**, **246 D1 ready**, **227 stage2 passed**, **50 top-10 watchlist stock-days**, **3** near-level watchlist stock-days.
+
+| Date, symbol | D1 close | Native historic cluster | Source role vs proposed bounce | SMA trend | Old Scenario direction aligned? | Native BSU source role + trend aligned? |
+|---|---:|---|---|---|---|---|
+| **2024-04-01 AMZN** | 180.3800 | **179.835 resistance, 2 touches** | `resistance` below close, Scenario suggests `long` | `+1/+1` | **YES** | **NO**: `BSU_ROLE_MISMATCH` |
+| **2024-04-02 AMZN** | 180.9700 | **same 179.835 resistance** | same mismatch | `+1/+1` | **YES** | **NO**: `BSU_ROLE_MISMATCH` |
+| **2024-04-05 AMD** | 165.8300 | **162.18 support, 2 touches** | `support` below close, Scenario suggests `long` | `0/0` (neutral) | **NO** | **NO**: source role consistent, **trend not aligned** |
+
+**Native summary:** `watch_with_trend_aligned_bounce=2`, **`bsu_role_conflict_level_days=2`**, **`watch_with_bsu_role_aligned=0`**, **`bsu_role_aligned_level_days=0`**, `unique_bsu_role_aligned_tickers=0`. The two "aligned" hits are the **same AMZN level on two consecutive days**, not independent BSU signals. The Qwct two-touch D1 level, proposed bounce side, native `BsuDetector` source-side semantics and native SMA trend must not be conflated. No M5/BPU/TVX or profit is evaluated.
+
+**Caveat:** zero in the top-10 watchlist for **five sessions** does **NOT** demonstrate zero D1 candidates elsewhere among the **177 stage2-qualified symbol-days excluded by top-10 capacity**, nor in other dates. Do NOT relax `allow_countertrend=False` or silently promote a resistance-below-price into confirmed `mirror/support`. The original Qwct `bsu_bridge.py` explicitly rejects an unverified `resistance+long` BSU link.
+
+### NEXT minimum-cost controlled test — update ONLY main.py, same dates
+
+A new GitHub version of [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) preserves **all existing stock-selection rules and Top-10 outputs** and adds a **read-only full-50 vs top-10 diagnostic** using the **already fetched and classified** original 50 ticker candidates; there are **no extra History calls or extra subscriptions**.
+
+Additional summary line `QWCT UNIVERSE FULL50` reports **stage2_symbol_days**, **near_symbol_days**, **scenario_aligned_symbol_days**, **bsu_role_aligned_symbol_days**, **outside10_near_symbol_days**, **outside10_bsu_role_aligned_symbol_days**, **unique_near_tickers**, **unique_bsu_role_aligned_tickers**. `QWCT UNIVERSE OUTSIDE10` logs only up to 8 concrete point-in-time D1 role+trend-aligned outside-10 ticker examples, if any; examples still **not M5 or actual trades**. The baseline summary should remain **identical** to run `06f195...` unless market data/research environment changes.
+
+**Only replace `main.py` in the EXISTING `Qwct-Universe-Research` project**, and rerun **2024-04-01..2024-04-05**. Leave the other four Cloud files, `Qwct-BSU-Research`, and original `Qwct-LEAN-Test` unchanged. Paste **`QWCT UNIVERSE SUMMARY`**, **`QWCT UNIVERSE FULL50`**, and any **`QWCT UNIVERSE OUTSIDE10`** lines. Pure GitHub CI **365 tests passed**, but this new *full50 output* has **not** yet been confirmed in native Cloud.
+
+**Next decision after that result:** If original role+trend D1 candidates exist outside top10, assess the existing screener capacity as a potential coverage bottleneck **without automatically expanding subscriptions**. If none exist, the small premarket period/sample or structural level/trend filters are the bottleneck; compare rules with independently labeled chart examples before modifying any canonical filter. Do not connect M5 to a zero-eligible day list.
+
+
 ## LATEST native LEAN 5-day outcome: dynamic screen CONFIRMED; BSU role mismatch next
 
 **Actual QuantConnect LEAN v2.5.0.0.18179**, run `247db2a140c2ae2a6790fbee82ffb1a4`, April 1–5 2024, completed in 34.11s. Native typed `History[TradeBar]` with `list(symbols)` is **confirmed fixed in real Cloud**; the prior tuple overload problem is resolved. Orders off.
@@ -19,7 +44,7 @@
 
 **NEXT code is already prepared — one-file diagnostic, no rule change:** [research/universe_cloud/main.py](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py) still computes the exact **old** `watch_aligned` and `aligned_level_days`, and **adds** `BSU_ROLE_OK / BSU_ROLE_MISMATCH` to `EXAMPLE` rows. It additionally reports `watch_bsu_role_aligned`, `bsu_role_aligned_level_days`, `bsu_role_conflict_level_days`, **unique ticker** counts separately from ticker-day counts. `BSU_ROLE_OK` requires original `support+long` or `resistance+short` **and** the already required sided SMA alignment. `BSU_ROLE_MISMATCH` is a diagnostic, **not a new trade filter or rewritten canonical Qwct algorithm**.
 
-**Action:** in the SAME existing `Qwct-Universe-Research`, replace **ONLY Cloud `main.py`** from [GitHub](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py), leave the other four files and other QuantConnect projects unchanged, rerun **2024-04-01..2024-04-05**. Paste `QWCT UNIVERSE SUMMARY` and `QWCT UNIVERSE EXAMPLE` (DAY lines optional). **This additional read-only role branch has passed pure GitHub tests but has not yet been verified in native Cloud**. Avoid adding M5 until we know whether there are any role-consistent premarket D1 candidates. The 4 insufficient-history rejections remain legitimate unknown data, not losing trades.
+**Historical role-test instructions (already completed natively; superseded by new full50 read-only audit above):** In the same project, the role-test code was loaded from [GitHub](https://github.com/tbsonion/Qwct/blob/main/research/universe_cloud/main.py), leave the other four files and other QuantConnect projects unchanged, rerun **2024-04-01..2024-04-05**. Paste `QWCT UNIVERSE SUMMARY` and `QWCT UNIVERSE EXAMPLE` (DAY lines optional). **This additional read-only role branch has passed pure GitHub tests but has not yet been verified in native Cloud**. Avoid adding M5 until we know whether there are any role-consistent premarket D1 candidates. The 4 insufficient-history rejections remain legitimate unknown data, not losing trades.
 
 
 ## 2026-10-15: REAL native LEAN first run — tuple-to-list typed History fix prepared

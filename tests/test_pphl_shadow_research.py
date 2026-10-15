@@ -295,3 +295,11 @@ def test_sec_retro_never_claims_executable_tvx_or_orders():
                  "NO_TRADE_AT_EXACT_CUTOFF",
                  "NO REAL-TIME TVX / NO ORDERS"):
         assert term in source
+
+
+def test_quantconnect_free_research_main_fits_file_size_limit():
+    """QuantConnect Cloud rejects individual Python files >32,000 chars."""
+    source = APP.read_text(encoding="utf-8")
+    assert len(source) <= 32_000
+    assert len(source.encode("utf-8")) <= 32_000
+    ast.parse(source)

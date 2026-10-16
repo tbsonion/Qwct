@@ -1,3 +1,7 @@
+## Cloud 5.7 выполнен пользователем — обновление 16.10.2026
+
+[Наблюдения и итоговое решение](QWCT_5_7_CLOUD_DATA_AUDIT_RESULT_RU.md): 95.54%/80.48% объёма связано с preceding structural pair, но весь aggressor volume UNKNOWN. TRUE CVD/положительный observer BLOCKED; следующий blocker — source mapping/проверяемый aggressor, не повторение cell. От пользователя дополнительных запусков не требуется.
+
 # QWCT 5.7 — native bid/ask: готовые механизмы и границы доверия
 
 **Решение:** native LEAN умеет сохранять bid/ask и строить QuoteBar, но просмотренные API не предоставляют готовый проверенный контракт «свежий bid + свежий ask + надёжный aggressor». Положительный Order Flow Observer и CVD пока BLOCKED. Подготовлен один bounded metadata audit; это не новый feed, consolidator, стакан или индикатор.
@@ -56,8 +60,8 @@
 
 Даже идеальные пары не дают exchange aggressor. После подтверждения источника price-vs-quote может быть только **ESTIMATED**, с unknown volume и independent validation. Tick rule по цене сделки — другая оценка; нет silent fallback. CVD из OHLCV запрещена.
 
-## 5. Валидация и действия
+## 5. Валидация и исполненный протокол
 
-**CODE / UNIT:** 20 новых тестов на structural tuples (не candles/fills): crossed/locked, flags/condition/zero sizes, multiple rows, timestamps/ties, future exclusions, invalid latest group без fallback, сохранение повторных trades/volume denominator и отсутствие production imports/orders/bar generation. **CLOUD 5.7 PENDING**, никакие показатели 5.6 не переименованы в результат 5.7. Источники прочитаны; source verification не заменяет deployed runtime proof. Новых dependencies/подписок/платных данных нет.
+**CODE / UNIT:** 20 новых тестов на structural tuples (не candles/fills): crossed/locked, flags/condition/zero sizes, multiple rows, timestamps/ties, future exclusions, invalid latest group без fallback, сохранение повторных trades/volume denominator и отсутствие production imports/orders/bar generation. **CLOUD 5.7: USER_SUPPLIED_OUTPUT_RECEIVED**, никакие показатели 5.6 не переименованы в результат 5.7. Источники прочитаны; source verification не заменяет deployed runtime proof. Новых dependencies/подписок/платных данных нет.
 
-**Единственное действие для пользователя:** в существующем `Qwct-M5-Cohort-Research/research.ipynb` заменить код диагностической cell 5.6 **целиком** кодом [cell 5.7](QWCT_5_7_NATIVE_QUOTE_PAIR_AUDIT_ONE_CELL.py), выполнить один раз и передать строки QWCT 5.7. main.py и остальные файлы не менять. Предыдущий результат 5.6 сохранён в GitHub.
+**Протокол cell выполнен.** Полученный Cloud output сохранён в [результате 5.7](QWCT_5_7_CLOUD_DATA_AUDIT_RESULT_RU.md). Повторно выполнять cell или заменять production-файлы не требуется.

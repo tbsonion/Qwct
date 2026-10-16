@@ -4,6 +4,8 @@ No home-grown ATR or moving-average calculations. The QCAlgorithm feeds
 the 'atr14' and 'sma50' columns from AverageTrueRange and SimpleMovingAverage.
 Missing data is explicit (NaN) and all dependent gates must fail closed.
 """
+from __future__ import annotations
+
 from math import isfinite
 from dataclasses import dataclass
 from datetime import date

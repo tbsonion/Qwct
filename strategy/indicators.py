@@ -214,10 +214,19 @@ def observe_d1_level_reactions(
             d1_asof.iloc[i][atr_column], True)
         if native is None or native.event != observation.event:
             raise ValueError("STALE_REACTION_WICK_OR_BAR")
+        # The traced role reversal retest is dated BEFORE "valid_from";
+        # do not mislabel that transitional candle as an original-side
+        # failed break/bounce. Mirror retest is independently tagged below.
+        if observation.at==retest_date:
+            continue
         if observation.event in ("TAIL_ONLY_RECLAIM","BODY_CROSS_RECLAIM"):
             record("WICK_RECLAIM",i,i,phase,"CLOSED_D1_WICK_RECLAIM")
-            record("FALSE_BREAK_1BAR",i,i,phase,
-                   "CLOSED_D1_SINGLE_BAR_REENTRY_PROXY")
+            # A one-bar false break starts, pierces and CLOSES on the same
+            # defended side. An open on the wrong side (body-cross reclaim)
+            # is NOT that one-bar pattern; it may be an overnight gap.
+            if defended(float(bars.iloc[i].open),role):
+                record("FALSE_BREAK_1BAR",i,i,phase,
+                       "SAME_CLOSED_D1_OPEN_AND_CLOSE_DEFENDED")
         # A bounce is not a mere candle touching: wait for NEXT D1 close.
         if (i+1<n and dates[i+1]>dates[i] and
                 role_at(i+1)[1]==phase and
@@ -229,7 +238,8 @@ def observe_d1_level_reactions(
             # 0.40 is an explicitly named SOFT heuristic, not "Gerchik strong".
             if (observation.event=="TAIL_ONLY_RECLAIM" and
                     observation.wick_to_range is not None and
-                    observation.wick_to_range>=h.wick_fraction_of_range):
+                    native.wick_to_range is not None and
+                    native.wick_to_range>=h.wick_fraction_of_range):
                 record("WICK_BOUNCE",i+1,i,phase,
                        "NEXT_CLOSED_D1_PLUS_LARGE_TAIL_PROXY")
 
@@ -263,6 +273,17 @@ def observe_d1_level_reactions(
     for i in range(first,n):
         role,phase=role_at(i)
         cur=bars.iloc[i]
+        # The existing audit identifies only the FIRST mirror transition.
+        # A later approach from the mirror-defended side to the SAME
+        # candidate price is also an observable retest, not necessarily
+        # an author-approved price/BSU. Never bridge the role transition.
+        if (phase=="MIRROR" and i>first and
+                role_at(i-1)[1]=="MIRROR" and
+                defended(float(bars.iloc[i-1].close),role) and
+                defended(float(cur.close),role) and
+                float(cur.low)<=price<=float(cur.high)):
+            record("MIRROR_RETEST",i,i,phase,
+                   "LATER_D1_MIRROR_SIDE_RETEST_PROXY")
         # Directional break -> TWO closes beyond price; second close moves
         # farther from the level. Both bars must be in one consistent role.
         if i>=max(first+2,2) and role_at(i-1)[1]==phase and role_at(i-2)[1]==phase:
@@ -311,7 +332,11 @@ def observe_d1_level_reactions(
             sides=[1 if c>price+tol else -1 if c<price-tol else 0
                    for c in closes]
             flips=sum(sides[j]*sides[j-1]==-1 for j in range(1,w))
-            if (flips>=h.chop_min_flips and
+            # A sequence of gap-only flips with no candle trading through
+            # the reference is not enough to call this observed chop.
+            spans=sum(float(q.low)<=price<=float(q.high)
+                      for _,q in chunk.iterrows())
+            if (flips>=h.chop_min_flips and spans>0 and
                     float(chunk.high.max()-chunk.low.min())<=h.chop_width_atr*atr and
                     abs(closes[-1]-closes[0])<=h.chop_net_change_atr*atr):
                 record("CHOP",i,i-w+1,phase,

@@ -2,6 +2,10 @@
 
 ## CURRENT STATUS — 16.10.2026 · QWCT 4.3 (READ FIRST)
 
+**QWCT 4.4 — отдельные реакции у уровня (PR #27, CI 3/3):** добавлен read-only `M5LevelReactionObserver` для `TOUCH_HOLD`, `WICK_PIERCE_RECLAIM`, `FIRST_CLOSE_BEYOND_LEVEL`, `TWO_BAR_FALSE_BREAK_RECLAIM`, `TWO_CLOSES_BEYOND_LEVEL`, `MIRROR_RETEST_AFTER_BREAK`, `RECLAIM_AFTER_SUSTAINED_BREAK`. Это **отдельная** классификация закрытых M5 возле уже известных D1 software-уровней: прокол хвостом не приравнивается к BPU1, ложный пробой не превращается в strict BSU; пропуск M5 обнуляет двухсвечный контекст. В исследовательском Backtest добавлены `QWCT 4.4 REACTION SUMMARY` по акциям. Авторская точность ❌; реальный QuantConnect 4.4 ещё не запускался. [PR #27](https://github.com/tbsonion/Qwct/pull/27).
+
+
+
 **Актуальный статус QWCT 2.8–4.3 и полная таблица:** [STATUS_2026-10-16.md](STATUS_2026-10-16.md). Эта сводка **заменяет** старую «2.8–3.3» таблицу; ниже — исторический журнал со старыми открытыми пунктами, а не текущая инструкция.
 
 | Компонент | Статус | Что реально подтверждено |

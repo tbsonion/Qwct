@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 import pytest
 from strategy.config import StrategyConfig
-from strategy.patterns_bsu import Bar, M5BsuSequenceScanner
+from strategy.patterns_bsu import Bar, M5BsuSequenceScanner, M5LevelReactionObserver
 
 ET=ZoneInfo("America/New_York")
 DAY=date(2026,10,16)
@@ -253,3 +253,83 @@ def test_coverage_is_only_already_observed_same_day_m5():
     assert s.observe(bar(0))==()
     assert all(b.ts.date()==DAY for b in s._history)
     assert not s._pending and s.completed==0
+
+
+def reaction_bar(n, o, h, l, c):
+    return Bar(FIRST+timedelta(minutes=5*n),o,h,l,c,timeframe="M5",volume=1000)
+
+
+def kinds(observer, bar):
+    return {e.kind for e in observer.observe(bar)}
+
+
+def test_44_support_touch_without_wick_pierce():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    assert kinds(s,reaction_bar(0,100.2,100.4,100.0,100.3))=={"TOUCH_HOLD"}
+
+
+def test_44_support_wick_pierce_and_close_back_inside():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    assert kinds(s,reaction_bar(0,100.2,100.4,99.7,100.3))=={"WICK_PIERCE_RECLAIM"}
+
+
+def test_44_resistance_wick_pierce_and_close_back_inside():
+    s=M5LevelReactionObserver(100.0,"short",.01)
+    assert kinds(s,reaction_bar(0,99.7,100.3,99.5,99.8))=={"WICK_PIERCE_RECLAIM"}
+
+
+def test_44_two_bar_false_break_support():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    s.observe(reaction_bar(0,100.2,100.3,100.1,100.2))
+    assert kinds(s,reaction_bar(1,100.1,100.1,99.7,99.8))=={"FIRST_CLOSE_BEYOND_LEVEL"}
+    assert kinds(s,reaction_bar(2,99.8,100.3,99.7,100.2))=={"TWO_BAR_FALSE_BREAK_RECLAIM"}
+
+
+def test_44_two_bar_false_break_resistance():
+    s=M5LevelReactionObserver(100.0,"short",.01)
+    s.observe(reaction_bar(0,99.8,99.9,99.7,99.8))
+    assert kinds(s,reaction_bar(1,99.9,100.3,99.8,100.2))=={"FIRST_CLOSE_BEYOND_LEVEL"}
+    assert kinds(s,reaction_bar(2,100.2,100.3,99.7,99.8))=={"TWO_BAR_FALSE_BREAK_RECLAIM"}
+
+
+def test_44_two_closes_beyond_and_mirror_retest():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    s.observe(reaction_bar(0,100.3,100.4,100.2,100.3))
+    assert kinds(s,reaction_bar(1,100.2,100.2,99.6,99.8))=={"FIRST_CLOSE_BEYOND_LEVEL"}
+    assert kinds(s,reaction_bar(2,99.8,99.9,99.5,99.7))=={"TWO_CLOSES_BEYOND_LEVEL"}
+    assert kinds(s,reaction_bar(3,99.7,100.0,99.5,99.8))=={"MIRROR_RETEST_AFTER_BREAK"}
+    assert kinds(s,reaction_bar(4,99.8,100.2,99.7,100.2))=={"RECLAIM_AFTER_SUSTAINED_BREAK"}
+
+
+def test_44_no_two_bar_false_label_after_multiple_beyond_closes():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    s.observe(reaction_bar(0,100.3,100.4,100.2,100.3))
+    s.observe(reaction_bar(1,100.2,100.2,99.6,99.8))
+    s.observe(reaction_bar(2,99.8,99.9,99.5,99.7))
+    out=kinds(s,reaction_bar(3,99.7,100.3,99.6,100.2))
+    assert "TWO_BAR_FALSE_BREAK_RECLAIM" not in out
+    assert "RECLAIM_AFTER_SUSTAINED_BREAK" in out
+
+
+def test_44_missing_m5_does_not_fabricate_two_bar_reclaim():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    s.observe(reaction_bar(0,100.3,100.4,100.2,100.3))
+    s.observe(reaction_bar(1,100.2,100.2,99.6,99.8))
+    assert "TWO_BAR_FALSE_BREAK_RECLAIM" not in kinds(
+        s,reaction_bar(3,99.7,100.3,99.6,100.2))
+
+
+def test_44_reaction_evidence_cannot_trade_and_does_not_promote_bpu():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    evidence=s.observe(reaction_bar(0,100.2,100.4,99.7,100.3))
+    assert evidence[0].kind=="WICK_PIERCE_RECLAIM"
+    assert not evidence[0].can_trade
+    assert not hasattr(evidence[0],"event")
+
+
+def test_44_invalid_bar_does_not_mutate_history():
+    s=M5LevelReactionObserver(100.0,"long",.01)
+    with pytest.raises(ValueError,match="REACTION_INVALID_OHLC"):
+        s.observe(reaction_bar(0,100.2,100.1,99.9,100.3))
+    assert s._last is None
+    assert kinds(s,reaction_bar(0,100.2,100.4,99.7,100.3))=={"WICK_PIERCE_RECLAIM"}

@@ -528,3 +528,122 @@ class M5BsuSequenceScanner:
         self._history.append(bar)
         self._history=self._history[-self.history_limit:]
         return tuple(events)
+
+
+# QWCT 4.4 — independent LEVEL REACTION taxonomy, read-only.
+# Do not promote any of these to BPU1_EXACT / BPU2_CLOSED / TVX.
+# Reference: https://gerchik.co/ru/blog/osnovy-strategii-torgovlya-na-proboy-urovnya
+# That source distinguishes wick-only false breaks, two-bar reclaim,
+# sustained close beyond the level, and post-break mirror confirmation.
+# OHLC alone does NOT prove intrabar path, trader intent or author approval.
+@dataclass(frozen=True)
+class M5LevelReaction:
+    kind: str
+    level_price: float
+    side: str
+    bar_end: datetime
+    previous_end: datetime | None = None
+
+    @property
+    def can_trade(self) -> bool:
+        return False
+
+
+class M5LevelReactionObserver:
+    """Causal, independent reactions around ONE fixed pre-existing level.
+
+    side='long' = support from above; side='short' = resistance from below.
+    A break is not a confirmed trade signal; this is research-only labeling.
+    Missing M5 resets temporal patterns, rather than bridging missing data.
+    """
+
+    def __init__(self, level_price: float, side: str, tick_size: float):
+        self.level = _positive("level_price", level_price)
+        self.tick = _positive("tick_size", tick_size)
+        if side not in ("long", "short"):
+            raise ValueError("side must be long or short")
+        self.side = side
+        self._last: Bar | None = None
+        self._breakout: Bar | None = None
+        self._break_confirmed = False
+
+    def observe(self, bar: Bar) -> tuple[M5LevelReaction, ...]:
+        if bar.timeframe != "M5":
+            raise ValueError("REACTION_REQUIRES_NATIVE_M5")
+        now = _aware("reaction_bar_end", bar.ts)
+        for x in (bar.open, bar.high, bar.low, bar.close):
+            if not isfinite(float(x)):
+                raise ValueError("REACTION_INVALID_OHLC")
+        if not (bar.low <= min(bar.open, bar.close)
+                <= max(bar.open, bar.close) <= bar.high):
+            raise ValueError("REACTION_INVALID_OHLC")
+        previous = self._last
+        if previous is not None:
+            prior_time = _aware("previous_bar_end", previous.ts)
+            if now <= prior_time:
+                raise ValueError("REACTION_OUT_OF_ORDER")
+            if now-prior_time != timedelta(minutes=5):
+                self._breakout = None
+                self._break_confirmed = False
+                previous = None
+
+        tol = self.tick * 0.500001
+        level = self.level
+        # Direction is measured against the ORIGINAL level role.
+        def signed(price: float) -> float:
+            return price-level if self.side == "long" else level-price
+
+        outside = signed(bar.close) < -tol
+        inside = signed(bar.close) > tol
+        pierced = signed(bar.low if self.side == "long" else bar.high) < -tol
+        touched = (bar.low-tol <= level <= bar.high+tol)
+        prior_break = self._breakout
+        events: list[M5LevelReaction] = []
+
+        def emit(kind: str, prev: Bar | None = None) -> None:
+            events.append(M5LevelReaction(
+                kind, level, self.side, bar.ts,
+                None if prev is None else prev.ts))
+
+        # A one-bar wick penetration that CLOSES back on the original side
+        # is a separate false-break reaction, never an exact BPU1.
+        if pierced and inside and prior_break is None:
+            emit("WICK_PIERCE_RECLAIM")
+        elif touched and inside and not pierced and prior_break is None:
+            emit("TOUCH_HOLD")
+
+        # A close across the level is a *potential* break. Only a later
+        # closed bar can label its outcome (reclaim or sustained close).
+        if prior_break is not None:
+            if inside:
+                if (not self._break_confirmed and previous is not None
+                        and previous.ts == prior_break.ts):
+                    emit("TWO_BAR_FALSE_BREAK_RECLAIM", prior_break)
+                else:
+                    emit("RECLAIM_AFTER_SUSTAINED_BREAK", prior_break)
+                self._breakout = None
+                self._break_confirmed = False
+            elif outside:
+                if not self._break_confirmed:
+                    emit("TWO_CLOSES_BEYOND_LEVEL", prior_break)
+                self._break_confirmed = True
+        if outside and self._breakout is None:
+            # New breakout only if preceding known bar was on original
+            # side (otherwise cannot infer when the break started).
+            if previous is not None and signed(previous.close) > tol:
+                emit("FIRST_CLOSE_BEYOND_LEVEL", previous)
+                self._breakout = bar
+                self._break_confirmed = False
+        # Retest after confirmed break: touch from the opposite side and
+        # still close beyond the old line. This is a software mirror proxy.
+        if (self._break_confirmed and touched and outside
+                and prior_break is not None and bar.ts != prior_break.ts):
+            emit("MIRROR_RETEST_AFTER_BREAK", prior_break)
+
+        # If price fully recovers, reset the break regime; future breaks
+        # require new pre-break history rather than carrying stale context.
+        if inside and prior_break is not None:
+            self._breakout = None
+            self._break_confirmed = False
+        self._last = bar
+        return tuple(events)

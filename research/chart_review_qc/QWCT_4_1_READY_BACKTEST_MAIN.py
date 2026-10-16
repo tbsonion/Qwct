@@ -10,7 +10,7 @@ import pandas as pd
 
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
-from strategy.patterns_bsu import Bar, M5BsuSequenceScanner
+from strategy.patterns_bsu import Bar, M5BsuSequenceScanner, M5LevelReactionObserver
 
 ET = ZoneInfo("America/New_York")
 SESSION = datetime(2024, 6, 3)
@@ -75,6 +75,15 @@ class QwctM5SourceResearch(QCAlgorithm):
                 previous_d1_close=float(frame.close.iloc[-1]),
                 tick_size=tick)
 
+            # Independent D1-context reaction diagnostics. Never promote
+            # these events into the exact BSU/BPU1/BPU2 scanner.
+            reaction_observers = {}
+            for zone in scan.zones:
+                key = (zone.side, round(zone.d1_price/tick))
+                if key not in reaction_observers:
+                    reaction_observers[key] = M5LevelReactionObserver(
+                        zone.d1_price, zone.side, tick)
+
             # Manually update native LEAN consolidators. A full M5 requires
             # five actual non-fill-forward 1m bars before being examined.
             cons = TradeBarConsolidator(timedelta(minutes=5))
@@ -86,6 +95,8 @@ class QwctM5SourceResearch(QCAlgorithm):
                 "closed_m5_ends": set(),
                 "bpu1_logged": 0, "bpu2_logged": 0,
                 "bpu2_examples": [],
+                "reaction_observers": reaction_observers,
+                "reaction_counts": {}, "reaction_logged": {},
             }
             self.debug(
                 f"QWCT 4.1 INIT {ticker} D1={len(frame)} "
@@ -123,6 +134,19 @@ class QwctM5SourceResearch(QCAlgorithm):
             low=float(closed.low), close=float(closed.close),
             timeframe="M5", volume=float(closed.volume))
         events = state["scan"].observe(bar)
+        for observer in state["reaction_observers"].values():
+            for reaction in observer.observe(bar):
+                name = reaction.kind
+                counts = state["reaction_counts"]
+                counts[name] = counts.get(name, 0) + 1
+                printed = state["reaction_logged"]
+                if printed.get(name, 0) < 2:
+                    self.debug(
+                        f"QWCT 4.4 REACTION {ticker} {name} "
+                        f"LEVEL={reaction.level_price:.4f} "
+                        f"SIDE={reaction.side} BAR={reaction.bar_end} "
+                        "D1_SOFTWARE_PROXY NOT_BPU1 NO_ORDERS")
+                    printed[name] = printed.get(name, 0) + 1
         for event in events:
             # BPU1 events are common and are only bounded examples.
             # BPU2 must remain visible even after many preceding BPU1s.
@@ -187,3 +211,7 @@ class QwctM5SourceResearch(QCAlgorithm):
                 f"GAP_RESETS={scan.rejected_counts.get('M5_SOURCE_CONTINUITY_GAP_RESET',0)} "
                 f"PIERCED_REJECTS={scan.rejected_counts.get('BSU_SOURCE_PIERCED_BEFORE_BPU1',0)} "
                 "SAME_SESSION_ONLY AUTHOR_UNVERIFIED NO_ORDERS")
+            self.debug(
+                f"QWCT 4.4 REACTION SUMMARY {ticker} "
+                f"COUNTS={dict(sorted(state['reaction_counts'].items()))} "
+                "D1_SOFTWARE_PROXY SEPARATE_FROM_BPU NO_ORDERS")

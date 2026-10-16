@@ -15,6 +15,7 @@ on:
       - 'research/chart_review_qc/**'
       - 'research/mirror_census_cloud/**'
       - 'tests/test_mirror_census_research.py'
+      - 'tests/test_mirror_june03_source_m5.py'
   pull_request:
     paths:
       - 'research/cohort_cloud/**'
@@ -28,6 +29,7 @@ on:
       - 'research/chart_review_qc/**'
       - 'research/mirror_census_cloud/**'
       - 'tests/test_mirror_census_research.py'
+      - 'tests/test_mirror_june03_source_m5.py'
   workflow_dispatch:
 
 jobs:
@@ -44,4 +46,4 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest pandas numpy
       - name: Verify causal Fundamental gate and original M5 detector
-        run: python -m pytest -q tests/test_m5_cohort_research.py tests/test_m5_six_case_research.py tests/test_patterns_bsu.py tests/test_bsu_touch_audit.py tests/test_mirror_asof_audit.py tests/test_mirror_census_research.py
+        run: python -m pytest -q tests/test_m5_cohort_research.py tests/test_m5_six_case_research.py tests/test_patterns_bsu.py tests/test_bsu_touch_audit.py tests/test_mirror_asof_audit.py tests/test_mirror_census_research.py tests/test_mirror_june03_source_m5.py

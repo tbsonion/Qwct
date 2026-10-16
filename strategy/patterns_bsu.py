@@ -447,6 +447,13 @@ class M5BsuSequenceScanner:
             raise ValueError("M5_BSU_WRONG_SESSION")
         if self._last is not None and now<=self._last:
             raise ValueError("M5_BSU_DUPLICATE_OR_OUT_OF_ORDER")
+        # A missing native M5 bar breaks proof that the original BSU
+        # price survived *every* intervening traded candle. Invalidate
+        # research provenance across the gap; never bridge it silently.
+        if self._last is not None and now-self._last!=timedelta(minutes=5):
+            self._reject("M5_SOURCE_CONTINUITY_GAP_RESET")
+            self._history.clear()
+            self._pending.clear()
         self._last=now
         # Check previous BPU1 BEFORE adding current bar as an eligible BSU.
         events=[]
@@ -466,7 +473,7 @@ class M5BsuSequenceScanner:
             # straddle a price do not establish BPU1 for that price.
             for zone in self.zones:
                 extreme=bar.low if zone.side=="long" else bar.high
-                for historical in self._history:
+                for j,historical in enumerate(self._history):
                     source=historical.low if zone.side=="long" else historical.high
                     if abs(source-zone.d1_price)>zone.maximum_source_distance:
                         continue
@@ -474,8 +481,20 @@ class M5BsuSequenceScanner:
                         self._reject("SOURCE_OFF_CURRENT_NATIVE_GRID")
                         continue
                     if abs(extreme-source)<=self._tol:
+                        # A fixed-level BOUNCE source cannot be certified
+                        # from a prior M5 extremum after any intervening wick
+                        # already PIERCED that price. A reclaimed/broken
+                        # level may be a separate *mirror/false-break* model,
+                        # not this unbroken BSU→BPU1 research sequence.
+                        through=any(
+                            (b.low<source-self._tol if zone.side=="long"
+                             else b.high>source+self._tol)
+                            for b in self._history[j+1:])
+                        if through:
+                            self._reject("BSU_SOURCE_PIERCED_BEFORE_BPU1")
+                            continue
                         found.append((zone,source,historical))
-                        break  # earliest historical source for this D1 zone
+                        break  # earliest still-unpierced source for this zone
             # Duplicate zones/prices are independent *context* only, not
             # independent BPU1 events for the same actual M5 source price.
             unique={}

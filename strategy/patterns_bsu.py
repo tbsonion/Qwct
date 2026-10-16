@@ -607,16 +607,20 @@ class M5LevelReactionObserver:
 
         # A one-bar wick penetration that CLOSES back on the original side
         # is a separate false-break reaction, never an exact BPU1.
-        if pierced and inside:
+        if pierced and inside and prior_break is None:
             emit("WICK_PIERCE_RECLAIM")
-        elif touched and inside and not pierced:
+        elif touched and inside and not pierced and prior_break is None:
             emit("TOUCH_HOLD")
 
         # A close across the level is a *potential* break. Only a later
         # closed bar can label its outcome (reclaim or sustained close).
         if prior_break is not None:
             if inside:
-                emit("TWO_BAR_FALSE_BREAK_RECLAIM", prior_break)
+                if (not self._break_confirmed and previous is not None
+                        and previous.ts == prior_break.ts):
+                    emit("TWO_BAR_FALSE_BREAK_RECLAIM", prior_break)
+                else:
+                    emit("RECLAIM_AFTER_SUSTAINED_BREAK", prior_break)
                 self._breakout = None
                 self._break_confirmed = False
             elif outside:

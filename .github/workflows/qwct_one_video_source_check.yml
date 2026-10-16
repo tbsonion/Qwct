@@ -1,0 +1,21 @@
+name: QWCT one-video public metadata check
+on:
+  pull_request:
+    paths:
+      - 'tools/qwct_check_youtube_source_xcgp3h7xeus.py'
+      - '.github/workflows/qwct_one_video_source_check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check only the user-supplied video public metadata
+        run: python tools/qwct_check_youtube_source_xcgp3h7xeus.py

@@ -16,6 +16,7 @@ from datetime import datetime
 from math import isfinite
 
 import pandas as pd
+import numpy as np
 
 from .config import StrategyConfig
 from .indicators import atr
@@ -345,6 +346,16 @@ def g11_missing_impulse(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
                           "had_impulse": impulsive})
 
 
+def _without_exception(observed, exception):
+    """Three-valued observed AND NOT exception; UNKNOWN is not absence."""
+    observed, exception = _coerce(observed), _coerce(exception)
+    if observed is False or exception is True:
+        return False
+    if observed is None or exception is None:
+        return None
+    return True
+
+
 # ---------- 12. Зона заражённости ----------
 def g12_contaminated_zone(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     a = _a(d1, cfg)
@@ -362,12 +373,14 @@ def g12_contaminated_zone(d1, m5, ts, level: Level, levels, cfg) -> FeatureResul
             tails += 1
     contaminated = tails >= 4
     # исключение: если было накопление — КИ готовится пробить
-    acc = g04_accumulation(d1, m5, ts, level, levels, cfg).bool_or(False)
-    v = contaminated and not acc
+    acc = g04_accumulation(d1, m5, ts, level, levels, cfg).value
+    v = _without_exception(contaminated, acc)
     return FeatureResult("g12_contaminated_zone", v,
                          {"contaminated": contaminated,
                           "accumulation_exception": acc,
-                          "wick_bars": tails})
+                          "wick_bars": tails},
+                         "накопление неизвестно — исключение не проверено"
+                         if v is None else "")
 
 
 # ---------- 13. Экстремум ----------
@@ -379,7 +392,7 @@ def g13_extremum(d1, m5, ts, level: Level, levels, cfg) -> FeatureResult:
     hi, lo = hist["high"].max(), hist["low"].min()
     at_extreme = abs(level.price - hi) <= 0.5 * a or abs(level.price - lo) <= 0.5 * a
     # для пробоя экстремума нужна «энергия» — накопление
-    acc = g04_accumulation(d1, m5, ts, level, levels, cfg).bool_or(False)
+    acc = g04_accumulation(d1, m5, ts, level, levels, cfg).value
     v = at_extreme  # сам факт экстремума усиливает разворотный сценарий
     return FeatureResult("g13_extremum", v,
                          {"at_extreme": at_extreme,
@@ -445,7 +458,9 @@ def _coerce(value) -> bool | None:
     """Строго Python bool / None — контракт hybrid проверяет isinstance(bool)."""
     if value is None:
         return None
-    return bool(value)
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    raise ValueError("FEATURE_BOOLEAN_OR_NONE_REQUIRED")
 
 
 def evaluate_all(d1: pd.DataFrame, m5: pd.DataFrame | None, ts: datetime,

@@ -1,5 +1,21 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## CURRENT STATUS — 16.10.2026 (READ FIRST)
+
+**Актуальная сводка поверх старого отчёта Ивана и всей хронологии QWCT 2.4–3.3:** [**STATUS_2026-10-16.md — ЧТО ГОТОВО / ЧАСТИЧНО / НЕ ГОТОВО / ПРИОРИТЕТЫ**](STATUS_2026-10-16.md).
+
+| ✅ Подтверждено в native LEAN/QuantBook | 🟡 Работает частично / требует верификации | ❌ Пока НЕ готово |
+| --- | --- | --- |
+| QuantConnect Cloud, Fundamental50 PIT, Top10 D1 shadow, **19/19 сессий июня** (5 прежних пропусков 2.6 закрыты в 2.8+) | RAW/SCALED_RAW basis (65/92 MATCH, 26 REBASED, 1 latest mismatch; 5 OFF_GRID); 14 признаков / 8 фильтров, RVOL отдельно | Канонический **FIXED BSU** по Герчику; автоматическое FIXED vs FLOATING |
+| Настоящие D1 ATR/SMA, RAW swing timestamps, causality; native M1→M5 с контролем всех пяти источников в интервале | Детектор BPU1/BPU2: код есть, позитивных native примеров нет; native M5 может быть неполным 77/78 | **0 подтверждённых BPU1, BPU2, TVX**, 0 полноценных сигналов |
+| Автоматические зеркальные D1 **proxy**: 1 431 level×day, 92 morning-eligible, **35** различных исторических программных конструкций; 92/92 D1 sources | Риск $50, daily/weekly/monthly limits, max3 positions/max5 trades, расчёт SL/3R, частичные breakout/false-breakout studies | Mirrors в полном основном signal path; short availability/spread gate; ордера и fills |
+| Native QWCT 3.1/3.3: четыре первые D1 кейса исследованы, источники FIRST/LAST/MEDIAN/RETEST показаны | Действительный end-to-end риск-гейт, реальные предзакрытые 30с данные | Schwab/paper, комиссии/slippage, статистически проверенная доходность |
+
+**Завершены исследования:** 2.8 полный PIT + M5; 2.9 AON/DELL mirror; 3.0 all-50 D1 mirror; 3.1 AMAT/NFLX/SRPT/MSFT native M5; 3.2 92 D1 sources/35 lineages; 3.3 четыре ценовые гипотезы. Это **НЕ 92 сделки** и НЕ 65 подтверждённых Герчик-БСУ.
+
+**СЛЕДУЮЩАЯ ОДНА ЗАДАЧА (P0):** независимое подтверждение правила выбора точного исторического **BSU FIXED PRICE** на уже построенных D1 графиках с реальным примером/критерием Герчика; вручную `FIXED/FLOATING/INDETERMINATE`. Пока четыре реальные метки `INDETERMINATE`. **НЕ** повторять 3.0–3.3, не добавлять сделки, не подгонять уровни к известным M5 и не менять строгую BPU1 геометрию. Вся дальнейшая детализация — по ссылке выше; ниже хронологический журнал содержит устаревшие промежуточные TODO, не считать их актуальными без сверки с верхним статусом.
+
+
 ## 2026-10-16 — QWCT 3.3 NATIVE D1 FOUR-PRICE RESULTS CONFIRMED; price rule STILL OPEN
 
 - [x] **User sent actual QuantConnect Research output + four native as-of D1 chart screenshots, no errors** for Jun 3 2024 AMAT/NFLX/SRPT positive `research_eligible=1` and MSFT negative control `research_eligible=0`. After prior nonmidnight D1 event-date fix, all four `FROZEN`, `SOURCE`, `HISTORICAL EVENTS`, four `D1 CANDIDATE` alternative lines, and diagnostic graphs ran successfully. Native D1 freeze remains causal, no M1/M5 re-fetch or trades. [Native full factual results](https://github.com/tbsonion/Qwct/blob/main/research/chart_review_qc/NATIVE_QWCT_3_3_FOUR_D1_PRICE_HYPOTHESES_RESULT.md).

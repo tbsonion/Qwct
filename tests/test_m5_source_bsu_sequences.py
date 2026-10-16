@@ -161,6 +161,15 @@ def test_price_grid_mismatch_is_explicit_not_silently_rounded():
     assert s.rejected_counts.get("SOURCE_OFF_CURRENT_NATIVE_GRID",0)>0
 
 
+def test_zero_volume_native_m5_never_becomes_a_source():
+    s=scanner()
+    bad=Bar(FIRST,100.2,100.4,100.,100.2,
+            timeframe="M5",volume=0.)
+    with pytest.raises(ValueError,match="TRADED_NATIVE_VOLUME"):
+        s.observe(bad)
+    assert not s._history and s.bpu1_count==0
+
+
 def test_coverage_is_only_already_observed_same_day_m5():
     s=scanner()
     assert s.observe(bar(0))==()

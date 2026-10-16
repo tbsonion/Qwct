@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import pytest
 
-from strategy.levels import (
-    BsuSourceEvidence, D1_REACTION_KINDS, ReactionHeuristics,
-    _d1_wick_reaction, observe_d1_level_reactions,
+from strategy.levels import BsuSourceEvidence, _d1_wick_reaction
+from strategy.indicators import (
+    D1_REACTION_KINDS, ReactionHeuristics, observe_d1_level_reactions,
 )
 
 ET=ZoneInfo("America/New_York")
@@ -173,7 +173,7 @@ def test_future_bar_cannot_shift_existing_reaction_into_past():
 
 def test_no_orders_portfolio_or_live_broker_in_taxonomy():
     from pathlib import Path
-    txt=(Path(__file__).resolve().parents[1]/"strategy"/"levels.py").read_text(
+    txt=(Path(__file__).resolve().parents[1]/"strategy"/"indicators.py").read_text(
         encoding="utf-8").split("# QWCT 3.9",1)[1]
     for forbidden in ("market_order(", "limit_order(", "set_holdings(",
                       "place_order(", "qb.history(", "np.median("):

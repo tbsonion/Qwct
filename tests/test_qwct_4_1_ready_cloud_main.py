@@ -76,5 +76,8 @@ def test_42_srpt_graph_marks_only_reproduced_native_m5_sources():
     assert "missing_M5=" in source and "prior_pierces=" in source
     assert "OHLC" in source and "fig.show()" in source
     assert "M5BsuSequenceScanner" in source
+    assert "M5_SOURCE_ROLE_UNKNOWN_OR_AMBIGUOUS" in source
+    assert "RESEARCH_ROLE_DOES_NOT_MATCH_NATIVE_BARS" in source
+    assert 'x.high>price+tick/2' in source
     assert "market_order(" not in source.lower()
     assert "set_holdings(" not in source.lower()

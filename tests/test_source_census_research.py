@@ -139,7 +139,13 @@ def test_same_native_pit_membership_and_morning_gates_no_m1_order_logic():
     assert 'seen==self.source_count[\'status_RAW_SOURCE_CONFIRMED\']' in code
     assert "self.source_records==self.count['mirror_ready']" in code
     assert "QWCT 3.2 SOURCE SUMMARY" in code
-    assert "QWCT 3.2 SOURCE RECORD" in code
+    assert "QWCT 3.2 SAMPLE" in code
+    assert "QWCT 3.2 SOURCE RECORD" not in code
+    assert "self.source_samples={}" in code
+    assert 'if len(samples)<2:' in code
+    assert "for row in self.near_examples:" not in code
+    assert "for row in self.ready_examples[:50]:" not in code
+    assert "individual_records_suppressed_due_to_10KB_LOG_LIMIT" in code
     assert "distinct_source_lineages=" in code
     assert "median_drift_lineages=" in code
     assert "float(lvl.price)" in code

@@ -17,6 +17,7 @@ OPTIONAL_RESEARCH = {
     "strategy/opening_volume_research.py",
     "strategy/tvx_observation.py",
     "strategy/d1_bridge_audit.py",  # separate BSU research-only; not in main Qwct Cloud ZIP
+    "strategy/gerchik_level_types.py",  # independent 4.6 research; no main imports
 }
 # Bundled into existing sources; no corresponding .py files in Cloud ZIP.
 BUNDLED = {

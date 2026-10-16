@@ -64,3 +64,11 @@ QUOTE venues SRPT: ARCA/CSE/EDGX/IEX/NASDAQ/NASDAQ_BX/NASDAQ_PSX. SPY имеет
 Проверить в официальном LEAN reader/готовых native quote mechanisms: что означает venue на одностороннем update, являются ли bid/ask строки частями одной snapshot, как представлены withdrawal и равные времена; возможно ли получать причинный BBO без собственной системы стакана. После этого решить, допустим ли **явно оценочный** trade classification, с unknown-volume denominator, quote age и abstention. Пока не реализовывать CVD и положительный Observer; не повторять cell 5.6 и не менять production.
 
 Авторское видео/аудио и ground truth — отдельный открытый блокер; данный data audit их не подтверждает.
+
+## Проверка готового native механизма после получения результата
+
+Прочитан [TickQuoteBarConsolidator.cs](https://github.com/QuantConnect/Lean/blob/master/Common/Data/Consolidators/TickQuoteBarConsolidator.cs), метод AggregateBar: при создании нового workingBar после Consolidated он копирует previous Bid/Ask Close и LastBidSize/LastAskSize, затем обновляет поля текущим tick. В коде прямо оговорено, что такой бар не является fill-forward bar. Поэтому **is_fill_forward=false не доказывает freshness обеих сторон**. Метод также не проверяет venue/NBBO scope; этот consolidator нельзя объявлять готовым синхронным NBBO-классификатором.
+
+[Tick.cs](https://github.com/QuantConnect/Lean/blob/master/Common/Data/Market/Tick.cs) читает equity quote поля и exchange из исходной записи; отсутствующую сторону в полный BBO сам reader не восстанавливает. Это подтверждает выбор raw inventory вместо интерпретации нулей как отсутствия quote feed. Оба прочитанных исходника — текущий upstream master; версия deployed Cloud engine не предоставлена, runtime parity не заявляется.
+
+Решение остаётся BLOCKED для signed flow: native bar carry не решает individual side age/availability и не даёт exchange aggressor. Следующее исследование — источник начального BBO, side update time, venue scope/withdrawal semantics, а не написание CVD по свечам.

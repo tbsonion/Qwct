@@ -131,9 +131,9 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
     fig.add_hline(y=price,line_width=1.6,line_color="blue",
                   annotation_text=f"M5 source RAW {price:.2f}",row=row,col=1)
     for stage,b,color,symbol in zip(
-        ("BSU", "BPU1", "BPU2"),actual,
+        ("SOURCE CANDIDATE", "RETOUCH", "FOLLOWING BAR"),actual,
         ("#c43d39","#f29d24","#258c51"),("diamond","star","triangle-up")):
-        y=b.low if e.side=="long" else b.high
+        y=b.low
         fig.add_trace(go.Scatter(
             x=[et(b.ts)],y=[y],mode="markers",
             marker=dict(size=13,color=color,symbol=symbol),
@@ -141,12 +141,12 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
             hovertemplate=(f"{stage} @ {fmt(b.ts)}<br>"
                 f"O={b.open:.4f} H={b.high:.4f} "
                 f"L={b.low:.4f} C={b.close:.4f}<br>"
-                "SOFTWARE SOURCE, NOT AUTHOR VERIFIED<extra></extra>")
+                f"{'BROKEN OR INCOMPLETE' if rejected else 'SOFTWARE PASS'}; NOT AUTHOR VERIFIED<extra></extra>")
         ),row=row,col=1)
 fig.update_xaxes(rangeslider_visible=False)
 fig.update_layout(
     width=1180,height=870,margin=dict(t=90,b=45,l=65,r=130),
-    title="QWCT 4.2 | SRPT June 3, 2024 — native M5 candle audit; NO ORDERS",
+    title="QWCT 4.3 | SRPT broken vs surviving RAW M5 source; NO ORDERS",
     xaxis_type="date",xaxis2_type="date",hovermode="closest")
 fig.show()
 print("QWCT 4.2 SRPT native_M5=",len(m5),"BPU1=",scan.bpu1_count,

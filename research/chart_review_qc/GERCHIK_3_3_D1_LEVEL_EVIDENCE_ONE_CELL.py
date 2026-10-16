@@ -583,8 +583,12 @@ for case in CASES:
             d1,session=SESSION.date(),swing_k=cfg.swing_k,
             tick_size=tick,atr_column=f"atr{cfg.atr_period}")
         print("QWCT 4.0 BSU SOURCES",ticker,len(hypotheses))
-        for h in sorted(hypotheses,key=lambda x:
-                        abs(x.price-case["cluster"]))[:12]:
+        review=[]
+        for origin in ("CONFIRMED_SWING","CONSOLIDATION_EDGE",
+                       "EXPANSION_EDGE","GAP_OPEN"):
+            review+=sorted((x for x in hypotheses if x.origin==origin),
+                           key=lambda x:abs(x.price-case["cluster"]))[:3]
+        for h in review:
             print("QWCT 4.0 RAW",ticker,h.origin,h.role,h.field,
                   h.price,h.source_date,h.known_on,h.native_grid,
                   len(h.exact_d1_revisits),"AUTHOR_UNVERIFIED")

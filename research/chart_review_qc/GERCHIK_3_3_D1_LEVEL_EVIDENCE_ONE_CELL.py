@@ -593,7 +593,7 @@ for case in CASES:
             ticker=ticker,session=SESSION.date(),tick_size=tick)
         rs=audit_author_reaction_labels(
             tuple(ten),tuple(AUTHOR_REACTION_MARKUPS.get(ticker,())),
-            ticker=ticker,session=SESSION.date())
+            ticker=ticker,session=SESSION.date(),tick_size=tick)
         print("QWCT 4.0 MANUAL CHART AUDIT",ticker,bs.status,rs.status,
               bs.matches,rs.matches,"ACCURACY_UNKNOWN NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest,markers,taxonomy_marks)

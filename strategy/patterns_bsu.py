@@ -649,12 +649,8 @@ class M5LevelReactionObserver:
         return tuple(events)
 
 
-# QWCT 4.5: Gerchik's fixed LIMIT level versus floating/undefined zone.
-# Source: Gerchik, Kurs aktivnogo treidera, chapter "Raznovidnosti
-# tsenovykh urovnei": a limit player requires >=3 hits at one exact
-# price, without any adverse wick piercing; repeated pierces imply
-# floating, not an exact fixed LIMIT level. This does not claim to
-# classify all historical, trend-turn or paranormal-bar levels.
+# QWCT 4.5: read-only Gerchik fixed LIMIT level diagnostic.
+# Exact 3+ hits, no adverse wick pierce. Not a universal BSU rule.
 @dataclass(frozen=True)
 class FixedFloatingEvidence:
     status: str
@@ -672,13 +668,7 @@ class FixedFloatingEvidence:
 
 
 class FixedFloatingLimitObserver:
-    """Closed M5, exact-tick fixed limit candidate; otherwise fail-closed.
-
-    Status is FIXED_LIMIT_CANDIDATE, FLOATING_ZONE, or INDETERMINATE.
-    One wick below support/above resistance disqualifies the fixed
-    LIMIT classification even when the bar subsequently closes inside.
-    For the general BSU pattern, do not apply this as a universal rule.
-    """
+    """Closed M5 fixed-limit evidence; not a universal BSU rule."""
 
     def __init__(self, price: float, side: str, tick_size: float,
                  min_hits: int = 3):

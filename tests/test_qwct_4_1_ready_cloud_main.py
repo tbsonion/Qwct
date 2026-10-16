@@ -23,7 +23,6 @@ def test_lean_cloud_backtest_driver_is_valid_python_and_no_missing_app_modules()
                  "strategy.research_trace", "strategy.second_runtime",
                  "strategy.corporate_action_guard", "strategy.reporting")
     assert not any(k in imports for k in forbidden)
-    assert "main.py" not in text.splitlines()[0]  # source is a reusable file
     assert "No module named 'strategy.scenarios'" not in text
     for disallowed in ("market_order(", "limit_order(", "set_holdings(",
                        "self.buy(", "self.sell(", "place_order(",

@@ -343,3 +343,239 @@ def observe_d1_level_reactions(
                        "FREQUENT_D1_CLOSE_SIDE_FLIPS_NO_NET_PROGRESS_PROXY")
     return tuple(sorted(result.values(),
                         key=lambda x:(x.observed_on,D1_REACTION_KINDS.index(x.kind))))
+
+
+# QWCT 4.0 — BSU PRICE DISCOVERY (research only).
+# Actual RAW OHLC prices, never the median of a swing cluster.
+@dataclass(frozen=True)
+class BsuPriceCandidate:
+    role: str
+    origin: str
+    field: str
+    source_date: date
+    known_on: date
+    price: float
+    native_grid: str
+    exact_d1_revisits: tuple
+    author_status: str = "AUTHOR_BSU_UNVERIFIED"
+    can_trade: bool = False
+
+
+@dataclass(frozen=True)
+class GerchikChartLabel:
+    ticker: str
+    timeframe: str
+    frozen_session: date
+    level_price: float
+    source_date: date | None
+    evidence_url: str
+    note: str
+    reaction_kind: str | None = None
+    reaction_date: date | None = None
+
+
+@dataclass(frozen=True)
+class LabelAudit:
+    status: str
+    labelled: int
+    matches: int
+    missed: int
+    details: tuple
+    precision: str = "UNKNOWN_WITHOUT_EXHAUSTIVE_AUTHOR_NEGATIVE_LABELS"
+    can_trade: bool = False
+
+
+def discover_bsu_price_candidates(
+        d1: pd.DataFrame, *, session: date, swing_k: int,
+        tick_size: float, atr_column: str,
+        consolidation_bars: int = 5, consolidation_width_atr: float = 1.6,
+        expansion_atr: float = 1.5, gap_atr: float = 0.25) -> tuple:
+    """As-of D1 candidates, NOT Gerchik-certified BSU or BPU1.
+
+    CONFIRMED_SWING: a native-RAW swing confirmed after k right-side days;
+    CONSOLIDATION_EDGE: exact high/low of a completed compact D1 window;
+    EXPANSION_EDGE: exact high/low of one large native-ATR candle;
+    GAP_OPEN: actual opening price after a sizable historical gap.
+    Numerical thresholds beyond native OHLC are QWCT research heuristics.
+    """
+    from .levels import _confirmed_swings, _on_current_grid, _close_enough
+    if (not isinstance(session,date) or isinstance(session,pd.Timestamp)
+            or not isinstance(d1,pd.DataFrame) or d1.empty
+            or not isinstance(d1.index,pd.DatetimeIndex)
+            or d1.index.tz is None or not d1.index.is_unique
+            or not d1.index.is_monotonic_increasing):
+        raise ValueError("BSU40_INVALID_ASOF_FRAME")
+    days=[t.date() for t in d1.index]
+    if days[-1]>=session or any(a>=b for a,b in zip(days,days[1:])):
+        raise ValueError("BSU40_NONCAUSAL_D1")
+    if (not isinstance(swing_k,int) or isinstance(swing_k,bool) or swing_k<1
+            or not isinstance(consolidation_bars,int)
+            or isinstance(consolidation_bars,bool) or consolidation_bars<3):
+        raise ValueError("BSU40_INVALID_WINDOWS")
+    vals=(tick_size,consolidation_width_atr,expansion_atr,gap_atr)
+    try:
+        v=tuple(float(x) for x in vals)
+    except (TypeError,ValueError,OverflowError) as exc:
+        raise ValueError("BSU40_INVALID_PARAMETERS") from exc
+    if any(not isfinite(x) or x<=0 for x in v):
+        raise ValueError("BSU40_INVALID_PARAMETERS")
+    tick,wide,big,gap=v
+    if (not isinstance(atr_column,str) or atr_column not in d1
+            or any(c not in d1 for c in ("open","high","low","close"))):
+        raise ValueError("BSU40_MISSING_NATIVE_D1")
+    b=d1[["open","high","low","close"]].astype(float)
+    if (not np.isfinite(b.to_numpy()).all() or (b.min(axis=1)<=0).any()
+            or (b.high<b[["open","low","close"]].max(axis=1)).any()
+            or (b.low>b[["open","high","close"]].min(axis=1)).any()):
+        raise ValueError("BSU40_INVALID_NATIVE_OHLC")
+    def atr(i):
+        x=d1[atr_column].iloc[i]
+        if pd.isna(x):
+            return None
+        try:
+            x=float(x)
+        except (TypeError,ValueError,OverflowError) as exc:
+            raise ValueError("BSU40_INVALID_NATIVE_ATR") from exc
+        if not isfinite(x) or x<=0:
+            raise ValueError("BSU40_INVALID_NATIVE_ATR")
+        return x
+
+    raw=[]  # role, origin, source field, source index, known index
+    high_swings,low_swings=_confirmed_swings(b,swing_k)
+    for role,field,swings in (("resistance","high",high_swings),
+                              ("support","low",low_swings)):
+        for idx,price,confirmed in swings:
+            known=days.index(confirmed)
+            if known<idx or abs(price-float(b[field].iloc[idx]))>max(1,price)*1e-12:
+                raise ValueError("BSU40_SWING_PROVENANCE_MISMATCH")
+            raw.append((role,"CONFIRMED_SWING",field,idx,known))
+    for i in range(len(b)):
+        current_atr=atr(i)
+        if current_atr is None:
+            continue
+        row=b.iloc[i]
+        if row.high-row.low >= big*current_atr:
+            raw.extend((role,"EXPANSION_EDGE",field,i,i)
+                       for role,field in (("resistance","high"),("support","low")))
+        if i>=consolidation_bars-1:
+            start=i-consolidation_bars+1
+            w=b.iloc[start:i+1]
+            if w.high.max()-w.low.min() <= wide*current_atr:
+                high=start+int(np.argmax(w.high.to_numpy()))
+                low=start+int(np.argmin(w.low.to_numpy()))
+                raw.extend((("resistance","CONSOLIDATION_EDGE","high",high,i),
+                            ("support","CONSOLIDATION_EDGE","low",low,i)))
+        if i>0:
+            prev_atr=atr(i-1)
+            if prev_atr is not None and abs(row.open-b.close.iloc[i-1])>=gap*prev_atr:
+                role="support" if row.open>b.close.iloc[i-1] else "resistance"
+                raw.append((role,"GAP_OPEN","open",i,i))
+    earliest={}
+    for role,origin,field,i,k in raw:
+        key=(role,origin,field,i)
+        if key not in earliest or k<earliest[key][4]:
+            earliest[key]=(role,origin,field,i,k)
+    out=[]
+    for role,origin,field,i,k in earliest.values():
+        price=float(b[field].iloc[i])
+        on_grid=_on_current_grid(price,tick)
+        # Current tick grid may NOT equal historical RAW-adjusted price grid.
+        revisits=tuple(days[j] for j in range(k+1,len(b))
+                       if on_grid and _close_enough(
+                          float(b["high" if role=="resistance" else "low"].iloc[j]),
+                          price,tick))
+        out.append(BsuPriceCandidate(
+            role,origin,field,days[i],days[k],price,
+            "ON_CURRENT_GRID" if on_grid else "HISTORICAL_GRID_UNKNOWN",
+            revisits))
+    return tuple(sorted(out,key=lambda x:(
+        x.known_on,x.source_date,x.price,x.role,x.origin)))
+
+
+def audit_author_bsu_labels(
+        candidates: tuple, labels: tuple, *, ticker: str,
+        session: date, tick_size: float) -> LabelAudit:
+    """Require published D1 markup with source BAR/date and exact price.
+
+    Matching a manually entered label does not establish authenticity.
+    """
+    from .levels import _on_current_grid, _close_enough
+    if not labels:
+        return LabelAudit("NO_AUTHOR_GROUND_TRUTH",0,0,0,())
+    if (not ticker or not isinstance(session,date) or
+            not isfinite(float(tick_size)) or float(tick_size)<=0 or
+            any(not isinstance(c,BsuPriceCandidate) or c.can_trade for c in candidates)):
+        raise ValueError("BSU40_INVALID_AUDIT")
+    results=[]
+    for mark in labels:
+        if (not isinstance(mark,GerchikChartLabel) or mark.ticker!=ticker or
+                mark.timeframe!="D1" or mark.frozen_session!=session or
+                not mark.evidence_url.startswith("https://") or
+                not mark.note.strip() or not isfinite(float(mark.level_price)) or
+                mark.level_price<=0):
+            raise ValueError("BSU40_UNSUPPORTED_AUTHOR_MARKUP")
+        if mark.source_date is None:
+            results.append("UNKNOWN_AUTHOR_SOURCE_BAR")
+            continue
+        if mark.source_date>=session:
+            raise ValueError("BSU40_FUTURE_AUTHOR_SOURCE_BAR")
+        same_day=[c for c in candidates if c.source_date==mark.source_date]
+        if (not _on_current_grid(mark.level_price,float(tick_size)) or
+                any(c.native_grid=="HISTORICAL_GRID_UNKNOWN" and
+                    abs(c.price-mark.level_price)<=max(1,c.price)*1e-12
+                    for c in same_day)):
+            results.append("HISTORICAL_PRICE_GRID_UNKNOWN")
+            continue
+        matches=[c for c in same_day if c.native_grid=="ON_CURRENT_GRID"
+                 and _close_enough(c.price,mark.level_price,float(tick_size))]
+        results.append("PRICE_AND_SOURCE_MATCH" if matches else "NO_PRICE_SOURCE_MATCH")
+    matched=results.count("PRICE_AND_SOURCE_MATCH")
+    incomplete=("UNKNOWN_AUTHOR_SOURCE_BAR" in results or
+                "HISTORICAL_PRICE_GRID_UNKNOWN" in results)
+    return LabelAudit(
+        "INCOMPLETE_AUTHOR_SOURCE_OR_HISTORICAL_GRID" if incomplete
+        else "LABELLED_CANDIDATE_COVERAGE_ONLY",
+        len(results),matched,results.count("NO_PRICE_SOURCE_MATCH"),tuple(results))
+
+
+def audit_author_reaction_labels(
+        tags: tuple, labels: tuple, *, ticker: str, session: date,
+        tick_size: float) -> LabelAudit:
+    """Positive labels: require DATE, KIND and matching exact LEVEL PRICE."""
+    from .levels import _on_current_grid, _close_enough
+    if not labels:
+        return LabelAudit("NO_AUTHOR_GROUND_TRUTH",0,0,0,())
+    try:
+        tick=float(tick_size)
+    except (TypeError,ValueError,OverflowError) as exc:
+        raise ValueError("BSU40_REACTION_TICK_INVALID") from exc
+    if not isfinite(tick) or tick<=0:
+        raise ValueError("BSU40_REACTION_TICK_INVALID")
+    found=[t for t in tags if isinstance(t,D1ReactionTaxon) and not t.can_trade]
+    details=[]
+    for mark in labels:
+        if (not isinstance(mark,GerchikChartLabel) or mark.ticker!=ticker or
+                mark.timeframe!="D1" or mark.frozen_session!=session or
+                not mark.evidence_url.startswith("https://") or
+                not mark.note.strip() or
+                mark.reaction_kind not in D1_REACTION_KINDS or
+                mark.reaction_date is None or mark.reaction_date>=session):
+            raise ValueError("BSU40_REACTION_LABEL_INCOMPATIBLE")
+        comparable=[t for t in found if
+                    t.kind==mark.reaction_kind and
+                    t.observed_on==mark.reaction_date]
+        if not _on_current_grid(mark.level_price,tick):
+            details.append("HISTORICAL_PRICE_GRID_UNKNOWN")
+        elif any(_on_current_grid(t.reference_price,tick) and
+                 _close_enough(t.reference_price,mark.level_price,tick)
+                 for t in comparable):
+            details.append("DATED_KIND_AND_PRICE_MATCH")
+        elif any(not _on_current_grid(t.reference_price,tick) for t in comparable):
+            details.append("HISTORICAL_PRICE_GRID_UNKNOWN")
+        else:
+            details.append("DATED_KIND_PRICE_MISSING")
+    match=details.count("DATED_KIND_AND_PRICE_MATCH")
+    return LabelAudit(
+        "INCOMPLETE_HISTORICAL_GRID" if "HISTORICAL_PRICE_GRID_UNKNOWN" in details
+        else "POSITIVE_LABEL_COVERAGE_NOT_ACCURACY",
+        len(details),match,details.count("DATED_KIND_PRICE_MISSING"),tuple(details))

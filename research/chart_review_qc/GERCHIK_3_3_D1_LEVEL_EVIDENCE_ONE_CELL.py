@@ -9,6 +9,10 @@ from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance, _confirmed_swings
 from strategy.levels import frozen_mirror_source_evidence
 from strategy.indicators import observe_d1_level_reactions, D1_REACTION_KINDS
+from strategy.indicators import (
+    discover_bsu_price_candidates, audit_author_bsu_labels,
+    audit_author_reaction_labels,
+)
 from strategy.indicators import global_trend, trend_direction
 from strategy import passes_gerchik_screener
 from datetime import datetime, timedelta
@@ -30,6 +34,11 @@ CASES=[
     dict(ticker="MSFT",cluster=415.5900,decision="NEGATIVE_ROLE_CONTROL"),
 ]
 cfg=StrategyConfig()
+# IMPORTANT: these are EMPTY because no authenticated per-ticker D1 annotated
+# source-bar / price / dated-reaction labels for the 2024-06-03 cohort exist.
+# Never guess them from unrelated Brent charts or from synthetic BSU examples.
+AUTHOR_BSU_MARKUPS = {}     # ticker -> tuple[GerchikChartLabel, ...]
+AUTHOR_REACTION_MARKUPS = {}  # ticker -> tuple[GerchikChartLabel, ...]
 qb=QuantBook()
 qb.set_start_date(2024,7,1)
 qb.set_end_date(2024,7,2)
@@ -528,22 +537,9 @@ for case in CASES:
             tick_size=tick,swing_k=cfg.swing_k,
             atr_column=f"atr{cfg.atr_period}")
         for e in evidences:
-            print(f"QWCT 3.5 SOURCE WICK EVIDENCE {ticker} {e.label} "
-                  f"source={e.source_date} confirmed={e.confirmed_date} "
-                  f"price={e.price:.6f} grid={e.current_grid} "
-                  f"same_source_wick={len(e.original_same_wick_dates)} "
-                  f"after_mirror_exact_D1_wick={len(e.mirror_exact_wick_dates)} "
-                  f"wick_beyond_line_raw={len(e.mirror_pierce_dates)} "
-                  f"old_side_1bar_wick_reclaim={len(e.original_wick_reclaim_dates)} "
-                  f"mirror_1bar_wick_reclaim={len(e.mirror_wick_reclaim_dates)} "
-                  f"mirror_D1_close_wrong_side={len(e.mirror_close_through_dates)} "
-                  f"mirror_D1_range_cross={len(e.mirror_range_cross_dates)} "
-                  f"original_2bar_close_reentry={len(e.original_two_bar_reclaim_dates)} "
-                  f"mirror_2bar_close_reentry={len(e.mirror_two_bar_reclaim_dates)} "
-                  f"mirror_2bar_dates={','.join(map(str,e.mirror_two_bar_reclaim_dates)) or 'NONE'} "
-                  "TWO_BAR_REENTRY_NOT_CERTIFIED_FALSE_BREAK "
-                  "EXACT_D1_WICKS_ARE_NOT_A_LEVEL_VETO "
-                  "AUTHOR_UNVERIFIED NOT_BPU1 NO_ORDERS")
+            print("QWCT 3.5 SOURCE WICK EVIDENCE",ticker,e.label,
+                  e.price,e.current_grid,len(e.mirror_wick_reclaim_dates),
+                  len(e.mirror_two_bar_reclaim_dates),"AUTHOR_UNVERIFIED")
             # Tail length = real D1 OHLC geometry; do not manufacture author
             # thresholds, and never call this a confirmed BSU/BPU1.
             observations = e.wick_reactions
@@ -583,6 +579,27 @@ for case in CASES:
             print(f"QWCT 3.9 ALL TEN D1 REACTIONS {ticker} {e.label} "
                   + counts + " HEURISTIC_NOT_GERCHIK_APPROVAL NO_ORDERS")
         taxonomy_marks=chart_taxonomy_markers(d1,ten)
+        hypotheses=discover_bsu_price_candidates(
+            d1,session=SESSION.date(),swing_k=cfg.swing_k,
+            tick_size=tick,atr_column=f"atr{cfg.atr_period}")
+        print("QWCT 4.0 BSU SOURCES",ticker,len(hypotheses))
+        review=[]
+        for origin in ("CONFIRMED_SWING","CONSOLIDATION_EDGE",
+                       "EXPANSION_EDGE","GAP_OPEN"):
+            review+=sorted((x for x in hypotheses if x.origin==origin),
+                           key=lambda x:abs(x.price-case["cluster"]))[:3]
+        for h in review:
+            print("QWCT 4.0 RAW",ticker,h.origin,h.role,h.field,
+                  h.price,h.source_date,h.known_on,h.native_grid,
+                  len(h.exact_d1_revisits),"AUTHOR_UNVERIFIED")
+        bs=audit_author_bsu_labels(
+            hypotheses,tuple(AUTHOR_BSU_MARKUPS.get(ticker,())),
+            ticker=ticker,session=SESSION.date(),tick_size=tick)
+        rs=audit_author_reaction_labels(
+            tuple(ten),tuple(AUTHOR_REACTION_MARKUPS.get(ticker,())),
+            ticker=ticker,session=SESSION.date(),tick_size=tick)
+        print("QWCT 4.0 MANUAL CHART AUDIT",ticker,bs.status,rs.status,
+              bs.matches,rs.matches,"ACCURACY_UNKNOWN NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest,markers,taxonomy_marks)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "
               "author_BSU_price=UNKNOWN price_reference=UNKNOWN "

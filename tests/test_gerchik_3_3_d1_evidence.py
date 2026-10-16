@@ -90,6 +90,45 @@ def test_retest_must_precede_decision_and_be_on_same_asof_frame():
         raise AssertionError("Future retest must reject")
 
 
+def test_qc_native_daily_event_timestamp_nonmidnight_keeps_actual_raw_bar():
+    # Regression for all 4 actual Jun03 Research errors: native D1 bar index
+    # contains a market-time clock, while audit_mirror stores D1 dates only.
+    funcs=review_funcs()
+    idx=pd.date_range("2024-05-01",periods=10,freq="D",tz=ET)+pd.Timedelta(hours=16)
+    d1=pd.DataFrame(
+        [{"open":101.,"high":105.,"low":99.,"close":102.}
+         for _ in idx],index=idx)
+    d1.iloc[1,d1.columns.get_loc("high")]=106.
+    d1.iloc[2,d1.columns.get_loc("high")]=105.5
+    d1.iloc[7,d1.columns.get_loc("low")]=103.5
+    actual,bar=funcs["asof_d1_event"](d1,"2024-05-06")
+    assert actual==idx[5]
+    assert actual.hour==16
+    assert bar["close"]==102.
+    lvl=SimpleNamespace(first_idx=1,last_idx=2,price=105.75,
+                        valid_from=idx[8].date())
+    trace=dict(status="PROXY_VERIFIED",original_kind="resistance",
+               breach=str(idx[5].date()),retest=str(idx[7].date()))
+    candidates,breach,retest=funcs["price_hypotheses"](
+        d1,lvl,trace,"long",0.01)
+    assert breach[0]==idx[5] and retest[0]==idx[7]
+    assert candidates[3][2]==103.5
+
+
+def test_same_exchange_date_multiple_native_d1_bars_fail_closed():
+    funcs=review_funcs()
+    idx=pd.DatetimeIndex([
+        pd.Timestamp("2024-05-06 09:30",tz=ET),
+        pd.Timestamp("2024-05-06 16:00",tz=ET)])
+    d1=pd.DataFrame({"low":[99.,100.],"high":[101.,102.]},index=idx)
+    try:
+        funcs["asof_d1_event"](d1,"2024-05-06")
+    except ValueError as ex:
+        assert "AMBIGUOUS_HISTORICAL_D1_EVENT_DATE" in str(ex)
+    else:
+        raise AssertionError("Native D1 exchange date must be unique")
+
+
 def test_predeclared_first_day_and_no_m1_second_pass_or_ordering():
     s=ONE.read_text(encoding="utf8")
     assert len(s.encode("utf8"))<32000

@@ -142,7 +142,7 @@ def native_source_audit(d1, lvl, proof, scaled, tick, cfg):
     if proof.get("status")!="PROXY_VERIFIED" or kind not in ("support","resistance"):
         out["status"]="CAUSAL_MIRROR_PROOF_UNVERIFIED"
         return out
-    i,j=old_i,old_j=lvl.first_idx,lvl.last_idx
+    i,j=lvl.first_idx,lvl.last_idx
     k=cfg.swing_k
     if not (k<=i<j and j+k<len(d1) and
             d1.index.is_unique and d1.index.is_monotonic_increasing):
@@ -468,7 +468,8 @@ class QwctSourceCensus(QCAlgorithm):
                           basis="UNKNOWN_EXCEPTION",origin=None,
                           origin_day=None,last_swing_day=None,raw_delta=None,
                           median_ticks=None,source_key=None,
-                          original_kind=None,field=None)
+                          original_kind=None,field=None,
+                          scaled_origin=None,scaled_last=None)
             self.source_records+=1
             self.source_count["status_"+info["status"]]+=1
             self.source_count["grid_"+info["raw_grid"]]+=1
@@ -495,6 +496,8 @@ class QwctSourceCensus(QCAlgorithm):
                 f"last_swing_day={info['last_swing_day']} "
                 f"source_RAW={info['origin']} cluster={lvl.price:.6f} "
                 f"median_minus_source_ticks={info['median_ticks']} "
+                f"scaled_origin={info['scaled_origin']} "
+                f"scaled_last={info['scaled_last']} "
                 f"native_tick={tick} grid={info['raw_grid']} "
                 f"basis={info['basis']} state={info['status']} "
                 f"source_consistent={int(consistent)} "

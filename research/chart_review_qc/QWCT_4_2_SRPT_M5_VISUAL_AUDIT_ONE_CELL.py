@@ -1,4 +1,5 @@
-# QWCT 4.2 — SRPT exact M5 BSU/BPU1/BPU2 visual audit.
+# QWCT 4.3 — SRPT RAW M5 source integrity + BPU2 luft audit.
+# Historical filename retained so the same GitHub link stays valid.
 # Paste ALL the code into ONE NEW code cell in QuantConnect research.ipynb.
 # Shows raw M5 candles, wick geometry and event source/confirmation.
 # Read-only: no broker, no orders, no retroactive source selection.
@@ -13,7 +14,7 @@ from plotly.subplots import make_subplots
 
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
-from strategy.patterns_bsu import Bar, M5BsuSequenceScanner
+from strategy.patterns_bsu import Bar, BsuDetector, M5BsuSequenceScanner
 
 ET = ZoneInfo("America/New_York")
 DAY = datetime(2024, 6, 3)
@@ -80,6 +81,43 @@ for b in minute:
 # Only flush a REAL five-minute buffered bar, never create synthetic OHLC.
 cons.scan(DAY.replace(hour=16,minute=1))
 
+
+def audit_bpu2_luft(source, bpu1, bpu2, price, side, atr_value, tick_size, cfg):
+    """Re-check completed M5 BPU1/BPU2, never mistake it for SEC TVX.
+
+    Stop and luft come from the SAME StrategyConfig and observed D1 ATR as
+    the native scanner. Independently verify the geometry and chronology
+    before agreeing with the BsuDetector state. Does not validate BSU origin
+    or any author-defined pattern (that is checked separately).
+    """
+    if not (source.ts < bpu1.ts < bpu2.ts):
+        raise ValueError("BPU_CHRONOLOGY_INVALID")
+    d = BsuDetector(cfg, price, side, atr_value=atr_value,
+                    tick_size=tick_size, bsu_ts=source.ts)
+    first = d.on_bar(bpu1)
+    if first.phase != "bpu1":
+        raise ValueError("BPU1_NOT_EXACT_IN_LUFT_AUDIT")
+    final = d.on_bar(bpu2)
+    tol = tick_size * (0.5 + 1e-7)
+    extreme = float(bpu2.low if side == "long" else bpu2.high)
+    signed_offset = (extreme - price if side == "long"
+                     else price - extreme)
+    pierces = (bpu2.low < bpu1.low - tol if side == "long"
+               else bpu2.high > bpu1.high + tol)
+    beyond_luft = signed_offset > final.luft + tol
+    next_m5 = bpu2.ts - bpu1.ts == timedelta(minutes=5)
+    geometry_pass = next_m5 and not pierces and not beyond_luft
+    detector_pass = final.phase == "bpu2_confirmed"
+    if geometry_pass != detector_pass:
+        raise ValueError("BPU2_DETECTOR_GEOMETRY_MISMATCH")
+    return {
+        "passed": detector_pass, "stop": float(final.stop_price),
+        "luft": float(final.luft), "extreme": extreme,
+        "signed_offset": signed_offset, "tolerance": tol,
+        "pierced_bpu1": pierces, "beyond_luft": beyond_luft,
+        "next_m5": next_m5, "phase": final.phase,
+    }
+
 evidence=[]
 for b in m5:
     evidence.extend(scan.observe(b))
@@ -126,9 +164,33 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
              if (x.low<price-tick/2 if side=="long"
                  else x.high>price+tick/2)]
     rejected=bool(gaps or pierced)
-    if rejected==bool(match):
+    if rejected and match:
         raise ValueError("CONTRADICTORY_SOURCE_STATUS")
-    print("QWCT 4.3",price,"REJECTED" if rejected else "PASSES_SOFTWARE",
+    if rejected:
+        # A broken provenance is NOT rescued by a plausible BPU2 luft.
+        status = "REJECTED_SOURCE"
+        print("QWCT 4.3 LUFT AUDIT", price,
+              "SKIPPED_SOURCE_INVALID NOT_SEC_TVX")
+    else:
+        outcome = audit_bpu2_luft(
+            actual[0], actual[1], actual[2], price, side,
+            float(atr.current.value), tick, cfg)
+        if outcome["passed"] != (len(match) == 1):
+            raise ValueError("SCANNER_VS_BPU2_LUFT_MISMATCH")
+        status = ("PASSES_SOFTWARE" if outcome["passed"]
+                  else "REJECTED_BPU2_GEOMETRY")
+        print("QWCT 4.3 LUFT AUDIT", price,
+              f"STOP={outcome['stop']:.4f}",
+              f"LUFT={outcome['luft']:.4f}",
+              f"BPU2_EXTREME={outcome['extreme']:.4f}",
+              f"SIGNED_OFFSET={outcome['signed_offset']:.4f}",
+              f"TOL={outcome['tolerance']:.5f}",
+              f"WITHIN_LUFT={not outcome['beyond_luft']}",
+              f"NEXT_M5={outcome['next_m5']}",
+              f"BPU1_UNBROKEN={not outcome['pierced_bpu1']}",
+              f"PASS={outcome['passed']}",
+              "NO_PRE_CLOSE_SEC_TVX AUTHOR_UNVERIFIED NO_ORDERS")
+    print("QWCT 4.3",price,status,
           "SIDE=",side,
           "prior_pierces=",[(fmt(x.ts),x.low if side=="long" else x.high)
                            for x in pierced[:8]],
@@ -157,7 +219,7 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
             hovertemplate=(f"{stage} @ {fmt(b.ts)}<br>"
                 f"O={b.open:.4f} H={b.high:.4f} "
                 f"L={b.low:.4f} C={b.close:.4f}<br>"
-                f"{'BROKEN OR INCOMPLETE' if rejected else 'SOFTWARE PASS'}; NOT AUTHOR VERIFIED<extra></extra>")
+                f"{status}; NOT AUTHOR VERIFIED; NOT SEC TVX<extra></extra>")
         ),row=row,col=1)
 fig.update_xaxes(rangeslider_visible=False)
 fig.update_layout(
@@ -165,5 +227,7 @@ fig.update_layout(
     title="QWCT 4.3 | SRPT broken vs surviving RAW M5 source; NO ORDERS",
     xaxis_type="date",xaxis2_type="date",hovermode="closest")
 fig.show()
-print("QWCT 4.2 SRPT native_M5=",len(m5),"BPU1=",scan.bpu1_count,
+if len(completed) != scan.completed:
+    raise ValueError("NATIVE_BPU2_COUNT_MISMATCH")
+print("QWCT 4.3 SRPT native_M5=",len(m5),"BPU1=",scan.bpu1_count,
       "BPU2=",scan.completed,"AUTHOR_BSU=UNKNOWN NO_ORDERS")

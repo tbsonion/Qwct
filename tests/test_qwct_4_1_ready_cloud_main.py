@@ -81,3 +81,15 @@ def test_42_srpt_graph_marks_only_reproduced_native_m5_sources():
     assert 'x.high>price+tick/2' in source
     assert "market_order(" not in source.lower()
     assert "set_holdings(" not in source.lower()
+
+
+def test_44_reactions_are_separate_read_only_diagnostics():
+    source=DRIVER.read_text(encoding="utf-8")
+    import ast
+    ast.parse(source,filename=str(DRIVER))
+    assert "M5LevelReactionObserver" in source
+    assert "QWCT 4.4 REACTION SUMMARY" in source
+    assert "D1_SOFTWARE_PROXY SEPARATE_FROM_BPU NO_ORDERS" in source
+    assert 'events = state["scan"].observe(bar)' in source
+    assert 'for observer in state["reaction_observers"].values()' in source
+    assert "market_order(" not in source.lower()

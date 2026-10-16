@@ -267,6 +267,10 @@ class BsuSourceEvidence:
     mirror_close_through_dates: tuple = ()
     # Range crosses the source price; never counts as an exact BPU1 touch.
     mirror_range_cross_dates: tuple = ()
+    # The SECOND candle's date: prior D1 close beyond line, next D1 close
+    # back on defended side. An observation, not certified fake-out setup.
+    original_two_bar_reclaim_dates: tuple = ()
+    mirror_two_bar_reclaim_dates: tuple = ()
     status: str = "AUTHOR_UNVERIFIED"
 
     @property
@@ -354,6 +358,7 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
         from_idx = idx + swing_k + 1
         same, mirror_exact, mirror_pierced = [], [], []
         original_reclaim, mirror_reclaim, mirror_closed_through, mirror_range_cross = [], [], [], []
+        original_two_bar, mirror_two_bar = [], []
         on_grid = _on_current_grid(p, tick)
         # A native tick is used solely for price classification; not for
         # widening an author's level or excusing missing exact BPU1.
@@ -361,6 +366,23 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
         for j in range(from_idx, len(bars)):
             v = float(bars.iloc[j][original_field])
             candle = bars.iloc[j]
+            # A TWO-CLOSED-D1 reentry is established only after the second
+            # bar closes. Keep both bars within the SAME chronological role:
+            # old resistance/support or new mirror support/resistance.
+            if j > from_idx:
+                prev = bars.iloc[j - 1]
+                same_old_role = dates[j] < level.valid_from and dates[j - 1] < level.valid_from
+                same_mirror_role = dates[j] >= level.valid_from and dates[j - 1] >= level.valid_from
+                if original == "resistance":
+                    old_reentry = prev.close > p + tol and candle.close < p - tol
+                    mirror_reentry = prev.close < p - tol and candle.close > p + tol
+                else:
+                    old_reentry = prev.close < p - tol and candle.close > p + tol
+                    mirror_reentry = prev.close > p + tol and candle.close < p - tol
+                if same_old_role and old_reentry:
+                    original_two_bar.append(dates[j])
+                if same_mirror_role and mirror_reentry:
+                    mirror_two_bar.append(dates[j])
             if on_grid and _close_enough(v, p, tick):
                 same.append(dates[j])
             if dates[j] < level.valid_from:
@@ -401,5 +423,7 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
             original_wick_reclaim_dates=tuple(original_reclaim),
             mirror_wick_reclaim_dates=tuple(mirror_reclaim),
             mirror_close_through_dates=tuple(mirror_closed_through),
-            mirror_range_cross_dates=tuple(mirror_range_cross)))
+            mirror_range_cross_dates=tuple(mirror_range_cross),
+            original_two_bar_reclaim_dates=tuple(original_two_bar),
+            mirror_two_bar_reclaim_dates=tuple(mirror_two_bar)))
     return tuple(evidence)

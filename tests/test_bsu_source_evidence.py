@@ -131,6 +131,66 @@ def test_one_bar_mirror_close_through_not_mislabeled_as_reclaim():
     assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
 
 
+def test_mirror_two_closed_bar_reentry_requires_second_d1_close():
+    d1, level, trace, idx = _sample()
+    # First session CLOSES below old resistance -> new support,
+    # next session CLOSES back above it; neither is BPU1 by itself.
+    d1.loc[idx[19], ["open", "high", "low", "close"]] = [106., 107., 103., 104.]
+    d1.loc[idx[20], ["open", "high", "low", "close"]] = [104., 107., 103., 106.]
+    out = _run(d1, level, trace)[0]
+    assert idx[19].date() in out.mirror_close_through_dates
+    assert idx[19].date() not in out.mirror_two_bar_reclaim_dates
+    assert idx[20].date() in out.mirror_two_bar_reclaim_dates
+    # The seed contains an earlier independent close reentry as well.
+    assert out.mirror_two_bar_reclaim_dates[-1] == idx[20].date()
+    assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
+
+
+def test_original_two_bar_reentry_before_new_mirror_role():
+    d1, level, trace, idx = _sample()
+    # The confirmed source swings still have the same original highs.
+    level.valid_from = idx[20].date()
+    trace["valid_from"] = str(level.valid_from)
+    d1.loc[idx[17], ["open", "high", "low", "close"]] = [103., 107., 101., 106.]
+    d1.loc[idx[18], ["open", "high", "low", "close"]] = [106., 107., 101., 102.]
+    out = _run(d1, level, trace)[0]
+    assert out.original_two_bar_reclaim_dates == (idx[18].date(),)
+    assert not out.mirror_two_bar_reclaim_dates
+    assert out.status == "AUTHOR_UNVERIFIED"
+
+
+def test_role_transition_cannot_fake_two_bar_mirror_reentry():
+    d1, level, trace, idx = _sample()
+    level.valid_from = idx[19].date()
+    trace["valid_from"] = str(level.valid_from)
+    # Prior close below line happened BEFORE mirror effective date.
+    d1.loc[idx[18], ["open", "high", "low", "close"]] = [105., 107., 103., 104.]
+    d1.loc[idx[19], ["open", "high", "low", "close"]] = [104., 107., 103., 106.]
+    out = _run(d1, level, trace)[0]
+    assert idx[19].date() not in out.mirror_two_bar_reclaim_dates
+    assert idx[19].date() not in out.original_two_bar_reclaim_dates
+
+
+def test_original_support_to_mirror_resistance_symmetric_two_bar():
+    d1, level, trace, idx = _sample()
+    orig = d1[["open", "high", "low", "close"]].copy()
+    d1["open"] = 200 - orig["open"]
+    d1["high"] = 200 - orig["low"]
+    d1["low"] = 200 - orig["high"]
+    d1["close"] = 200 - orig["close"]
+    level.price = 95.5
+    trace["original_kind"] = "support"
+    # Break above new resistance and close back below.
+    d1.loc[idx[19], ["open", "high", "low", "close"]] = [94., 97., 93., 96.]
+    d1.loc[idx[20], ["open", "high", "low", "close"]] = [96., 97., 93., 94.]
+    out = _run(d1, level, trace)[0]
+    assert out.price == 95.
+    assert idx[20].date() in out.mirror_two_bar_reclaim_dates
+    # The seed contains an earlier independent close reentry as well.
+    assert out.mirror_two_bar_reclaim_dates[-1] == idx[20].date()
+    assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
+
+
 def test_no_orders_market_data_or_median_price_selection():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "strategy" /

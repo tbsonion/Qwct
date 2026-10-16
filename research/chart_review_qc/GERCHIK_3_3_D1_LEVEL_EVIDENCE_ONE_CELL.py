@@ -372,6 +372,10 @@ for case in CASES:
                   f"mirror_1bar_wick_reclaim={len(e.mirror_wick_reclaim_dates)} "
                   f"mirror_D1_close_wrong_side={len(e.mirror_close_through_dates)} "
                   f"mirror_D1_range_cross={len(e.mirror_range_cross_dates)} "
+                  f"original_2bar_close_reentry={len(e.original_two_bar_reclaim_dates)} "
+                  f"mirror_2bar_close_reentry={len(e.mirror_two_bar_reclaim_dates)} "
+                  f"mirror_2bar_dates={','.join(map(str,e.mirror_two_bar_reclaim_dates)) or 'NONE'} "
+                  "TWO_BAR_REENTRY_NOT_CERTIFIED_FALSE_BREAK "
                   "EXACT_D1_WICKS_ARE_NOT_A_LEVEL_VETO "
                   "AUTHOR_UNVERIFIED NOT_BPU1 NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest)

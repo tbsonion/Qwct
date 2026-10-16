@@ -14,6 +14,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 # These two stand-alone comparators are not imported by the Qwct LEAN
 # algorithm. Neither is an execution/risk substitute.
 OPTIONAL_RESEARCH = {
+    "strategy/pipeline_audit.py",  # offline 14-feature/eight-gate audit; not a runtime dependency
     "strategy/opening_volume_research.py",
     "strategy/tvx_observation.py",
     "strategy/d1_bridge_audit.py",  # separate BSU research-only; not in main Qwct Cloud ZIP

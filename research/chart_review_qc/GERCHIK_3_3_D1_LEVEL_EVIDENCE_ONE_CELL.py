@@ -228,13 +228,31 @@ def native_tick(symbol):
 
 
 def asof_d1_event(frame,iso):
+    """Resolve causal D1 event by EXCHANGE-LOCAL SESSION DATE, not midnight.
+
+    Native QC daily bar indexes may retain a non-midnight timestamp.
+    audit_mirror deliberately reports source/breach/retest as D1 dates.
+    Preserve the original native index timestamp and reject duplicates.
+    """
     if iso is None:
         raise ValueError("MISSING_CAUSAL_D1_BREACH_OR_RETEST")
-    key=pd.Timestamp(iso,tz=ET)
-    if key not in frame.index:
+    if (frame is None or not isinstance(frame.index,pd.DatetimeIndex)
+            or frame.index.tz is None
+            or not frame.index.is_monotonic_increasing):
+        raise ValueError("INVALID_NATIVE_D1_DATE_INDEX")
+    try:
+        date=pd.Timestamp(iso).date()
+    except (ValueError,TypeError,OverflowError) as ex:
+        raise ValueError("INVALID_HISTORICAL_D1_EVENT_DATE") from ex
+    matching=[i for i,day in enumerate(frame.index)
+              if day.date()==date]
+    if not matching:
         raise ValueError(f"HISTORICAL_D1_EVENT_NOT_IN_ASOF_FRAME_{iso}")
-    bar=frame.loc[key]
-    return key,bar
+    if len(matching)!=1:
+        raise ValueError(f"AMBIGUOUS_HISTORICAL_D1_EVENT_DATE_{iso}")
+    index=matching[0]
+    # Never invent a midnight/close candle; use original native RAW D1 bar.
+    return frame.index[index],frame.iloc[index]
 
 def price_hypotheses(d1,level,trace,side,tick):
     if trace["status"]!="PROXY_VERIFIED":

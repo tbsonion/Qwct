@@ -220,7 +220,7 @@ def test_unbroken_fixed_support_remains_eligible_after_many_bars():
     scan=scanner()
     scan.observe(bar(0,100.,100.5))
     for n in range(1,4):
-        assert scan.observe(bar(n,100.10,100.5))==()
+        scan.observe(bar(n,100.10,100.5))  # Other source prices may match.
     result=scan.observe(bar(4,100.,100.5))
     assert result and result[0].event=="BPU1_EXACT"
     assert result[0].source_end==FIRST

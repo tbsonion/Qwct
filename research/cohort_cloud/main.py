@@ -169,6 +169,8 @@ def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
     result["source"] = str(source_day)
     if not scaled_bars:
         return result
+    if tick is None:
+        return done("UNKNOWN", "NO_NATIVE_TICK")
     try:
         tick = float(tick)
         if not isfinite(tick) or tick <= 0:

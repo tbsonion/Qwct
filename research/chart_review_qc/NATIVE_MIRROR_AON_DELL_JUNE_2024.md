@@ -1,5 +1,26 @@
 # QWCT 2.9 — Native QuantBook AON/DELL D1 mirror inventory
 
+## 2026-10-15 — Actual native morning eligibility results (FOLLOW-UP, completed)
+
+**Additional real QuantConnect Research output was provided.** These **are** observed results, not proposed test values.
+
+**AON 2024-06-12**: `prior_close=293.70`, `ATR14=4.866`, `stage2=1`, `global_trend=-1`, `local_trend=-1`. Original `cfg.level_proximity_atr=1.0`. The five observed D1 mirrors are all **too far from prior close**; none qualifies for research shortlist even before asking whether it is a manually valid Gerchik BSU.
+
+| Mirror price | New role from original source | Candidate side from prior close | Distance / ATR | Original proximity `near` | Role-aligned | Trend-aligned | Strength | Original morning eligibility |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **285.950** | resistance | long | **1.593** | 0 | 0 | 0 | 1 | **0** |
+| **312.970** | resistance | short | **3.960** | 0 | 1 | 1 | 1 | **0** |
+| **317.680** | support | short | **4.928** | 0 | 0 | 1 | 1 | **0** |
+| **317.945** | resistance | short | **4.982** | 0 | 1 | 1 | 1 | **0** |
+| **329.210** | support | short | **7.298** | 0 | 0 | 1 | 1 | **0** |
+
+**DELL 2024-06-07**: `prior_close=133.96`, `ATR14=9.6386`, `stage2=1`, `global_trend=1`, `local_trend=1`; **0** existing automatically tagged mirror levels. No mirror eligible case could arise in this particular lookup.
+
+**Conclusion narrowly scoped to two specific ticker-days:** The current cohort's exclusion of `kind='mirror'` is a **known methodological scope limitation**, but **it did not demonstrably suppress a mirror candidate that otherwise passed the original morning gates on either of these two days**. Five AON historical mirror proxies are NOT five lost trades. Do not widen proximity beyond the established **1.0 ATR**, retroactively move BSU levels to manufactured touches, or count 11 older original-pivot M5 straddles as BPU1. **0 mirror research candidates** here, NOT a conclusion across the other 17 calendar sessions or ~950 selected stock-days.
+
+**Research priority now:** Put a short research-only **mirror eligibility census** beside the unchanged original morning screener over the existing PIT universe across other days/months (same native Fundamental callbacks, existing 1 ATR / Stage2/trend/role/strength criteria). Report eligible *symbol-day* counts separately from mere historical mirrors, then examine any positive cases with native RAW-as-of D1 source prices and actual M5. Do not run M5/SEC/TICK for mirror proxies that already fail the native morning eligibility gates. In parallel, unresolved Gerchik manual D1 BSU source specification (RAW original swing vs ATR-cluster median/floating zones) remains independent.
+
+
 **Evidence:** user-submitted actual QuantConnect Research Notebook output for **AON on 2024-06-12** and **DELL on 2024-06-07**. Notebook `MIRROR_AON_DELL_ONE_CELL.py` uses 180 original RAW closed D1 TradeBars, native LEAN ATR(14)/SMA and the repository's existing `levels_for_session` + independent chronological `audit_mirror`. **No orders or BPU1 asserted.**
 
 ## Captured native results

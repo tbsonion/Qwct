@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 import pytest
 from strategy.config import StrategyConfig
-from strategy.patterns_bsu import Bar, M5BsuSequenceScanner, M5LevelReactionObserver
+from strategy.patterns_bsu import Bar, M5BsuSequenceScanner, M5LevelReactionObserver, FixedFloatingLimitObserver
 
 ET=ZoneInfo("America/New_York")
 DAY=date(2026,10,16)
@@ -333,3 +333,65 @@ def test_44_invalid_bar_does_not_mutate_history():
         s.observe(reaction_bar(0,100.2,100.1,99.9,100.3))
     assert s._last is None
     assert kinds(s,reaction_bar(0,100.2,100.4,99.7,100.3))=={"WICK_PIERCE_RECLAIM"}
+
+
+def test_45_exact_three_unpierced_hits_fixed_limit():
+    o=FixedFloatingLimitObserver(100.,"long",.01)
+    for i in range(2):
+        result=o.observe(reaction_bar(i,100.2,100.4,100.,100.3))
+        assert result.status=="INDETERMINATE"
+    result=o.observe(reaction_bar(2,100.2,100.4,100.,100.3))
+    assert result.status=="FIXED_LIMIT_CANDIDATE"
+    assert result.hits==3 and result.adverse_pierces==0
+    assert not result.can_trade
+
+
+def test_45_single_pierce_without_prior_hits_is_not_floating_zone():
+    o=FixedFloatingLimitObserver(100.,"long",.01)
+    result=o.observe(reaction_bar(0,100.1,100.3,99.9,100.2))
+    assert result.status=="INDETERMINATE"
+    assert result.adverse_pierces==0
+
+
+def test_45_support_wick_pierce_disqualifies_exact_fixed_limit():
+    o=FixedFloatingLimitObserver(100.,"long",.01)
+    for i in range(3):
+        o.observe(reaction_bar(i,100.2,100.4,100.,100.3))
+    result=o.observe(reaction_bar(3,100.2,100.4,99.99,100.3))
+    assert result.status=="FLOATING_ZONE"
+    assert result.adverse_pierces==1
+
+
+def test_45_resistance_pierce_disqualifies_exact_fixed_limit():
+    o=FixedFloatingLimitObserver(100.,"short",.01)
+    for i in range(3):
+        o.observe(reaction_bar(i,99.8,100.,99.6,99.7))
+    assert o.observe(reaction_bar(3,99.8,100.01,99.6,99.7)).status=="FLOATING_ZONE"
+
+
+def test_45_nearby_prices_are_not_exact_limit_hits():
+    o=FixedFloatingLimitObserver(100.,"long",.01)
+    for i in range(4):
+        result=o.observe(reaction_bar(i,100.2,100.4,100.01,100.3))
+    assert result.status=="INDETERMINATE"
+    assert result.hits==0
+
+
+def test_45_missing_native_m5_resets_fixed_evidence():
+    o=FixedFloatingLimitObserver(100.,"long",.01)
+    for i in range(3):
+        o.observe(reaction_bar(i,100.2,100.4,100.,100.3))
+    result=o.observe(reaction_bar(4,100.2,100.4,100.,100.3))
+    assert result.status=="INDETERMINATE"
+    assert result.hits==1
+    assert "GAP_RESET" in result.reason
+
+
+def test_45_reject_off_grid_source_and_out_of_order():
+    with pytest.raises(ValueError,match="OFF_NATIVE_TICK"):
+        FixedFloatingLimitObserver(100.005,"long",.01)
+    o=FixedFloatingLimitObserver(100.,"long",.01)
+    b=reaction_bar(0,100.2,100.4,100.,100.3)
+    o.observe(b)
+    with pytest.raises(ValueError,match="OUT_OF_ORDER"):
+        o.observe(b)

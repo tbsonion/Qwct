@@ -647,3 +647,79 @@ class M5LevelReactionObserver:
             self._break_confirmed = False
         self._last = bar
         return tuple(events)
+
+
+# QWCT 4.5: read-only Gerchik fixed LIMIT level diagnostic.
+# Exact 3+ hits, no adverse wick pierce. Not a universal BSU rule.
+@dataclass(frozen=True)
+class FixedFloatingEvidence:
+    status: str
+    price: float
+    side: str
+    hits: int
+    adverse_pierces: int
+    source_end: datetime | None
+    last_end: datetime | None
+    reason: str
+
+    @property
+    def can_trade(self) -> bool:
+        return False
+
+
+class FixedFloatingLimitObserver:
+    """Closed M5 fixed-limit evidence; not a universal BSU rule."""
+
+    def __init__(self, price: float, side: str, tick_size: float,
+                 min_hits: int = 3):
+        self.price = _positive("level_price", price)
+        self.tick = _positive("tick_size", tick_size)
+        if side not in ("long", "short"):
+            raise ValueError("FIXED_LEVEL_SIDE_INVALID")
+        if not isinstance(min_hits, int) or min_hits < 3:
+            raise ValueError("FIXED_LEVEL_MIN_HITS_INVALID")
+        if abs(self.price/self.tick-round(self.price/self.tick)) > 1e-6:
+            raise ValueError("FIXED_LEVEL_OFF_NATIVE_TICK")
+        self.side = side
+        self.min_hits = min_hits
+        self._last: datetime | None = None
+        self._first_hit: datetime | None = None
+        self._hits = 0
+        self._pierces = 0
+
+    def observe(self, bar: Bar) -> FixedFloatingEvidence:
+        if not isinstance(bar, Bar) or bar.timeframe != "M5":
+            raise ValueError("FIXED_LEVEL_REQUIRES_NATIVE_M5")
+        now = BsuDetector._validate_bar(bar)
+        if self._last is not None and now <= self._last:
+            raise ValueError("FIXED_LEVEL_OUT_OF_ORDER")
+        # A missing candle destroys proof of an unpierced fixed limit.
+        # Keep observed counts for diagnostics, but do not call it fixed.
+        gap = (self._last is not None
+               and now-self._last != timedelta(minutes=5))
+        if gap:
+            self._first_hit = None
+            self._hits = 0
+            self._pierces = 0
+        extreme = float(bar.low if self.side == "long" else bar.high)
+        tol = self.tick * 1e-6  # numerical float error only, NOT a tick luft
+        if (extreme < self.price-tol if self.side == "long"
+                else extreme > self.price+tol):
+            if self._hits:
+                self._pierces += 1
+        elif abs(extreme-self.price) <= tol:
+            if self._first_hit is None:
+                self._first_hit = bar.ts
+            self._hits += 1
+        self._last = now
+        if self._pierces:
+            status, reason = "FLOATING_ZONE", "LIMIT_LEVEL_PIERCED"
+        elif self._hits >= self.min_hits:
+            status, reason = "FIXED_LIMIT_CANDIDATE", "EXACT_UNPIERCED_HITS"
+        else:
+            status, reason = "INDETERMINATE", "INSUFFICIENT_EXACT_HITS"
+        if gap:
+            reason += "_AFTER_M5_GAP_RESET"
+        return FixedFloatingEvidence(
+            status, self.price, self.side, self._hits, self._pierces,
+            self._first_hit, bar.ts, reason)

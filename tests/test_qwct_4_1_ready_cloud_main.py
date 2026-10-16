@@ -93,3 +93,13 @@ def test_44_reactions_are_separate_read_only_diagnostics():
     assert 'events = state["scan"].observe(bar)' in source
     assert 'for observer in state["reaction_observers"].values()' in source
     assert "market_order(" not in source.lower()
+
+
+def test_45_fixed_floating_diagnostics_do_not_replace_strict_bpu():
+    import ast
+    source=DRIVER.read_text(encoding="utf-8")
+    ast.parse(source,filename=str(DRIVER))
+    assert "FixedFloatingLimitObserver" in source
+    assert "QWCT 4.5 FIXED_FLOATING SUMMARY" in source
+    assert "EXACT_LIMIT_ONLY NOT_ALL_BSU AUTHOR_UNVERIFIED NO_ORDERS" in source
+    assert 'events = state["scan"].observe(bar)' in source

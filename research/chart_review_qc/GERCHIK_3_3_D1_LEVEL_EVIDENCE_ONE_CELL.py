@@ -367,7 +367,12 @@ for case in CASES:
                   f"price={e.price:.6f} grid={e.current_grid} "
                   f"same_source_wick={len(e.original_same_wick_dates)} "
                   f"after_mirror_exact_D1_wick={len(e.mirror_exact_wick_dates)} "
-                  f"after_mirror_pierce_D1_wick={len(e.mirror_pierce_dates)} "
+                  f"wick_beyond_line_raw={len(e.mirror_pierce_dates)} "
+                  f"old_side_1bar_wick_reclaim={len(e.original_wick_reclaim_dates)} "
+                  f"mirror_1bar_wick_reclaim={len(e.mirror_wick_reclaim_dates)} "
+                  f"mirror_D1_close_wrong_side={len(e.mirror_close_through_dates)} "
+                  f"mirror_D1_range_cross={len(e.mirror_range_cross_dates)} "
+                  "EXACT_D1_WICKS_ARE_NOT_A_LEVEL_VETO "
                   "AUTHOR_UNVERIFIED NOT_BPU1 NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "

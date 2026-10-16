@@ -1,3 +1,7 @@
+## Обновление QWCT 5.8 — завершён выбор источника/стоимости
+
+[Решение 5.8](QWCT_5_8_ORDER_FLOW_SOURCE_DECISION_RU.md) уточняет прежние UNKNOWN: опубликованы AlgoSeek TAQ $1500/mo (min 12-month lease), package $2500/mo (2-year term); Databento historical from $0.40/GB — только нижняя ставка. Выбран кандидат XNAS.ITCH TBBO usage-based для 2-symbol Nasdaq subset, с side=None exclusions. Точный бесплатный authenticated get_cost ещё не выполнен, сумма UNKNOWN. [Спецификация metadata-only запроса](QWCT_5_8_DATABENTO_METADATA_QUOTE_REQUEST.json); никакой покупки/загрузки/новой cell. Native mapping и TRUE CVD/positive Observer BLOCKED.
+
 ## QWCT 5.6 — Cloud output получен от пользователя (16.10.2026)
 
 [Сохранённый результат и границы доказательства](QWCT_5_6_CLOUD_DATA_AUDIT_RESULT_RU.md): SRPT **193 TRADE / 640 QUOTE**, SPY **2875 TRADE / 36576 QUOTE**. Все quote updates односторонние; **8/8** полных M1 объёмов совпали с tick sum. Native quote availability в этом окне подтверждена, предположение об отсутствии quotes снято. Полнота SIP, aggressor side, NBBO synchrony и receive-time delivery **не подтверждены**. CVD/positive limit-player observer/TVX по-прежнему BLOCKED. Это USER_SUPPLIED_CLOUD_OUTPUT, run ID не предоставлен; не независимый запуск агента.

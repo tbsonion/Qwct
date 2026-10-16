@@ -1,3 +1,11 @@
+## QWCT 5.8 — выбор источника и стоимости завершён (16.10.2026)
+
+[Итоговое исследование](research/chart_review_qc/QWCT_5_8_ORDER_FLOW_SOURCE_DECISION_RU.md): открытый equity mapping TAQ EventType→native Tick не найден; просмотренные форматы/reader не дают aggressor/receive-time/source sequence. Native TRUE_CVD остаётся BLOCKED; ESTIMATED quote proxy пока не принят в positive Observer. Выбран **Databento XNAS.ITCH / TBBO, исторический usage-based**, только Nasdaq subset SRPT/SPY; side=N не подписывается и не обнуляется. Данные этого поставщика **не получены**.
+
+**Цена/решение:** не покупать месячную подписку. AlgoSeek Equity TAQ list **$1500/mo, min 12 months**; research package **$2500/mo, 2-year term**; сами SIP/derived indicators не дают полного exchange-classified signed flow. Databento equities рекламирует historical **от $0.40/GB**, это не точная цена выбранного запроса. **get_cost бесплатно**, но требует API-auth; точная сумма UNKNOWN. [Готовая metadata-only спецификация](research/chart_review_qc/QWCT_5_8_DATABENTO_METADATA_QUOTE_REQUEST.json): 2 symbols, TBBO, 03.06.2024 18:30–18:40 UTC; никаких downloads/покупок/live.
+
+**Оставшийся конкретный шаг:** авторизованный бесплатный metadata.get_cost с доступом Databento; затем отдельно решение о sample. Никаких новых QC cells/замен production-файлов. Отмечено обновление XNAS.ITCH history **31.10.2026**, необходимо фиксировать версию/gateway/checksum. Публичное исследование завершено; отсутствие доступа не подменяется вымышленной котировкой. Ордеры/BSU/BPU/Risk Gate и author accuracy без изменений.
+
 ## QWCT 5.7 — Cloud pairing audit завершён; native TRUE CVD BLOCKED
 
 [Результат пользователя и решение](research/chart_review_qc/QWCT_5_7_CLOUD_DATA_AUDIT_RESULT_RU.md): SRPT **320/320** структурных quote-пар; SPY **14993/16964**, остальные группы выделены как crossed/locked/non-regular/multiple-row. Preceding PAIR_METADATA_ONLY связан с **6662/6973 (95.54%)** объёма SRPT и **176072/218787 (80.48%)** SPY. Это доля unsigned temporal join, **не** accuracy/aggressor/fresh-quote coverage. У SRPT возраст pair report достигает **15.776772s**; per-side last-change и receive-time остаются UNKNOWN.

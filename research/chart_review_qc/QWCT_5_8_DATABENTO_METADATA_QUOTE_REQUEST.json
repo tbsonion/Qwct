@@ -1,0 +1,66 @@
+{
+  "purpose": "PRICE_QUOTE_ONLY_FOR_OPTIONAL_VENUE_LIMITED_BENCHMARK",
+  "as_of_date": "2026-10-16",
+  "provider": "Databento",
+  "sdk_method": "Historical.metadata.get_cost",
+  "request": {
+    "dataset": "XNAS.ITCH",
+    "symbols": [
+      "SRPT",
+      "SPY"
+    ],
+    "stype_in": "raw_symbol",
+    "schema": "tbbo",
+    "start": "2024-06-03T18:30:00Z",
+    "end": "2024-06-03T18:40:00Z"
+  },
+  "request_interval": "START_INCLUSIVE_END_EXCLUSIVE",
+  "reason_for_10_minute_quote": "Provider warns of possible cost over-reporting for non-10-minute multiples.",
+  "analysis_window": {
+    "start": "2024-06-03T18:35:00Z",
+    "cutoff_inclusive": "2024-06-03T18:39:30Z",
+    "required_time_checks": [
+      "ts_event<=cutoff",
+      "ts_recv<=cutoff"
+    ],
+    "availability_scope": "ts_recv is vendor capture-server time, not QuantConnect OnData or user receive time."
+  },
+  "scope": "NASDAQ_EXECUTED_TRADES_ONLY_NOT_CONSOLIDATED_US_MARKET",
+  "side_semantics": {
+    "B": "BUY_AGGRESSOR_IF_VALID_SOURCE_MAPPING",
+    "A": "SELL_AGGRESSOR_IF_VALID_SOURCE_MAPPING",
+    "N": "UNKNOWN_NEVER_ZERO_SIGN"
+  },
+  "required_fields": [
+    "publisher_id",
+    "instrument_id",
+    "ts_event",
+    "ts_recv",
+    "sequence",
+    "action",
+    "side",
+    "price",
+    "size",
+    "flags",
+    "bid_px_00",
+    "ask_px_00",
+    "bid_sz_00",
+    "ask_sz_00"
+  ],
+  "guardrails": {
+    "metadata_only": true,
+    "data_download": false,
+    "batch_submission": false,
+    "live_subscription": false,
+    "purchase": false,
+    "production_integration": false,
+    "orders": false,
+    "all_symbols": false
+  },
+  "result": {
+    "execution_status": "NOT_EXECUTED_NO_AUTHENTICATED_DATABENTO_ACCESS",
+    "quoted_cost_usd": null,
+    "bytes_billed": null,
+    "historical_data_observed": false
+  }
+}

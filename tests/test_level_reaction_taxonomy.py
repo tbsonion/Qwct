@@ -56,9 +56,9 @@ def _fixture(mirror_resistance=False):
 
 
 def _run(d1,e,trace,**kwargs):
-    return observe_d1_level_reactions(
-        d1,e,trace,session=date(2024,5,31),
-        tick_size=.01,atr_column="atr14",**kwargs)
+    args=dict(session=date(2024,5,31),tick_size=.01,atr_column="atr14")
+    args.update(kwargs)
+    return observe_d1_level_reactions(d1,e,trace,**args)
 
 
 @pytest.mark.parametrize("inverted",[False,True])
@@ -134,7 +134,7 @@ def test_asof_and_closed_candle_source_validation_fail_closed():
     e2=replace(e,mirror_two_bar_reclaim_dates=(date(2024,5,30),))
     with pytest.raises(ValueError,match="NONCAUSAL_REACTION_TWO_BAR"):
         _run(d1,e2,trace)
-    d1.loc[idx[5],"low"]=99.9
+    d1.loc[idx[5],"low"]=100.1
     with pytest.raises(ValueError,match="STALE_REACTION_WICK_OR_BAR"):
         _run(d1,e,trace)
 

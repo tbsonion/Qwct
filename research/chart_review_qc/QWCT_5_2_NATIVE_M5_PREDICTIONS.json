@@ -1,0 +1,5 @@
+{
+  "schema_version": "QWCT_5_2_NATIVE_M5_PREDICTIONS_V1",
+  "policy": "Populate only from independently replayed CLOSED native M5 observations at the same author-confirmed market, symbol, frozen level, side and bar-end timestamp; empty predictions require explicit bar coverage.",
+  "bars": []
+}

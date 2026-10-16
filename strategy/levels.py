@@ -257,6 +257,16 @@ class BsuSourceEvidence:
     original_same_wick_dates: tuple
     mirror_exact_wick_dates: tuple
     mirror_pierce_dates: tuple
+    # One D1 candle briefly crossing an old resistance/support and closing
+    # back on the original side; objective OHLC event, not author-certified.
+    original_wick_reclaim_dates: tuple = ()
+    # As-of new mirror role: price crossed the line intraday but closed back
+    # on the mirror's defended side. Not necessarily BSU/BPU1.
+    mirror_wick_reclaim_dates: tuple = ()
+    # A close on the wrong side (different from a wick that reclaims).
+    mirror_close_through_dates: tuple = ()
+    # Range crosses the source price; never counts as an exact BPU1 touch.
+    mirror_range_cross_dates: tuple = ()
     status: str = "AUTHOR_UNVERIFIED"
 
     @property
@@ -343,23 +353,53 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
         # We do not count its own bar as a second touch.
         from_idx = idx + swing_k + 1
         same, mirror_exact, mirror_pierced = [], [], []
+        original_reclaim, mirror_reclaim, mirror_closed_through, mirror_range_cross = [], [], [], []
         on_grid = _on_current_grid(p, tick)
+        # A native tick is used solely for price classification; not for
+        # widening an author's level or excusing missing exact BPU1.
+        tol = tick * (0.5 + 1e-7)
         for j in range(from_idx, len(bars)):
             v = float(bars.iloc[j][original_field])
+            candle = bars.iloc[j]
             if on_grid and _close_enough(v, p, tick):
                 same.append(dates[j])
             if dates[j] < level.valid_from:
+                # One-bar rejection of the OLD original support/resistance:
+                # wick crosses the old line, close comes back to original side.
+                if (original == "resistance"
+                        and candle.high > p + tol and candle.close < p - tol
+                        or original == "support"
+                        and candle.low < p - tol and candle.close > p + tol):
+                    original_reclaim.append(dates[j])
                 continue
-            new_wick = float(bars.iloc[j][mirror_field])
+            new_wick = float(candle[mirror_field])
             if on_grid and _close_enough(new_wick, p, tick):
                 mirror_exact.append(dates[j])
-            if (new_wick < p - tick * (0.5 + 1e-7) if original == "resistance"
-                    else new_wick > p + tick * (0.5 + 1e-7)):
+            if (new_wick < p - tol if original == "resistance"
+                    else new_wick > p + tol):
+                # This only means the far-side wick price passed the line;
+                # *not* that the line failed or that there was a bounce.
                 mirror_pierced.append(dates[j])
+            if candle.low <= p <= candle.high:
+                mirror_range_cross.append(dates[j])
+            if original == "resistance":  # new role: support
+                if candle.low < p - tol and candle.close > p + tol:
+                    mirror_reclaim.append(dates[j])
+                if candle.close < p - tol:
+                    mirror_closed_through.append(dates[j])
+            else:  # old support -> new resistance
+                if candle.high > p + tol and candle.close < p - tol:
+                    mirror_reclaim.append(dates[j])
+                if candle.close > p + tol:
+                    mirror_closed_through.append(dates[j])
         evidence.append(BsuSourceEvidence(
             label=label, source_date=dates[idx], confirmed_date=confirmed_on,
             price=p, current_grid="ON_GRID" if on_grid else "OFF_GRID",
             original_same_wick_dates=tuple(same),
             mirror_exact_wick_dates=tuple(mirror_exact),
-            mirror_pierce_dates=tuple(mirror_pierced)))
+            mirror_pierce_dates=tuple(mirror_pierced),
+            original_wick_reclaim_dates=tuple(original_reclaim),
+            mirror_wick_reclaim_dates=tuple(mirror_reclaim),
+            mirror_close_through_dates=tuple(mirror_closed_through),
+            mirror_range_cross_dates=tuple(mirror_range_cross)))
     return tuple(evidence)

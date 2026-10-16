@@ -715,7 +715,8 @@ class FixedFloatingLimitObserver:
         tol = self.tick * 1e-6  # numerical float error only, NOT a tick luft
         if (extreme < self.price-tol if self.side == "long"
                 else extreme > self.price+tol):
-            self._pierces += 1
+            if self._hits:
+                self._pierces += 1
         elif abs(extreme-self.price) <= tol:
             if self._first_hit is None:
                 self._first_hit = bar.ts

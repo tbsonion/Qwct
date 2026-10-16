@@ -72,6 +72,16 @@ class NativeSecondTvxWindow:
                 raise ValueError("SEC_END_UNVERIFIED")
             if symbol is not None and bar.symbol != symbol:
                 raise ValueError("SEC_SYMBOL_MISMATCH")
+            # When native LEAN time is already an aware Python datetime,
+            # the adapter cannot override its actual end with a different
+            # timestamp and thereby manufacture the exact -30s cutoff.
+            if (isinstance(native_end, datetime)
+                    and native_end.tzinfo is not None
+                    and native_end.utcoffset() is not None
+                    and native_end != end):
+                raise ValueError("SEC_ADAPTER_END_MISMATCH")
+            if end.microsecond:
+                raise ValueError("SEC_END_NOT_ALIGNED_TO_SECOND")
             if _duration_seconds(bar.period) != 1 or (
                     _duration_seconds(native_end - start) != 1):
                 raise ValueError("SEC_NATIVE_PERIOD_INVALID")

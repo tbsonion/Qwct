@@ -227,7 +227,7 @@ def native_tick(symbol):
         raise ValueError("INVALID_NATIVE_TICK")
     return tick
 
-def scaled_basis(symbol,source_day,field,raw_origin,raw_close,tick):
+def scaled_basis(symbol,source_day,source_end,last_day,last_end,field,raw_origin,raw_close,tick):
     # D1 parity check only, not price adjustment of source or M5.
     try:
         scaled=typed_d1(symbol,DataNormalizationMode.SCALED_RAW)
@@ -236,9 +236,12 @@ def scaled_basis(symbol,source_day,field,raw_origin,raw_close,tick):
     byday={at.date():b for at,b in scaled}
     if source_day not in byday:
         return "UNKNOWN_SCALED_ORIGINAL_DATE_MISSING",None,None
-    last_day=SESSION.date()-timedelta(days=3)   # DON'T infer market days from calendar
-    del last_day
     latest=scaled[-1][1]
+    if scaled[-1][0].date()!=last_day:
+        return "UNKNOWN_SCALED_LAST_ASOF_DATE_MISMATCH",None,None
+    if (et(byday[source_day].end_time)!=et(source_end) or
+            et(latest.end_time)!=et(last_end)):
+        return "UNKNOWN_SCALED_RAW_ENDTIME_MISMATCH",None,None
     origin=float(getattr(byday[source_day],field))
     close=float(latest.close)
     if not (isfinite(origin) and isfinite(close) and origin>0 and close>0):
@@ -396,7 +399,9 @@ for case in CASES:
         delta=(level.price-origin)/tick
         ongrid=abs(origin-round(origin/tick)*tick)<=tick*1e-5
         basis,scaled_origin,scaled_close=scaled_basis(
-            symbol,source_at.date(),field,origin,float(d1.iloc[-1]["close"]),tick)
+            symbol,source_at.date(),d1.iloc[level.first_idx]["bar_end"],
+            d1.index[-1].date(),d1.iloc[-1]["bar_end"],
+            field,origin,float(d1.iloc[-1]["close"]),tick)
         print(f"QWCT 3.1 PRICE {ticker} native_tick={tick:.6f} "
               f"RAW_origin_grid={int(ongrid)} "
               f"cluster_minus_RAW_in_ticks={delta:.2f} "

@@ -245,8 +245,89 @@ def next_level(levels: list[Level], price: float,
     return max(cands, key=lambda l: l.price)
 
 
-# QWCT 3.5: standalone read-only inspection on ALREADY available native D1.
+# QWCT 3.5–3.7: read-only diagnostics on already available native D1.
 # Not called by live trading, screener, or the original level detector.
+@dataclass(frozen=True)
+class D1WickReaction:
+    """Closed D1 interaction geometry, NOT a source-confirmed Gerchik setup.
+
+    TAIL_ONLY_RECLAIM requires the entire real BODY to stay on the defended
+    side. BODY_CROSS_RECLAIM means the body spans the line, despite a
+    defended-side close. Numeric fractions are descriptive, not trade scores.
+    """
+
+    at: date
+    role: str
+    event: str
+    upper_wick: float
+    lower_wick: float
+    body: float
+    defended_wick: float
+    wick_to_body: float | None
+    wick_to_range: float | None
+    wick_to_atr: float | None
+    penetration_to_atr: float | None
+    close_defended_to_atr: float | None
+    atr_status: str
+
+
+def _d1_wick_reaction(candle, level, tick, role, at, atr_value, atr_requested):
+    """Inspect a single as-of D1 bar that actually spans the level price."""
+    if not float(candle.low) <= level <= float(candle.high):
+        return None
+    if role not in ("support", "resistance"):
+        raise ValueError("INVALID_WICK_REACTION_ROLE")
+    o, h, l, c = (float(candle[name]) for name in ("open", "high", "low", "close"))
+    upper = h - max(o, c)
+    lower = min(o, c) - l
+    body = abs(c - o)
+    span = h - l
+    wick = lower if role == "support" else upper
+    tol = tick * (0.5 + 1e-7)
+    if role == "support":
+        crossed = l < level - tol
+        recovered = c > level + tol
+        body_defended = min(o, c) >= level - tol
+        closed_wrong = c < level - tol
+        penetration = max(0.0, level - l)
+        close_defended = c - level
+    else:
+        crossed = h > level + tol
+        recovered = c < level - tol
+        body_defended = max(o, c) <= level + tol
+        closed_wrong = c > level + tol
+        penetration = max(0.0, h - level)
+        close_defended = level - c
+    if crossed and recovered:
+        event = "TAIL_ONLY_RECLAIM" if body_defended else "BODY_CROSS_RECLAIM"
+    elif closed_wrong:
+        event = "CLOSED_WRONG_SIDE"
+    else:
+        event = "TOUCH_OR_STRADDLE"
+
+    if not atr_requested:
+        atr_status, atr = "NOT_REQUESTED", None
+    elif atr_value is None or pd.isna(atr_value):
+        atr_status, atr = "NATIVE_ATR_NOT_READY", None
+    else:
+        try:
+            atr = float(atr_value)
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise ValueError("INVALID_NATIVE_D1_ATR") from exc
+        if not isfinite(atr) or atr <= 0:
+            raise ValueError("INVALID_NATIVE_D1_ATR")
+        atr_status = "OK"
+    return D1WickReaction(
+        at=at, role=role, event=event, upper_wick=upper,
+        lower_wick=lower, body=body, defended_wick=wick,
+        wick_to_body=wick / body if body > 0 else None,
+        wick_to_range=wick / span if span > 0 else None,
+        wick_to_atr=wick / atr if atr is not None else None,
+        penetration_to_atr=penetration / atr if atr is not None else None,
+        close_defended_to_atr=close_defended / atr if atr is not None else None,
+        atr_status=atr_status)
+
+
 @dataclass(frozen=True)
 class BsuSourceEvidence:
     label: str
@@ -271,6 +352,9 @@ class BsuSourceEvidence:
     # back on defended side. An observation, not certified fake-out setup.
     original_two_bar_reclaim_dates: tuple = ()
     mirror_two_bar_reclaim_dates: tuple = ()
+    # Chronological D1 interaction geometry on the original / mirror role.
+    # Includes tail/body/ATR fractions, no extra data or signal approval.
+    wick_reactions: tuple = ()
     status: str = "AUTHOR_UNVERIFIED"
 
     @property
@@ -288,7 +372,7 @@ def _on_current_grid(price, tick):
     return abs(price / tick - round(price / tick)) <= 1e-5
 
 
-def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, swing_k):
+def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, swing_k, atr_column=None):
     """Inspect confirmed FIRST/LAST RAW swing prices, no future M5.
 
     Inputs must be existing native closed RAW D1 bars, a native-created Level,
@@ -319,6 +403,9 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
         if not pd.to_numeric(d1_asof[field], errors="coerce").map(isfinite).all():
             raise ValueError("INVALID_RAW_D1_OHLC")
     bars = d1_asof[["open", "high", "low", "close"]].astype(float)
+    if atr_column is not None and (not isinstance(atr_column, str)
+                                   or atr_column not in d1_asof.columns):
+        raise ValueError("NATIVE_D1_ATR_COLUMN_REQUIRED")
     if ((bars.min(axis=1) <= 0).any()
             or (bars.high < bars[["open", "close", "low"]].max(axis=1)).any()
             or (bars.low > bars[["open", "close", "high"]].min(axis=1)).any()):
@@ -359,6 +446,7 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
         same, mirror_exact, mirror_pierced = [], [], []
         original_reclaim, mirror_reclaim, mirror_closed_through, mirror_range_cross = [], [], [], []
         original_two_bar, mirror_two_bar = [], []
+        wick_reactions = []
         on_grid = _on_current_grid(p, tick)
         # A native tick is used solely for price classification; not for
         # widening an author's level or excusing missing exact BPU1.
@@ -366,6 +454,13 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
         for j in range(from_idx, len(bars)):
             v = float(bars.iloc[j][original_field])
             candle = bars.iloc[j]
+            role = (original if dates[j] < level.valid_from else
+                    ("support" if original == "resistance" else "resistance"))
+            raw_atr = d1_asof.iloc[j][atr_column] if atr_column is not None else None
+            reaction = _d1_wick_reaction(
+                candle, p, tick, role, dates[j], raw_atr, atr_column is not None)
+            if reaction is not None:
+                wick_reactions.append(reaction)
             # A TWO-CLOSED-D1 reentry is established only after the second
             # bar closes. Keep both bars within the SAME chronological role:
             # old resistance/support or new mirror support/resistance.
@@ -425,5 +520,6 @@ def frozen_mirror_source_evidence(d1_asof, level, trace, *, session, tick_size, 
             mirror_close_through_dates=tuple(mirror_closed_through),
             mirror_range_cross_dates=tuple(mirror_range_cross),
             original_two_bar_reclaim_dates=tuple(original_two_bar),
-            mirror_two_bar_reclaim_dates=tuple(mirror_two_bar)))
+            mirror_two_bar_reclaim_dates=tuple(mirror_two_bar),
+            wick_reactions=tuple(wick_reactions)))
     return tuple(evidence)

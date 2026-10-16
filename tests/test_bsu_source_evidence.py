@@ -191,11 +191,85 @@ def test_original_support_to_mirror_resistance_symmetric_two_bar():
     assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
 
 
+def test_tail_geometry_uses_closed_d1_body_and_lean_atr_snapshots():
+    d1, level, trace, idx = _sample()
+    d1["atr14"] = 5.0
+    # Mirror support at FIRST price 105. O=105, L=103, C=106.
+    result = _run(d1, level, trace, atr_column="atr14")[0]
+    event = next(x for x in result.wick_reactions if x.at == idx[18].date())
+    assert (event.role, event.event) == ("support", "TAIL_ONLY_RECLAIM")
+    assert event.body == pytest.approx(1.0)
+    assert event.defended_wick == pytest.approx(2.0)
+    assert event.wick_to_body == pytest.approx(2.0)
+    assert event.wick_to_atr == pytest.approx(0.4)
+    assert event.penetration_to_atr == pytest.approx(0.4)
+    assert event.wick_to_range == pytest.approx(0.5)
+    assert event.close_defended_to_atr == pytest.approx(0.2)
+    assert event.atr_status == "OK"
+    assert result.status == "AUTHOR_UNVERIFIED" and not result.can_trade
+
+
+def test_body_cross_return_not_mislabeled_tail_only():
+    d1, level, trace, idx = _sample()
+    d1["atr14"] = 5.0
+    # Candle body crosses the line 105: O=104, C=106, low=103.
+    d1.loc[idx[19], ["open", "high", "low", "close"]] = [104., 108., 103., 106.]
+    event = next(x for x in _run(
+        d1, level, trace, atr_column="atr14")[0].wick_reactions
+        if x.at == idx[19].date())
+    assert event.event == "BODY_CROSS_RECLAIM"
+    assert event.defended_wick == pytest.approx(1.0)
+    assert event.wick_to_body == pytest.approx(0.5)
+    assert event.wick_to_atr == pytest.approx(0.2)
+
+
+def test_resistance_reclaim_measures_upper_shadow():
+    from strategy.levels import _d1_wick_reaction
+    candle = pd.Series(dict(open=98., high=102., low=96., close=97.))
+    event = _d1_wick_reaction(
+        candle, 100., 0.01, "resistance", date(2024, 5, 1), 5.0, True)
+    assert (event.role, event.event) == ("resistance", "TAIL_ONLY_RECLAIM")
+    assert event.upper_wick == pytest.approx(4.0)
+    assert event.lower_wick == pytest.approx(1.0)
+    assert event.wick_to_body == pytest.approx(4.0)
+    assert event.wick_to_atr == pytest.approx(0.8)
+    assert event.close_defended_to_atr == pytest.approx(0.6)
+
+
+def test_doji_has_undefined_tail_divided_by_body_not_infinity():
+    from strategy.levels import _d1_wick_reaction
+    candle = pd.Series(dict(open=101., high=104., low=98., close=101.))
+    event = _d1_wick_reaction(
+        candle, 100., 0.01, "support", date(2024, 5, 1), 5., True)
+    assert event.body == 0.0 and event.wick_to_body is None
+    assert event.wick_to_atr == pytest.approx(0.6)
+    assert event.event == "TAIL_ONLY_RECLAIM"
+
+
+def test_atr_missing_never_fabricated_and_invalid_fails_closed():
+    d1, level, trace, idx = _sample()
+    out = _run(d1, level, trace)[0]
+    event = next(e for e in out.wick_reactions if e.at == idx[18].date())
+    assert event.atr_status == "NOT_REQUESTED" and event.wick_to_atr is None
+    with pytest.raises(ValueError, match="NATIVE_D1_ATR_COLUMN_REQUIRED"):
+        _run(d1, level, trace, atr_column="atr14")
+    d1["atr14"] = 5.0
+    d1.loc[idx[18], "atr14"] = float("nan")
+    event = next(e for e in _run(
+        d1, level, trace, atr_column="atr14")[0].wick_reactions
+        if e.at == idx[18].date())
+    assert event.atr_status == "NATIVE_ATR_NOT_READY"
+    assert event.wick_to_atr is None
+    d1.loc[idx[18], "atr14"] = 0.
+    with pytest.raises(ValueError, match="INVALID_NATIVE_D1_ATR"):
+        _run(d1, level, trace, atr_column="atr14")
+
+
 def test_no_orders_market_data_or_median_price_selection():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "strategy" /
            "levels.py").read_text(encoding="utf-8")
-    src = src.split("# QWCT 3.5: standalone read-only inspection", 1)[1]
+    src = src.split("class D1WickReaction:", 1)[1]
     for forbidden in ("market_order(", "limit_order(", "stop_market_order(",
                       "qb.history(", "Resolution.MINUTE", "Resolution.SECOND",
                       "Resolution.TICK", "ATR(", "np.median("):

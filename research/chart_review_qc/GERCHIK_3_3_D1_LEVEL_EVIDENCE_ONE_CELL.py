@@ -361,7 +361,8 @@ for case in CASES:
         # BSU approval, not BPU1, no new history queries and no orders.
         for e in frozen_mirror_source_evidence(
                 d1,lvl,trace,session=SESSION.date(),
-                tick_size=tick,swing_k=cfg.swing_k):
+                tick_size=tick,swing_k=cfg.swing_k,
+                atr_column=f"atr{cfg.atr_period}"):
             print(f"QWCT 3.5 SOURCE WICK EVIDENCE {ticker} {e.label} "
                   f"source={e.source_date} confirmed={e.confirmed_date} "
                   f"price={e.price:.6f} grid={e.current_grid} "
@@ -378,6 +379,27 @@ for case in CASES:
                   "TWO_BAR_REENTRY_NOT_CERTIFIED_FALSE_BREAK "
                   "EXACT_D1_WICKS_ARE_NOT_A_LEVEL_VETO "
                   "AUTHOR_UNVERIFIED NOT_BPU1 NO_ORDERS")
+            # Tail length = real D1 OHLC geometry; do not manufacture author
+            # thresholds, and never call this a confirmed BSU/BPU1.
+            observations = e.wick_reactions
+            tail_only = [x for x in observations if x.event == "TAIL_ONLY_RECLAIM"]
+            body_cross = [x for x in observations if x.event == "BODY_CROSS_RECLAIM"]
+            strong_tail = [x.wick_to_atr for x in tail_only
+                           if x.wick_to_atr is not None]
+            print(f"QWCT 3.7 D1 TAIL GEOMETRY {ticker} {e.label} "
+                  f"observed={len(observations)} "
+                  f"tail_only_reclaim={len(tail_only)} "
+                  f"body_cross_reclaim={len(body_cross)} "
+                  f"max_tail_vs_historical_LEAN_ATR="
+                  f"{max(strong_tail):.3f}" if strong_tail else
+                  f"QWCT 3.7 D1 TAIL GEOMETRY {ticker} {e.label} "
+                  f"observed={len(observations)} "
+                  f"tail_only_reclaim={len(tail_only)} "
+                  f"body_cross_reclaim={len(body_cross)} "
+                  "max_tail_vs_historical_LEAN_ATR=UNKNOWN")
+            print(f"QWCT 3.7 TAIL DATES {ticker} {e.label} "
+                  f"{','.join(map(str,(x.at for x in tail_only))) or 'NONE'} "
+                  "NO_AUTO_STRONG_WEAK_NO_AUTHOR_BSU_NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "
               "author_BSU_price=UNKNOWN price_reference=UNKNOWN "

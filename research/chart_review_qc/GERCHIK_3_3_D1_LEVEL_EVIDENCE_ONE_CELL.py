@@ -296,7 +296,83 @@ def price_hypotheses(d1,level,trace,side,tick):
               "NOT_AUTHOR_BSU / NOT_BPU1")
     return prices,(breach_at,breach),(retest_at,retest)
 
-def plot_d1_evidence(case,d1,prices,breach,retest):
+# QWCT 3.8: read-only mapping for annotation of ALREADY VERIFIED frozen D1.
+# Never use these rendering records for ranking, screening or author BSU.
+def chart_reaction_markers(d1,evidences):
+    if (not isinstance(d1,pd.DataFrame) or
+            not isinstance(d1.index,pd.DatetimeIndex) or
+            d1.index.tz is None or not d1.index.is_unique or
+            not d1.index.is_monotonic_increasing):
+        raise ValueError("QWCT38_INVALID_FROZEN_D1_INDEX")
+    by_day={}
+    for i,stamp in enumerate(d1.index):
+        if stamp.date() in by_day:
+            raise ValueError("QWCT38_DUPLICATE_D1_SESSION")
+        by_day[stamp.date()]=(stamp,d1.iloc[i])
+    out=[]
+    for e in evidences:
+        if (e.label not in ("FIRST_SWING","LAST_SWING") or
+                e.status!="AUTHOR_UNVERIFIED" or e.can_trade):
+            raise ValueError("QWCT38_ONLY_UNVERIFIED_SOURCES")
+        if not e.source_date in by_day:
+            raise ValueError("QWCT38_SOURCE_MISSING")
+        if not e.confirmed_date in by_day:
+            raise ValueError("QWCT38_CONFIRMATION_MISSING")
+        if not e.price>0:
+            raise ValueError("QWCT38_INVALID_SOURCE_PRICE")
+        for obs in e.wick_reactions:
+            if obs.event not in ("TAIL_ONLY_RECLAIM","BODY_CROSS_RECLAIM",
+                                  "CLOSED_WRONG_SIDE"):
+                continue  # 'TOUCH_OR_STRADDLE' has no approved annotation.
+            if obs.at not in by_day or obs.at <= e.confirmed_date:
+                raise ValueError("QWCT38_NONCAUSAL_WICK_DATE")
+            stamp,candle=by_day[obs.at]
+            if obs.role not in ("support","resistance"):
+                raise ValueError("QWCT38_INVALID_D1_ROLE")
+            # Green/orange: show the side actually defended (tip of wick).
+            # Red: the CLOSE that ended on the wrong side of the level.
+            price=(float(candle.close) if obs.event=="CLOSED_WRONG_SIDE"
+                   else float(candle.low) if obs.role=="support"
+                   else float(candle.high))
+            if not float(candle.low)<=price<=float(candle.high):
+                raise ValueError("QWCT38_EVENT_OUTSIDE_CANDLE")
+            body_ratio=("N/A" if obs.wick_to_body is None else
+                        f"{obs.wick_to_body:.2f}")
+            atr_ratio=("N/A" if obs.wick_to_atr is None else
+                       f"{obs.wick_to_atr:.2f}")
+            tip=(f"source={e.label} @ {e.price:.4f}<br>"
+                 f"date={obs.at}; role={obs.role}<br>"
+                 f"event={obs.event}<br>"
+                 f"tail/body={body_ratio}; tail/native D1 ATR={atr_ratio}<br>"
+                 f"OHLC={candle.open:.4f}/{candle.high:.4f}/"
+                 f"{candle.low:.4f}/{candle.close:.4f}<br>"
+                 "OBSERVATION ONLY, NOT APPROVED BSU/BPU1")
+            out.append(dict(at=stamp,date=obs.at,kind=obs.event,
+                            y=price,source=e.label,role=obs.role,
+                            tip=tip))
+        # Purple: the SECOND closed D1 candle of a two-bar reentry.
+        # This might have no wick intersection and must be marked at its
+        # actual close, not inferred from a wick signal.
+        for role,events in (
+                ("ORIGINAL",e.original_two_bar_reclaim_dates),
+                ("MIRROR",e.mirror_two_bar_reclaim_dates)):
+            for at in events:
+                if at not in by_day or at <= e.confirmed_date:
+                    raise ValueError("QWCT38_NONCAUSAL_TWO_BAR_DATE")
+                stamp,candle=by_day[at]
+                tip=(f"source={e.label} @ {e.price:.4f}<br>"
+                     f"date={at}; phase={role}<br>"
+                     "event=TWO_CLOSED_D1_REENTRY (second close)<br>"
+                     f"OHLC={candle.open:.4f}/{candle.high:.4f}/"
+                     f"{candle.low:.4f}/{candle.close:.4f}<br>"
+                     "NOT AN AUTHOR-CERTIFIED FALSE BREAK / BPU1")
+                out.append(dict(at=stamp,date=at,kind="TWO_BAR_REENTRY",
+                                y=float(candle.close),source=e.label,
+                                role=role,tip=tip))
+    return tuple(out)
+
+
+def plot_d1_evidence(case,d1,prices,breach,retest,markers):
     # Exactly the SAME historical candles as the ORIGINAL QWCT 3.0
     # morning freeze. No candle from 2024-06-03 or later appears.
     fig=make_subplots(rows=2,cols=1,row_heights=[.44,.56],
@@ -305,6 +381,12 @@ def plot_d1_evidence(case,d1,prices,breach,retest):
                                       "EVENT REGION D1 ONLY; no future M5"))
     recent=d1.loc[d1.index>=d1.index[max(0,len(d1)-85)]]
     datasets=(d1,recent)
+    reactions=(
+        ("TAIL_ONLY_RECLAIM","Tail-only wick reclaim","forestgreen","circle"),
+        ("BODY_CROSS_RECLAIM","Body-cross reclaim","darkorange","diamond"),
+        ("CLOSED_WRONG_SIDE","D1 close wrong side","firebrick","x"),
+        ("TWO_BAR_REENTRY","Two D1 close reentry","darkviolet","star"),
+    )
     for row,frame in enumerate(datasets,start=1):
         fig.add_trace(go.Candlestick(
             x=frame.index,open=frame["open"],high=frame["high"],
@@ -326,7 +408,7 @@ def plot_d1_evidence(case,d1,prices,breach,retest):
         for event,title,col,field in (
             (prices[0][1],"FIRST D1 swing","crimson",prices[0][3]),
             (prices[1][1],"LAST D1 swing","darkorange",prices[1][3]),
-            (breach[0],"D1 close-through breach","darkviolet","close"),
+            (breach[0],"D1 close-through breach","gray","close"),
             (retest[0],"D1 role reversal retest","forestgreen",
              prices[3][3])):
             if event in frame.index:
@@ -335,13 +417,30 @@ def plot_d1_evidence(case,d1,prices,breach,retest):
                     mode="markers",name=title,showlegend=(row==1),
                     marker=dict(color=col,size=12,symbol="diamond")),
                     row=row,col=1)
+        # Four distinct event layers; legend toggles both FIRST and LAST
+        # candidates. Events before the zoom window stay on the full panel.
+        for kind,label,color,symbol in reactions:
+            subset=[p for p in markers if p["kind"]==kind and
+                    p["at"] in frame.index]
+            if not subset:
+                continue
+            fig.add_trace(go.Scatter(
+                x=[p["at"] for p in subset],
+                y=[p["y"] for p in subset],
+                mode="markers",name=label,legendgroup=kind,
+                showlegend=(row==1),
+                marker=dict(color=color,symbol=symbol,size=9,
+                            line=dict(width=1,color="white"),opacity=.85),
+                text=[p["tip"] for p in subset],
+                hovertemplate="%{text}<extra></extra>"),row=row,col=1)
     fig.update_xaxes(rangeslider_visible=False)
     fig.update_layout(
-        width=1160,height=940,
-        title=f"QWCT 3.3 {case['ticker']} / 2024-06-03 "
-              f"{case['decision']} / ALTERNATIVE D1 PRICES NOT APPROVED BSU",
-        legend=dict(orientation="h",y=1.12),
-        hovermode="x unified")
+        width=1440,height=980,margin=dict(t=125,r=270,b=60,l=65),
+        title=f"QWCT 3.8 {case['ticker']} / 2024-06-03 "
+              f"{case['decision']} / D1 REACTIONS NOT APPROVED BSU",
+        legend=dict(orientation="v",x=1.02,y=1.0,
+                    bgcolor="rgba(255,255,255,0.9)"),
+        hovermode="closest")
     fig.show()
 
 for case in CASES:
@@ -359,10 +458,11 @@ for case in CASES:
         prices,breach,retest=price_hypotheses(d1,lvl,trace,side,tick)
         # QWCT 3.5: actual already-fetched as-of D1 observations, not author
         # BSU approval, not BPU1, no new history queries and no orders.
-        for e in frozen_mirror_source_evidence(
-                d1,lvl,trace,session=SESSION.date(),
-                tick_size=tick,swing_k=cfg.swing_k,
-                atr_column=f"atr{cfg.atr_period}"):
+        evidences=frozen_mirror_source_evidence(
+            d1,lvl,trace,session=SESSION.date(),
+            tick_size=tick,swing_k=cfg.swing_k,
+            atr_column=f"atr{cfg.atr_period}")
+        for e in evidences:
             print(f"QWCT 3.5 SOURCE WICK EVIDENCE {ticker} {e.label} "
                   f"source={e.source_date} confirmed={e.confirmed_date} "
                   f"price={e.price:.6f} grid={e.current_grid} "
@@ -400,7 +500,13 @@ for case in CASES:
             print(f"QWCT 3.7 TAIL DATES {ticker} {e.label} "
                   f"{','.join(map(str,(x.at for x in tail_only))) or 'NONE'} "
                   "NO_AUTO_STRONG_WEAK_NO_AUTHOR_BSU_NO_ORDERS")
-        plot_d1_evidence(case,d1,prices,breach,retest)
+        markers=chart_reaction_markers(d1,evidences)
+        print(f"QWCT 3.8 CHART MARKERS {ticker} "
+              + " ".join(f"{kind}={sum(p['kind']==kind for p in markers)}"
+                         for kind in ("TAIL_ONLY_RECLAIM","BODY_CROSS_RECLAIM",
+                                      "CLOSED_WRONG_SIDE","TWO_BAR_REENTRY"))
+              + " READ_ONLY NOT_AUTHOR_BSU NOT_BPU1 NO_ORDERS")
+        plot_d1_evidence(case,d1,prices,breach,retest,markers)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "
               "author_BSU_price=UNKNOWN price_reference=UNKNOWN "
               "fixed_or_floating=UNKNOWN author_graph_label=UNVERIFIED "

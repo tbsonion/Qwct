@@ -9,6 +9,10 @@ from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance, _confirmed_swings
 from strategy.levels import frozen_mirror_source_evidence
 from strategy.indicators import observe_d1_level_reactions, D1_REACTION_KINDS
+from strategy.indicators import (
+    discover_bsu_price_candidates, audit_author_bsu_labels,
+    audit_author_reaction_labels,
+)
 from strategy.indicators import global_trend, trend_direction
 from strategy import passes_gerchik_screener
 from datetime import datetime, timedelta
@@ -30,6 +34,11 @@ CASES=[
     dict(ticker="MSFT",cluster=415.5900,decision="NEGATIVE_ROLE_CONTROL"),
 ]
 cfg=StrategyConfig()
+# IMPORTANT: these are EMPTY because no authenticated per-ticker D1 annotated
+# source-bar / price / dated-reaction labels for the 2024-06-03 cohort exist.
+# Never guess them from unrelated Brent charts or from synthetic BSU examples.
+AUTHOR_BSU_MARKUPS = {}     # ticker -> tuple[GerchikChartLabel, ...]
+AUTHOR_REACTION_MARKUPS = {}  # ticker -> tuple[GerchikChartLabel, ...]
 qb=QuantBook()
 qb.set_start_date(2024,7,1)
 qb.set_end_date(2024,7,2)
@@ -583,6 +592,40 @@ for case in CASES:
             print(f"QWCT 3.9 ALL TEN D1 REACTIONS {ticker} {e.label} "
                   + counts + " HEURISTIC_NOT_GERCHIK_APPROVAL NO_ORDERS")
         taxonomy_marks=chart_taxonomy_markers(d1,ten)
+        # QWCT 4.0: original historical RAW OHLC prices ONLY; production
+        # ATR-cluster software median cannot be used as a "fixed author BSU".
+        proposals=discover_bsu_price_candidates(
+            d1,session=SESSION.date(),swing_k=cfg.swing_k,
+            tick_size=tick,atr_column=f"atr{cfg.atr_period}")
+        # A fixed historical software cohort center is used to FILTER
+        # display, NEVER to construct or auto-approve these candidates.
+        ref=float(case["cluster"])
+        grouped={}
+        for h in proposals:
+            grouped[h.origin]=grouped.get(h.origin,0)+1
+        shortlist=sorted(proposals,key=lambda h:(
+            abs(h.price-ref),h.known_on,h.source_date,h.price))[:12]
+        print(f"QWCT 4.0 RAW BSU PRICE SOURCES {ticker} total={len(proposals)} "
+              + " ".join(f"{k}={v}" for k,v in sorted(grouped.items()))
+              + " NO_MEDIAN_AS_AUTHOR_BSU / NO_ORDERS")
+        for h in shortlist:
+            print(f"QWCT 4.0 CANDIDATE {ticker} "
+                  f"source={h.origin} role={h.role} field={h.field} "
+                  f"source_bar={h.source_date} known_on={h.known_on} "
+                  f"RAW_price={h.price:.6f} grid={h.native_grid} "
+                  f"exact_D1_revisits={len(h.exact_d1_revisits)} "
+                  "AUTHOR_UNVERIFIED NOT_BPU1 NO_ORDERS")
+        bsu_audit=audit_author_bsu_labels(
+            proposals,tuple(AUTHOR_BSU_MARKUPS.get(ticker,())),
+            ticker=ticker,session=SESSION.date(),tick_size=tick)
+        react_audit=audit_author_reaction_labels(
+            tuple(ten),tuple(AUTHOR_REACTION_MARKUPS.get(ticker,())),
+            ticker=ticker,session=SESSION.date())
+        print(f"QWCT 4.0 MANUAL CHART AUDIT {ticker} "
+              f"source={bsu_audit.status} reactions={react_audit.status} "
+              f"source_hits={bsu_audit.matches}/{bsu_audit.labelled} "
+              f"reaction_hits={react_audit.matches}/{react_audit.labelled} "
+              "ACCURACY=UNKNOWN NO_AUTHOR_APPROVAL NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest,markers,taxonomy_marks)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "
               "author_BSU_price=UNKNOWN price_reference=UNKNOWN "

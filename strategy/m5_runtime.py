@@ -46,12 +46,12 @@ def process_m5(self, bar, time_index):
     # Frozen D1 levels only bound the relevant area; the candidate BSU
     # PRICE comes from an actual EARLIER RAW M5 high/low, not a D1 median.
     # Scanner does NOT promote a trading setup or construct a -30s TVX.
-    if state.get("session_levels") is not None:
+    if (state.get("session_levels") is not None
+            and state.get("daily_rows")
+            and state.get("_m5_source_error_date")!=self._session_date):
         try:
             scan=state.get("_m5_source_scanner")
             if scan is None or scan.session!=self._session_date:
-                if not state["daily_rows"]:
-                    raise ValueError("M5_BSU_MISSING_FROZEN_D1")
                 tick=float(self.securities[symbol].symbol_properties.minimum_price_variation)
                 scan=M5BsuSequenceScanner(
                     self.cfg,session=self._session_date,

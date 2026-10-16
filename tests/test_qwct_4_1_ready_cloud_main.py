@@ -30,3 +30,30 @@ def test_lean_cloud_backtest_driver_is_valid_python_and_no_missing_app_modules()
         assert disallowed not in text.lower()
     assert "BPU1_EXACT=" in text and "BPU2_CLOSED=" in text
     assert "SAME_SESSION_ONLY" in text
+
+
+def test_42_history_request_is_never_future_and_flushes_real_last_m5():
+    script=DRIVER.read_text(encoding="utf-8")
+    assert "SESSION,  # Only history known at Initialize (00:00 ET)." in script
+    assert "SESSION.replace(hour=9, minute=29)" not in script
+    assert 'state["consolidator"].scan(datetime(' in script
+    assert "ACTUAL_1M=" in script and "REJECTED_OR_UNPUBLISHED_M5=" in script
+    assert 'COMPLETE_M5=' in script
+    assert 'range(390)' in script and 'range(78)' in script
+
+
+def test_42_srpt_graph_marks_only_reproduced_native_m5_sources():
+    cell=DRIVER.with_name("QWCT_4_2_SRPT_M5_VISUAL_AUDIT_ONE_CELL.py")
+    source=cell.read_text(encoding="utf-8")
+    import ast
+    ast.parse(source, filename=str(cell))
+    assert '"SRPT"' in source
+    assert "123.51" in source and "123.87" in source
+    assert '("12:35","13:40","13:45")' not in source  # price is included
+    assert "12:35" in source and "13:40" in source and "13:45" in source
+    assert "14:15" in source and "14:35" in source and "14:40" in source
+    assert "FAIL_CLOSED_BPU2_NOT_REPRODUCED" in source
+    assert "OHLC" in source and "fig.show()" in source
+    assert "M5BsuSequenceScanner" in source
+    assert "market_order(" not in source.lower()
+    assert "set_holdings(" not in source.lower()

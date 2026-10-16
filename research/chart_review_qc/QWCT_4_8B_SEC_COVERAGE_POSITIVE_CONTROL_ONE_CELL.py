@@ -111,7 +111,7 @@ def audit_one(qb, ticker):
           f"max_gap_s={stats['max_interval_s']}",
           f"gaps_over_10s={stats['intervals_over_10s']}",
           f"traded_sec_per_minute={stats['per_minute']}",
-          f"strict_10s_gate_possible={stats['native_10s_gate_possible']}")
+          f"strict_10s_gate_possible={stats['native_10s_gate_possible'] and not rejected}")
     print("QWCT 4.8b WORST GAPS", ticker,
           [(a.strftime("%H:%M:%S"), b.strftime("%H:%M:%S"), gap)
            for a, b, gap in stats["worst_gaps"]])

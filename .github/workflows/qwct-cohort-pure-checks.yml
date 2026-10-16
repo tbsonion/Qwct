@@ -6,7 +6,7 @@ on:
     paths:
       - 'research/cohort_cloud/**'
       - 'research/universe_cloud/main.py'
-      - 'strategy/bsu_source_evidence.py'
+      - 'strategy/levels.py'
       - 'strategy/patterns_bsu.py'
       - 'strategy/native_m5_validation.py'
       - 'tests/test_m5_cohort_research.py'
@@ -25,7 +25,7 @@ on:
     paths:
       - 'research/cohort_cloud/**'
       - 'research/universe_cloud/main.py'
-      - 'strategy/bsu_source_evidence.py'
+      - 'strategy/levels.py'
       - 'strategy/patterns_bsu.py'
       - 'strategy/native_m5_validation.py'
       - 'tests/test_m5_cohort_research.py'

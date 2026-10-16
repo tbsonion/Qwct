@@ -1,4 +1,4 @@
-# QWCT — АКТУАЛЬНЫЙ TODO (16.10.2026) · после QWCT 5.4
+# QWCT — АКТУАЛЬНЫЙ TODO (16.10.2026) · после QWCT 5.6
 
 > **Этот блок — актуальный план.** Ниже сохранён исторический журнал 2.x–4.x с устаревшими формулировками «NEXT»; их не выполнять повторно. Текущий главный риск — не ошибки запуска LEAN, а **неизмеренная точность классификации реакций и правильности BSU по Герчику**. Торговый код и исполнение ордеров пока не меняем.
 
@@ -13,6 +13,16 @@
 - [x] **QWCT 5.4**: найдены 5 первичных видеозаписей с таймкодами тем; [реестр видео](research/chart_review_qc/QWCT_5_4_PRIMARY_GERCHIK_VIDEOS_RU.md). **Пока нет полной просмотренной и сверенной стенограммы.**
 - [x] **Новый эфир (источник подтверждён)**: [Alexander Gerchik + Екатерина Иванова, анализ лимитной позиции](https://www.youtube.com/watch?v=xcgp3h7xeus). В QWCT сохранены 12 таймкодов **из пользовательского конспекта**; прямое воспроизведение аудио/сверка разметки ещё открыты, автоматических изменений QWCT нет.
 
+## QWCT 5.6 — native order-flow data-gate (PR #42)
+
+- [x] [Матрица REQUIRED → AVAILABLE → QUALITY → READY → COST → DECISION](research/chart_review_qc/QWCT_5_6_READY_ORDER_FLOW_CAPABILITIES_RU.md): native VWAP/VolumeProfile/OI, trade/quote formats, Spectral Tick Flow Signal, готовые внешние решения и лицензии. VolumeProfile по bar Close — proxy, не exact footprint; native aggressor side не подтверждён.
+- [x] Выявлено ограничение диагностики 4.9: equity QUOTE tick по формату **односторонний**; требование обеих сторон отбрасывает нормальные updates. Прежние 80 rejects не доказывают отсутствие quotes. Пауза без сделки не доказывает потерю данных. Строгий SRPT TVX по-прежнему BLOCKED.
+- [x] [Одна самостоятельная Code Cell 5.6](research/chart_review_qc/QWCT_5_6_ORDER_FLOW_DATA_AUDIT_ONE_CELL.py), SRPT + SPY, bounded native RAW history, shape/condition/venue inventory и closed-M1 volume comparison. Всегда CVD_UNAVAILABLE / ORDER_FLOW_UNAVAILABLE; никакого собственного book/feed.
+- [x] **UNIT:** 17 новых тестов; полный suite **611 passed** локально; 24py package собран без изменений. **GitHub CI 2/2 success** на code commit `aa7f9e16`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38967152007), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38967152207). CI не является Cloud data proof.
+- [ ] **Следующее действие:** выполнить cell 5.6 целиком в новой Code Cell существующего `Qwct-M5-Cohort-Research/research.ipynb`, сохранить вывод SRPT/SPY. Cloud 5.6 **не запускался**. Если History откажет, сначала разобрать API/data/entitlement, не покупать подписку автоматически.
+- [ ] Aggressor / quote synchronization / NBBO scope / receive-time availability / source completeness остаются BLOCKED. Positive Limit Player Observer не реализован до evidence. SECOND/TICK документированы для Quant Researcher; текущие права аккаунта и точная цена UNKNOWN, прежние наблюдения 4.8–4.9 сохраняются.
+- [ ] Авторские правила по оригинальному аудио не проверены: caption-list HTTP 429, Rutube play-options HTTP 403. Оглавление перепроверено, но не заменяет стенограмму. DIRECT labels=0, accuracy UNKNOWN; CVD не обязательный универсальный фильтр.
+
 ## ПРИОРИТЕТ P0 — QWCT 5.5: первичное видео Герчика → конкретные проверяемые правила
 
 - [ ] **P0.1 Источник и говорящий.** Просмотреть/получить проверяемую стенограмму оригинальной записи [«Спрашивали? Отвечаем!» 02.05.2019](https://rutube.ru/video/dedf3a4a8dc25130a205d9c2d59bebb5/) с кадрами в обозначенных временных интервалах: **05:07** ЛП; **11:13** BSU/BPU; **12:30** поджатие; **13:50** пила M5; **20:20** сломанное поджатие; **21:30** ЛП; **27:50** правильность BSU/BPU; **33:00** условия ЛП; **37:10** дальний ретест. Эти времена — **по оглавлению**, содержимое пока не дословно проверено.
@@ -26,7 +36,7 @@
 
 - [ ] **P1.1 Аутентичные положительные + отрицательные примеры.** Разобрать оригинальные картинки [5192 — поджатие](https://gerchik.co/file/5192), [5179 — пила НЕ ЛП](https://gerchik.co/file/5179), [5349 — ЛП](https://gerchik.co/file/5349), [5360 — недостаточное накопление](https://gerchik.co/file/5360), найти первичный комментарий Герчика для каждой. Сейчас это **редакционные конспекты разборов**, не полноценные timestamped M5 ground-truth.
 - [ ] **P1.2 Time-aligned ground truth.** Для оценочных меток нужны независимые `symbol/market/date/M5 bar_end/price/side/timeframe`, заранее зафиксированный BSU/D1-уровень и источник (кадр/видео+таймкод). Не подменять crypto/MOEX/CFD ценами US equities или современной нормализацией. Неопределённые примеры пометить `UNMATCHABLE`.
-- [ ] **P1.4 DATA-GATE order flow (новая независимая ветка, не замена P0).** Сначала сравнить **готовые** источники native trade/quote/aggressor-side, volume-at-price и OI по конкретным рынкам с учётом цен/entitlements, затем проверить покрытие секунд, синхронность котировок и объёмов. Истинная CVD **не выводится** из M1/M5 OHLCV. На SRPT 4.8–4.9 секундный поток неполный, поэтому `ORDER_FLOW=UNAVAILABLE` до проверки. Не строить собственную систему, если нет проверенных данных и необходимости; этот блок — *future research*, без ордеров.
+- [ ] **P1.4 DATA-GATE order flow:** сравнение готовых возможностей завершено в QWCT 5.6 (см. выше); остались реальный Cloud inventory, completeness/синхронизация/классификация агрессора. SRPT 4.8–4.9 не прошёл строгий TVX, но sparse секунды сами по себе не доказывают потерю feed, а zero two-sided quotes не доказывает отсутствие односторонних updates. До проверки ORDER_FLOW_UNAVAILABLE; никакого CVD из OHLCV.
 - [ ] **P1.3 Accuracy report.** Только на matched native M5 вызвать [QWCT 5.2 evaluator](research/chart_review_qc/QWCT_5_2_AUTHOR_ACCURACY_EVALUATOR.py) и посчитать per-kind TP/FP/FN/TN, precision/recall; неразмеченные виды UNKNOWN, а не TN. До появления прямых наблюдений — `NOT_MEASURABLE_YET` (сейчас прямых меток **0**). Минимум 5 положительных и 5 отрицательных разметок на вид прежде чем публиковать процент; затем расширить выборку и оставить holdout.
 
 ## ПРИОРИТЕТ P2 — изменения алгоритма только после P0/P1
@@ -44,7 +54,7 @@
 
 ## Stop / Go
 
-**Сейчас GO только для проверки оригинального видео и независимой ручной разметки.** FIXED BSU по Герчику ❌, точность 10 реакций по Герчику ❌/UNKNOWN, TVX −30s ❌, ордера/Schwab/Paper ❌, прибыльность ❌. **CI green означает корректность тестов, не точность торговой методики.**
+**Сейчас GO для проверки оригинального видео, независимой ручной разметки и изолированного read-only data audit 5.6.** FIXED BSU по Герчику ❌, точность 10 реакций по Герчику ❌/UNKNOWN, TVX −30s ❌, ордера/Schwab/Paper ❌, прибыльность ❌. **CI green означает корректность тестов, не точность торговой методики.**
 
 ---
 

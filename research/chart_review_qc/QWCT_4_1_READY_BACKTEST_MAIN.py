@@ -10,7 +10,8 @@ import pandas as pd
 
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session
-from strategy.patterns_bsu import Bar, M5BsuSequenceScanner, M5LevelReactionObserver
+from strategy.patterns_bsu import (Bar, M5BsuSequenceScanner, M5LevelReactionObserver,
+                                   FixedFloatingLimitObserver)
 
 ET = ZoneInfo("America/New_York")
 SESSION = datetime(2024, 6, 3)
@@ -84,6 +85,14 @@ class QwctM5SourceResearch(QCAlgorithm):
                     reaction_observers[key] = M5LevelReactionObserver(
                         zone.d1_price, zone.side, tick)
 
+            fixed_observers = {}
+            for zone in scan.zones:
+                rounded = round(zone.d1_price/tick)*tick
+                key = (zone.side, round(rounded/tick))
+                if key not in fixed_observers:
+                    fixed_observers[key] = FixedFloatingLimitObserver(
+                        rounded, zone.side, tick)
+
             # Manually update native LEAN consolidators. A full M5 requires
             # five actual non-fill-forward 1m bars before being examined.
             cons = TradeBarConsolidator(timedelta(minutes=5))
@@ -97,6 +106,8 @@ class QwctM5SourceResearch(QCAlgorithm):
                 "bpu2_examples": [],
                 "reaction_observers": reaction_observers,
                 "reaction_counts": {}, "reaction_logged": {},
+                "fixed_observers": fixed_observers,
+                "fixed_last": {}, "fixed_transitions": {},
             }
             self.debug(
                 f"QWCT 4.1 INIT {ticker} D1={len(frame)} "
@@ -147,6 +158,19 @@ class QwctM5SourceResearch(QCAlgorithm):
                         f"SIDE={reaction.side} BAR={reaction.bar_end} "
                         "D1_SOFTWARE_PROXY NOT_BPU1 NO_ORDERS")
                     printed[name] = printed.get(name, 0) + 1
+        for key, observer in state["fixed_observers"].items():
+            fixed = observer.observe(bar)
+            state["fixed_last"][key] = fixed
+            if fixed.status != "INDETERMINATE":
+                transition = (key, fixed.status)
+                if transition not in state["fixed_transitions"]:
+                    state["fixed_transitions"][transition] = 1
+                    self.debug(
+                        f"QWCT 4.5 LEVEL {ticker} {fixed.status} "
+                        f"PRICE={fixed.price:.4f} SIDE={fixed.side} "
+                        f"HITS={fixed.hits} PIERCES={fixed.adverse_pierces} "
+                        f"FIRST={fixed.source_end} "
+                        "FIXED_LIMIT_ONLY AUTHOR_UNVERIFIED NO_ORDERS")
         for event in events:
             # BPU1 events are common and are only bounded examples.
             # BPU2 must remain visible even after many preceding BPU1s.
@@ -215,3 +239,11 @@ class QwctM5SourceResearch(QCAlgorithm):
                 f"QWCT 4.4 REACTION SUMMARY {ticker} "
                 f"COUNTS={dict(sorted(state['reaction_counts'].items()))} "
                 "D1_SOFTWARE_PROXY SEPARATE_FROM_BPU NO_ORDERS")
+            status_counts = {}
+            for fixed in state["fixed_last"].values():
+                status_counts[fixed.status] = status_counts.get(fixed.status, 0) + 1
+            self.debug(
+                f"QWCT 4.5 FIXED_FLOATING SUMMARY {ticker} "
+                f"ZONES={len(state['fixed_last'])} "
+                f"COUNTS={dict(sorted(status_counts.items()))} "
+                "EXACT_LIMIT_ONLY NOT_ALL_BSU AUTHOR_UNVERIFIED NO_ORDERS")

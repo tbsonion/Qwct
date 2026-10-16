@@ -1,3 +1,5 @@
+**QWCT 4.6 — типы источников BSU (PR #29, CI 3/3):** добавлен независимый read-only `strategy/gerchik_level_types.py` с 8 семействами: TREND_TURN, HISTORICAL, MIRROR, LIMIT_PLAYER, PARANORMAL, CONSOLIDATION, GAP, FLOATING. Раздельные проверяемые кандидаты для лимитного уровня, точного исторического повторения, зеркальной смены роли и паранормального бара ≥2 ATR. Для TREND_TURN, CONSOLIDATION, GAP без подтверждённого происхождения статус `INDETERMINATE`; FLOATING отдельно. **Это ещё не полностью правильный FIXED BSU для всех моделей:** нет native QuantConnect-проверки, авторских размеченных графиков и интеграции в основной M5 scanner; модуль исключён из Cloud 24py package как независимое исследование. [PR #29](https://github.com/tbsonion/Qwct/pull/29). Следующее: подтверждение происхождения 3 неполных типов и тест на реальных D1/M5 с метками автора.
+
 # Qwct — TODO / Deep Research Roadmap
 
 ## CURRENT STATUS — 16.10.2026 · QWCT 4.3 (READ FIRST)

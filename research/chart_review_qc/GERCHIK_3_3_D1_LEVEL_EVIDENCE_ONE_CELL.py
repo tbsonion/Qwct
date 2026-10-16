@@ -8,7 +8,7 @@ from QuantConnect.Research import QuantBook
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance, _confirmed_swings
 from strategy.levels import frozen_mirror_source_evidence
-from strategy.levels import observe_d1_level_reactions, D1_REACTION_KINDS
+from strategy.indicators import observe_d1_level_reactions, D1_REACTION_KINDS
 from strategy.indicators import global_trend, trend_direction
 from strategy import passes_gerchik_screener
 from datetime import datetime, timedelta

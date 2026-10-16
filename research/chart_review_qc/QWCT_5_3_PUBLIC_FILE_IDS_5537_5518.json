@@ -1,0 +1,216 @@
+{
+  "schema": "QWCT_5_3_FILE_ID_DISCOVERY_V1",
+  "checked_on": "2026-10-16",
+  "first_id": 5537,
+  "last_id": 5518,
+  "method": "Single unauthenticated HTTPS GET and 16-byte signature probe for sequential IDs, from bounded GitHub Actions job 117180531960 (no files saved)",
+  "source_of_claim": "Actual 200 status and Content-Disposition headers, not OCR, graph interpretation or author approval",
+  "count": 20,
+  "counts_by_mime": {
+    "image/jpeg": 19,
+    "image/png": 1
+  },
+  "no_direct_m5_author_ground_truth_yet": true,
+  "entries": [
+    {
+      "id": 5537,
+      "url": "https://gerchik.co/file/5537",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "Brent_H4 58.jpg",
+      "filename_timeframe": "H4",
+      "size_bytes": 320600,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5536,
+      "url": "https://gerchik.co/file/5536",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "Brent_D1 59.jpg",
+      "filename_timeframe": "D1",
+      "size_bytes": 353928,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5535,
+      "url": "https://gerchik.co/file/5535",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "XAUUSD_H4 58.jpg",
+      "filename_timeframe": "H4",
+      "size_bytes": 298743,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5534,
+      "url": "https://gerchik.co/file/5534",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "XAUUSD_D1 58.jpg",
+      "filename_timeframe": "D1",
+      "size_bytes": 332087,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5533,
+      "url": "https://gerchik.co/file/5533",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "USDCAD_H4 60.jpg",
+      "filename_timeframe": "H4",
+      "size_bytes": 333276,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5532,
+      "url": "https://gerchik.co/file/5532",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "USDCAD_D1 64.jpg",
+      "filename_timeframe": "D1",
+      "size_bytes": 358443,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5531,
+      "url": "https://gerchik.co/file/5531",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "USDJPY_H4 63.jpg",
+      "filename_timeframe": "H4",
+      "size_bytes": 353382,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5530,
+      "url": "https://gerchik.co/file/5530",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "USDJPY_D1 63.jpg",
+      "filename_timeframe": "D1",
+      "size_bytes": 354662,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5529,
+      "url": "https://gerchik.co/file/5529",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "GBPUSD_H4 62.jpg",
+      "filename_timeframe": "H4",
+      "size_bytes": 324041,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5528,
+      "url": "https://gerchik.co/file/5528",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "GBPUSD_D1 62.jpg",
+      "filename_timeframe": "D1",
+      "size_bytes": 352157,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5527,
+      "url": "https://gerchik.co/file/5527",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "EURUSD_H4 62.jpg",
+      "filename_timeframe": "H4",
+      "size_bytes": 313395,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5526,
+      "url": "https://gerchik.co/file/5526",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "EURUSD_D1 63.jpg",
+      "filename_timeframe": "D1",
+      "size_bytes": 339632,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5525,
+      "url": "https://gerchik.co/file/5525",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "сжато_1024x683_FOREX Technical Analysis (1) (6).jpg",
+      "filename_timeframe": null,
+      "size_bytes": 123998,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5524,
+      "url": "https://gerchik.co/file/5524",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "сжато_1024x683_Технічний_а%D",
+      "filename_timeframe": null,
+      "size_bytes": 128239,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5523,
+      "url": "https://gerchik.co/file/5523",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "сжато_1024x683_Технически�",
+      "filename_timeframe": null,
+      "size_bytes": 131618,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5522,
+      "url": "https://gerchik.co/file/5522",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "сжато_1024x683_англ (25).jpg",
+      "filename_timeframe": null,
+      "size_bytes": 135498,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5521,
+      "url": "https://gerchik.co/file/5521",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "сжато_1024x683_рус (18).jpg",
+      "filename_timeframe": null,
+      "size_bytes": 137528,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5520,
+      "url": "https://gerchik.co/file/5520",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "сжато_1024x683_укр (17).jpg",
+      "filename_timeframe": null,
+      "size_bytes": 136140,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5519,
+      "url": "https://gerchik.co/file/5519",
+      "http_status": 200,
+      "mime": "image/png",
+      "name": "1280_720_3 (17).png",
+      "filename_timeframe": null,
+      "size_bytes": 290151,
+      "direct_gerchik_m5_label_confirmed": false
+    },
+    {
+      "id": 5518,
+      "url": "https://gerchik.co/file/5518",
+      "http_status": 200,
+      "mime": "image/jpeg",
+      "name": "1024_683_eng.jpg",
+      "filename_timeframe": null,
+      "size_bytes": 668527,
+      "direct_gerchik_m5_label_confirmed": false
+    }
+  ]
+}

@@ -7,6 +7,7 @@ from AlgorithmImports import *
 from QuantConnect.Research import QuantBook
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance, _confirmed_swings
+from strategy.bsu_source_evidence import frozen_mirror_source_evidence
 from strategy.indicators import global_trend, trend_direction
 from strategy import passes_gerchik_screener
 from datetime import datetime, timedelta
@@ -356,6 +357,18 @@ for case in CASES:
         print(f"QWCT 3.3 NATIVE TICK {ticker} {tick:.6f}; "
               "source prices are AS-OF ORIGINAL RAW, no M1/M5 requests.")
         prices,breach,retest=price_hypotheses(d1,lvl,trace,side,tick)
+        # QWCT 3.5: actual already-fetched as-of D1 observations, not author
+        # BSU approval, not BPU1, no new history queries and no orders.
+        for e in frozen_mirror_source_evidence(
+                d1,lvl,trace,session=SESSION.date(),
+                tick_size=tick,swing_k=cfg.swing_k):
+            print(f"QWCT 3.5 SOURCE WICK EVIDENCE {ticker} {e.label} "
+                  f"source={e.source_date} confirmed={e.confirmed_date} "
+                  f"price={e.price:.6f} grid={e.current_grid} "
+                  f"same_source_wick={len(e.original_same_wick_dates)} "
+                  f"after_mirror_exact_D1_wick={len(e.mirror_exact_wick_dates)} "
+                  f"after_mirror_pierce_D1_wick={len(e.mirror_pierce_dates)} "
+                  "AUTHOR_UNVERIFIED NOT_BPU1 NO_ORDERS")
         plot_d1_evidence(case,d1,prices,breach,retest)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "
               "author_BSU_price=UNKNOWN price_reference=UNKNOWN "

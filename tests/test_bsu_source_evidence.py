@@ -96,6 +96,41 @@ def test_original_swing_and_available_from_are_verified():
         _run(d1, level, trace)
 
 
+
+def test_one_bar_mirror_wick_reclaim_is_different_from_close_through():
+    d1, level, trace, idx = _sample()
+    out = _run(d1, level, trace)[0]
+    # At 18: low breaches FIRST support at 105, but close recovers above.
+    assert idx[18].date() in out.mirror_wick_reclaim_dates
+    assert idx[18].date() not in out.mirror_close_through_dates
+    assert idx[18].date() in out.mirror_range_cross_dates
+    # A bar that simply stays wholly below the reference is NOT a bounce.
+    assert idx[16].date() in out.mirror_close_through_dates
+    assert idx[16].date() not in out.mirror_wick_reclaim_dates
+    assert idx[16].date() not in out.mirror_range_cross_dates
+    assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
+
+
+def test_original_resistance_overshoot_and_return_is_not_exact_touch():
+    d1, level, trace, idx = _sample()
+    # This historical wick crosses resistance, but its CLOSE is below.
+    d1.loc[idx[8], "high"] = 106.
+    out = _run(d1, level, trace)[0]
+    assert idx[8].date() in out.original_wick_reclaim_dates
+    assert idx[8].date() not in out.original_same_wick_dates
+    assert out.status == "AUTHOR_UNVERIFIED"
+
+
+def test_one_bar_mirror_close_through_not_mislabeled_as_reclaim():
+    d1, level, trace, idx = _sample()
+    d1.loc[idx[19], ["open","high","low","close"]] = [104.,107.,103.,104.]
+    out = _run(d1, level, trace)[0]
+    assert idx[19].date() in out.mirror_close_through_dates
+    assert idx[19].date() not in out.mirror_wick_reclaim_dates
+    assert idx[19].date() in out.mirror_range_cross_dates
+    assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
+
+
 def test_no_orders_market_data_or_median_price_selection():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "strategy" /

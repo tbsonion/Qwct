@@ -101,7 +101,7 @@ def test_bounce_requires_later_closed_d1_reaction_and_not_same_bar():
     idx,d1,e,trace=_fixture()
     out=_run(d1,e,trace)
     assert not any(x.kind=="BOUNCE" and x.observed_on==idx[5].date() for x in out)
-    d1.loc[idx[6],"close"]=101.0
+    d1.loc[idx[6],["low","close"]]=[100.5,101.0]
     assert not any(x.kind=="BOUNCE" and x.anchor_on==idx[5].date()
                    for x in _run(d1,e,trace))
 

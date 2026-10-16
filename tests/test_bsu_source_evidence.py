@@ -140,7 +140,9 @@ def test_mirror_two_closed_bar_reentry_requires_second_d1_close():
     out = _run(d1, level, trace)[0]
     assert idx[19].date() in out.mirror_close_through_dates
     assert idx[19].date() not in out.mirror_two_bar_reclaim_dates
-    assert out.mirror_two_bar_reclaim_dates == (idx[20].date(),)
+    assert idx[20].date() in out.mirror_two_bar_reclaim_dates
+    # The seed contains an earlier independent close reentry as well.
+    assert out.mirror_two_bar_reclaim_dates[-1] == idx[20].date()
     assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
 
 
@@ -183,7 +185,9 @@ def test_original_support_to_mirror_resistance_symmetric_two_bar():
     d1.loc[idx[20], ["open", "high", "low", "close"]] = [96., 97., 93., 94.]
     out = _run(d1, level, trace)[0]
     assert out.price == 95.
-    assert out.mirror_two_bar_reclaim_dates == (idx[20].date(),)
+    assert idx[20].date() in out.mirror_two_bar_reclaim_dates
+    # The seed contains an earlier independent close reentry as well.
+    assert out.mirror_two_bar_reclaim_dates[-1] == idx[20].date()
     assert out.status == "AUTHOR_UNVERIFIED" and not out.can_trade
 
 

@@ -1,5 +1,22 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## QWCT 3.1 — June 3 first-candidate ORIGINAL RAW source and actual LEAN M5 geometry (NEW; native run pending)
+
+**Ready-to-paste one cell:** [`MIRROR_JUNE03_RAW_D1_NATIVE_M5_ONE_CELL.py`](./MIRROR_JUNE03_RAW_D1_NATIVE_M5_ONE_CELL.py). In the **existing QuantConnect `Qwct-M5-Cohort-Research` project**, open **Research Notebook `research.ipynb`**, add one **new code cell** beneath the old AON/DELL cells, copy the complete new Python file, paste, and **Shift+Enter**. **Do not** overwrite the 3.0 Cloud `main.py`, change prior cells or rerun the 19-session June census.
+
+The 3.0 native June scan produced **92 mirror-level × stock-day proxies** passing D1 morning filters, zero executed orders or BPU checks. This follow-up preselects the **first session Jun 3, 2024** from the real frozen morning screening records, not from later intraday price action:
+- **AMAT** cluster median **$214.4600**, **NFLX $633.7750**, **SRPT $125.0000** — D1-morning LONG mirror research candidates, but **NOT confirmed Gerchik BSUs/trades**.
+- **MSFT $415.5900** — a **negative control** for new mirror role vs side/trend, selected from the same first day.
+
+Research single-cell code fetches **real native LEAN RAW `TradeBar` D1** up to **2024-06-03 09:29 ET**, builds exactly 180 prior closed bars with native **Wilder ATR14, SMA50, volume SMA20**, freezes the **exact prior observed cluster price** without searching for a new winner, checks all original Stage2/role/strength/trend/≤1 ATR D1 eligibility gates, validates two confirmed D1 swing indices via `_confirmed_swings`, and runs **independent** original support/resistance→mirror breach/retest chronology. It **prints the actual original `first_idx` RAW swing high/low and source date vs historical median** instead of inventing an exact BSU at the off-native-tick cluster median. If any candidate fails reproduction, fail closed and print `QWCT 3.1 ERROR`, not a new signal.
+
+Then it compares **native symbol minimum tick** and **RAW vs SCALED_RAW original source and final D1 basis** (end-time aligned, print match/rebased/unknown; never rewrite RAW from adjusted bars). Finally fetches **original observed RAW M1**, drives the **existing LEAN native `TradeBarConsolidator(timedelta(minutes=5))`** (not pandas resample), requests final 16:00 close scan only with five real source minutes, validates emitted M5 native duration/price/volume, and **excludes every M5 lacking five original native M1 observations**. Prints **actual exact original-source long low/short high wick touching to half native tick separately from mere M5 OHLC price straddles and median wick touches**. A gap in M1 source data is marked, never forward filled and never treated as conclusive absence of a BPU1. D1 source and M5 plots shown for all reproducible cases. No `BsuDetector`, BPU2, SEC/TICK TVX, order, fill or P&L inference.
+
+**Send output lines** `QWCT 3.1 FROZEN`, `QWCT 3.1 SOURCE`, `QWCT 3.1 PRICE`, `QWCT 3.1 NATIVE M5`, `QWCT 3.1 GEOMETRY`, and any `QWCT 3.1 ERROR`. Screenshots of **AMAT, NFLX, SRPT, MSFT** plotted graphs if available. We will first decide whether the real RAW original fixed level coincides with that cluster and whether 2024-06-03 M5 contains a valid exact source wick or only price-range crosses. No BPU1/BPU2 labels until approved actual author-level validation.
+
+**Development status:** code, static/pure geometry guard tests and workflow entries committed. **Not yet executed in native QuantConnect Research**; whether CI green is also **not yet confirmed**. Original 2.8/3.0 algorithms and production files unchanged.
+
+
 ## 2026-10-15 — Native mirror-level result VERIFIED; eligibility still open
 
 Real QuantConnect Research `MIRROR_AON_DELL_ONE_CELL.py` output has been submitted. **AON June12: 9 as-of D1 levels, five software `kind=mirror` levels with independent as-of `PROXY_VERIFIED` source/breach/retest trace** (prices **285.95, 312.97, 317.68, 317.945, 329.21**). **DELL Jun7: six levels, zero automatic mirrors**. Native ATR-based D1 cluster tolerance **1.3060** AON, **0.5519** DELL. Full native case table and cautious interpretation are in [`NATIVE_MIRROR_AON_DELL_JUNE_2024.md`](./NATIVE_MIRROR_AON_DELL_JUNE_2024.md). A mirror here is only an explanatory D1 **software proxy**, neither 1) a manual Gerchik-fixed level nor 2) a demonstrated near-price/trend-qualified active bounce setup or BPU1.

@@ -32,6 +32,15 @@ def test_lean_cloud_backtest_driver_is_valid_python_and_no_missing_app_modules()
     assert "SAME_SESSION_ONLY" in text
 
 
+def test_43_preflight_bpu2_not_hidden_by_first_bpu1_print_limit():
+    s=DRIVER.read_text(encoding="utf-8")
+    assert "bpu1_logged" in s and "bpu2_logged" in s
+    assert "BPU2_SAMPLES=" in s and "BPU2_SAMPLES_TRUNCATED=" in s
+    assert 'event.event == "BPU2_CLOSED"' in s
+    assert "events_logged" not in s
+    assert "PIERCED_REJECTS=" in s and "GAP_RESETS=" in s
+
+
 def test_42_history_request_is_never_future_and_flushes_real_last_m5():
     script=DRIVER.read_text(encoding="utf-8")
     assert "SESSION,  # Only history known at Initialize (00:00 ET)." in script

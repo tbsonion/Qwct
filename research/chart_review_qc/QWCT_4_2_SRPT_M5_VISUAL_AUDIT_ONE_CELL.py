@@ -100,20 +100,29 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
     print("QWCT 4.2 SRPT",price,"EXACT_CHRONOLOGY",
           "FOUND" if len(match)==1 else "MISSING_OR_AMBIGUOUS",
           "matches",len(match),"NO_AUTHOR_APPROVAL")
-    if len(match)!=1:
-        raise ValueError("FAIL_CLOSED_BPU2_NOT_REPRODUCED")
-    e=match[0]
-    actual=[by_end.get(et(ts)) for ts in
-            (e.source_end,e.bpu1_end,e.bpu2_end)]
-    if any(b is None for b in actual):
-        raise ValueError("FAIL_CLOSED_M5_CANDLE_MISSING")
-    for label,b in zip(("BSU source","BPU1 exact","BPU2 closed"),actual):
-        print(f"SRPT {price:.2f} {label} {fmt(b.ts)} "
-              f"O={b.open:.2f} H={b.high:.2f} "
-              f"L={b.low:.2f} C={b.close:.2f} V={b.volume:.0f}")
-    start=et(e.source_end)-timedelta(minutes=35)
-    stop=et(e.bpu2_end)+timedelta(minutes=30)
-    bars=[b for b in m5 if start<=et(b.ts)<=stop]
+    if len(match)>1:
+        raise ValueError("AMBIGUOUS_EVIDENCE")
+    at=lambda h: et(DAY.replace(hour=int(h[:2]),minute=int(h[3:])))
+    ts=[at(t) for t in (bsu,bpu1,bpu2)]
+    actual=[by_end.get(t) for t in ts]
+    if any(x is None for x in actual):
+        raise ValueError("MISSING_RECORDED_CANDLE")
+    prior=[x for x in m5 if ts[0]<et(x.ts)<ts[1]]
+    gaps=[t for t in pd.date_range(ts[0]+timedelta(minutes=5),
+          ts[1]-timedelta(minutes=5),freq="5min") if t not in by_end]
+    pierced=[x for x in prior if x.low<price-tick/2]
+    rejected=bool(gaps or pierced)
+    if rejected==bool(match):
+        raise ValueError("CONTRADICTORY_SOURCE_STATUS")
+    print("QWCT 4.3",price,"REJECTED" if rejected else "PASSES_SOFTWARE",
+          "prior_pierces=",[(fmt(x.ts),x.low) for x in pierced[:8]],
+          "missing_M5=",[fmt(t) for t in gaps],"NO_AUTHOR_APPROVAL")
+    for label,x in zip(("source","retouch","next_bar"),actual):
+        print("SRPT",price,label,fmt(x.ts),
+              "O",x.open,"H",x.high,"L",x.low,"C",x.close)
+    start=ts[0]-timedelta(minutes=35)
+    stop=ts[2]+timedelta(minutes=30)
+    bars=[x for x in m5 if start<=et(x.ts)<=stop]
     fig.add_trace(go.Candlestick(
         x=[et(b.ts) for b in bars],open=[b.open for b in bars],
         high=[b.high for b in bars],low=[b.low for b in bars],

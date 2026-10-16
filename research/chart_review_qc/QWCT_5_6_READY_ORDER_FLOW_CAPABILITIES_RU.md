@@ -1,3 +1,9 @@
+## QWCT 5.6 — Cloud output получен от пользователя (16.10.2026)
+
+[Сохранённый результат и границы доказательства](QWCT_5_6_CLOUD_DATA_AUDIT_RESULT_RU.md): SRPT **193 TRADE / 640 QUOTE**, SPY **2875 TRADE / 36576 QUOTE**. Все quote updates односторонние; **8/8** полных M1 объёмов совпали с tick sum. Native quote availability в этом окне подтверждена, предположение об отсутствии quotes снято. Полнота SIP, aggressor side, NBBO synchrony и receive-time delivery **не подтверждены**. CVD/positive limit-player observer/TVX по-прежнему BLOCKED. Это USER_SUPPLIED_CLOUD_OUTPUT, run ID не предоставлен; не независимый запуск агента.
+
+**Следующее:** исследовать официальные native quote semantics/reader и готовые механизмы до estimated trade classification. Cell 5.6 повторять не требуется; production файлы не заменять. Предыдущие ниже отметки PENDING описывают состояние до получения этого output.
+
 # QWCT 5.6 — готовые order-flow возможности, 16.10.2026
 
 **Решение:** GO для изолированного native data inventory; **BLOCKED для положительных limit-player/CVD подтверждений**. Исторические TRADE доступны по прошлому Cloud опыту 4.9; полнота/синхронизация QUOTE, классификация агрессора и текущие права аккаунта пока не доказаны. Новый Cloud запуск в этой сессии не выполнен: доступа к QuantConnect runtime среди подключённых инструментов нет. Ниже DOCUMENTED, CODE/UNIT и CLOUD OBSERVED разделены.

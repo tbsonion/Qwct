@@ -626,7 +626,7 @@ def observe_d1_level_reactions(
             evidence.confirmed_date not in dates):
         raise ValueError("INVALID_REACTION_TRACE_OR_PRICE")
     bars=d1_asof[["open","high","low","close"]].astype(float)
-    if (not bars.map(isfinite).all().all() or
+    if (not np.isfinite(bars.to_numpy(dtype=float)).all() or
             (bars.min(axis=1)<=0).any() or
             (bars.high < bars[["open","close","low"]].max(axis=1)).any() or
             (bars.low > bars[["open","close","high"]].min(axis=1)).any()):
@@ -683,6 +683,11 @@ def observe_d1_level_reactions(
         role,phase=role_at(i)
         if observation.role!=role:
             raise ValueError("REACTION_ROLE_MISMATCH")
+        native = _d1_wick_reaction(
+            bars.iloc[i], price, tick, role, dates[i],
+            d1_asof.iloc[i][atr_column], True)
+        if native is None or native.event != observation.event:
+            raise ValueError("STALE_REACTION_WICK_OR_BAR")
         if observation.event in ("TAIL_ONLY_RECLAIM","BODY_CROSS_RECLAIM"):
             record("WICK_RECLAIM",i,i,phase,"CLOSED_D1_WICK_RECLAIM")
             record("FALSE_BREAK_1BAR",i,i,phase,

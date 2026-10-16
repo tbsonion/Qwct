@@ -52,7 +52,8 @@ def test_42_srpt_graph_marks_only_reproduced_native_m5_sources():
     assert '("12:35","13:40","13:45")' not in source  # price is included
     assert "12:35" in source and "13:40" in source and "13:45" in source
     assert "14:15" in source and "14:35" in source and "14:40" in source
-    assert "FAIL_CLOSED_BPU2_NOT_REPRODUCED" in source
+    assert "CONTRADICTORY_SOURCE_STATUS" in source
+    assert "missing_M5=" in source and "prior_pierces=" in source
     assert "OHLC" in source and "fig.show()" in source
     assert "M5BsuSequenceScanner" in source
     assert "market_order(" not in source.lower()

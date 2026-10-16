@@ -39,7 +39,7 @@ class QwctM5SourceResearch(QCAlgorithm):
             symbol = equity.symbol
             daily = list(self.history[TradeBar](
                 symbol, SESSION - timedelta(days=335),
-                SESSION.replace(hour=9, minute=29),
+                SESSION,  # Only history known at Initialize (00:00 ET).
                 Resolution.DAILY, fill_forward=False,
                 data_normalization_mode=DataNormalizationMode.RAW))
             daily = [b for b in daily
@@ -83,7 +83,7 @@ class QwctM5SourceResearch(QCAlgorithm):
             self._research[ticker] = {
                 "symbol": symbol, "consolidator": cons, "scan": scan,
                 "minutes_seen": set(), "m5_count": 0,
-                "events_logged": 0,
+                "closed_m5_ends": set(), "events_logged": 0,
             }
             self.debug(
                 f"QWCT 4.1 INIT {ticker} D1={len(frame)} "
@@ -114,6 +114,7 @@ class QwctM5SourceResearch(QCAlgorithm):
                        not in state["minutes_seen"] for k in range(5))):
             return
         state["m5_count"] += 1
+        state["closed_m5_ends"].add(stamp)
         bar = Bar(
             ts=stamp.to_pydatetime(),
             open=float(closed.open), high=float(closed.high),
@@ -131,11 +132,38 @@ class QwctM5SourceResearch(QCAlgorithm):
                 state["events_logged"] += 1
 
     def on_end_of_algorithm(self):
+        # QuantConnect's timed consolidator normally waits for the NEXT
+        # minute's Update() to publish the prior completed M5. At 16:00
+        # there is no next regular-session minute, so explicitly Scan()
+        # the buffered ACTUAL bars at 16:01 (never synthesize prices).
         for ticker, state in self._research.items():
+            state["consolidator"].scan(datetime(
+                SESSION.year, SESSION.month, SESSION.day, 16, 1))
+            expected_minutes = [
+                _et(SESSION.replace(hour=9, minute=31)) + timedelta(minutes=i)
+                for i in range(390)
+            ]
+            missing_minutes = [
+                t.strftime("%H:%M") for t in expected_minutes
+                if t not in state["minutes_seen"]
+            ]
+            expected_ends = [
+                _et(SESSION.replace(hour=9, minute=35)) + timedelta(minutes=5*i)
+                for i in range(78)
+            ]
+            missing_m5 = [
+                t.strftime("%H:%M") for t in expected_ends
+                if t not in state["closed_m5_ends"]
+            ]
             scan = state["scan"]
             self.debug(
-                f"QWCT 4.1 SUMMARY {ticker} "
-                f"COMPLETE_M5={state['m5_count']} "
+                f"QWCT 4.2 DATA AUDIT {ticker} "
+                f"ACTUAL_1M={len(state['minutes_seen'])}/390 "
+                f"MISSING_1M={missing_minutes[:15]} "
+                f"REJECTED_OR_UNPUBLISHED_M5={missing_m5[:15]}")
+            self.debug(
+                f"QWCT 4.2 SUMMARY {ticker} "
+                f"COMPLETE_M5={state['m5_count']}/78 "
                 f"BPU1_EXACT={scan.bpu1_count} "
                 f"BPU2_CLOSED={scan.completed} "
                 "SAME_SESSION_ONLY AUTHOR_UNVERIFIED NO_ORDERS")

@@ -269,7 +269,7 @@ def test_no_orders_market_data_or_median_price_selection():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "strategy" /
            "levels.py").read_text(encoding="utf-8")
-    src = src.split("# QWCT 3.5: standalone read-only inspection", 1)[1]
+    src = src.split("class D1WickReaction:", 1)[1]
     for forbidden in ("market_order(", "limit_order(", "stop_market_order(",
                       "qb.history(", "Resolution.MINUTE", "Resolution.SECOND",
                       "Resolution.TICK", "ATR(", "np.median("):

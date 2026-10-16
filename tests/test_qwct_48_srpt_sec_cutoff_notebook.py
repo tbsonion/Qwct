@@ -29,7 +29,13 @@ def _lookup(tree, name):
 
 def _runtime():
     tree = ast.parse(CELL.read_text(encoding="utf-8"))
-    nodes = [_lookup(tree, "_duration_seconds"),
+    constants = {"SECOND", "BPU2_LENGTH", "PRECLOSE_GAP",
+                 "MAX_SECONDS", "MAX_UNOBSERVED_GAP"}
+    assignments = [n for n in tree.body if isinstance(n, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id in constants
+                           for t in n.targets)]
+    assert len(assignments) == len(constants)
+    nodes = [*assignments, _lookup(tree, "_duration_seconds"),
              _lookup(tree, "NativePrecloseSample"),
              _lookup(tree, "NativeSecondTvxWindow")]
     namespace = {

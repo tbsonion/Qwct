@@ -2,6 +2,8 @@
 
 ## CURRENT STATUS — 16.10.2026 · QWCT 4.3 (READ FIRST)
 
+**QWCT 4.5 — FIXED/FLOATING (PR #28, CI 3/3):** добавлен независимый `FixedFloatingLimitObserver` на закрытых native M5 для **строгого лимитного** уровня: `FIXED_LIMIT_CANDIDATE` (≥3 точных касания без проколов), `FLOATING_ZONE` (пробой ранее удерживаемой цены), `INDETERMINATE` (недостаточно данных). Пропуск M5 сбрасывает подтверждение; не подменяет `M5BsuSequenceScanner` и не считает проколом простое касание. Research Backtest выводит `QWCT 4.5 FIXED_FLOATING SUMMARY`. **ВАЖНО:** правила относятся к fixed LIMIT, не ко всем историческим/зеркальным/трендовым BSU. Поэтому универсальный «правильный FIXED BSU» и авторская точность **не подтверждены**, native 4.5 ещё не запускался. [PR #28](https://github.com/tbsonion/Qwct/pull/28).
+
 **QWCT 4.4 — отдельные реакции у уровня (PR #27, CI 3/3):** добавлен read-only `M5LevelReactionObserver` для `TOUCH_HOLD`, `WICK_PIERCE_RECLAIM`, `FIRST_CLOSE_BEYOND_LEVEL`, `TWO_BAR_FALSE_BREAK_RECLAIM`, `TWO_CLOSES_BEYOND_LEVEL`, `MIRROR_RETEST_AFTER_BREAK`, `RECLAIM_AFTER_SUSTAINED_BREAK`. Это **отдельная** классификация закрытых M5 возле уже известных D1 software-уровней: прокол хвостом не приравнивается к BPU1, ложный пробой не превращается в strict BSU; пропуск M5 обнуляет двухсвечный контекст. В исследовательском Backtest добавлены `QWCT 4.4 REACTION SUMMARY` по акциям. Авторская точность ❌; реальный QuantConnect 4.4 ещё не запускался. [PR #27](https://github.com/tbsonion/Qwct/pull/27).
 
 

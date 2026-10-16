@@ -1,5 +1,14 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## 2026-10-16 — QWCT 3.3 actual native first-run lookup error FIXED (requires rerun)
+
+Actual user's QuantConnect Research log: all four predeclared **AMAT/NFLX/SRPT/MSFT** cases successfully reproduced original `QWCT 3.3 FROZEN` eligibility and `SOURCE` RAW prices (including MSFT rejected role/trend control), then each failed at `HISTORICAL_D1_EVENT_NOT_IN_ASOF_FRAME_<breach date>` before printing any `D1 CANDIDATE` or D1 plots. The bug was purely **event-date lookup**: `audit_mirror` returns causal **calendar session dates** like `2024-05-15`, but original native LEAN daily D1 index can retain **non-midnight exchange-local time**. Old `asof_d1_event` compared a freshly constructed **midnight timestamp** with an existing complete native D1 timestamp; those are not equal despite same actual trading date. Neither 180 RAW D1 bars nor mirror causality was invalidated by this error.
+
+**Fixed** [`GERCHIK_3_3_D1_LEVEL_EVIDENCE_ONE_CELL.py`](./GERCHIK_3_3_D1_LEVEL_EVIDENCE_ONE_CELL.py): event date now matches **exactly one real native D1 index date** and returns the existing D1 row and original timestamp, with fail-close for missing/duplicate dates, timezone-naive or non-monotonic D1 index. **No fabricated midnight bar, forward-fill, M1/M5 fetch, new Gerchik rule, or changing original BSU.** Pure regression tests include non-midnight 16:00 ET native example and same-date duplicate fail. Local pandas reproduction of midnight mismatch performed, but actual corrected QuantConnect native Research notebook **not yet executed**.
+
+**One user action:** Replace only the **QWCT 3.3 notebook cell** with newest linked single-cell .py and run Shift+Enter. Original 3.1/3.2 code and files unaffected. Send `QWCT 3.3 HISTORICAL EVENTS`, `QWCT 3.3 D1 CANDIDATE`, `QWCT 3.3 MANUAL LABEL` or `QWCT 3.3 ERROR` and chart screenshots. Do not run a technical Backtest or re-fetch M5.
+
+
 ## QWCT 3.1 NATIVE RUN COMPLETED — original RAW source diverges from clustered D1 mirror median
 
 **Native QuantConnect Research Notebook chart/console evidence actually received** for preselected first-day June 3 **AMAT/NFLX/SRPT** and predeclared **MSFT negative control**. [Read the exact observed D1 source, native tick, RAW/SCALED_RAW and 5-minute wick findings](./NATIVE_JUNE03_RAW_SOURCE_M5_RESULT.md).

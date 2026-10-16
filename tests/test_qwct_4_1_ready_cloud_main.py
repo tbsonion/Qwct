@@ -32,6 +32,26 @@ def test_lean_cloud_backtest_driver_is_valid_python_and_no_missing_app_modules()
     assert "SAME_SESSION_ONLY" in text
 
 
+def test_43_preflight_bpu2_not_hidden_by_first_bpu1_print_limit():
+    s=DRIVER.read_text(encoding="utf-8")
+    assert "bpu1_logged" in s and "bpu2_logged" in s
+    assert "BPU2_SAMPLES=" in s and "BPU2_SAMPLES_TRUNCATED=" in s
+    assert 'event.event == "BPU2_CLOSED"' in s
+    assert "events_logged" not in s
+    assert "PIERCED_REJECTS=" in s and "GAP_RESETS=" in s
+
+
+def test_43_quantbook_and_backtest_diagnostics_use_same_real_minutes():
+    path=DRIVER.with_name("QWCT_4_1_READY_M5_RESEARCH.py")
+    source=path.read_text(encoding="utf-8")
+    ast.parse(source,filename=str(path))
+    assert "consolidator.scan(DAY.replace(hour=16, minute=1))" in source
+    assert "MISSING_1M=" in source and "MISSING_M5=" in source
+    assert "PIERCED_REJECTS=" in source and "GAP_RESETS=" in source
+    assert "range(390)" in source and "range(78)" in source
+    assert "market_order(" not in source.lower()
+
+
 def test_42_history_request_is_never_future_and_flushes_real_last_m5():
     script=DRIVER.read_text(encoding="utf-8")
     assert "SESSION,  # Only history known at Initialize (00:00 ET)." in script
@@ -56,5 +76,8 @@ def test_42_srpt_graph_marks_only_reproduced_native_m5_sources():
     assert "missing_M5=" in source and "prior_pierces=" in source
     assert "OHLC" in source and "fig.show()" in source
     assert "M5BsuSequenceScanner" in source
+    assert "M5_SOURCE_ROLE_UNKNOWN_OR_AMBIGUOUS" in source
+    assert "RESEARCH_ROLE_DOES_NOT_MATCH_NATIVE_BARS" in source
+    assert 'x.high>price+tick/2' in source
     assert "market_order(" not in source.lower()
     assert "set_holdings(" not in source.lower()

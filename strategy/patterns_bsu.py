@@ -443,8 +443,14 @@ class M5BsuSequenceScanner:
         if float(bar.volume)<=0:
             raise ValueError("M5_BSU_REQUIRES_TRADED_NATIVE_VOLUME")
         from zoneinfo import ZoneInfo
-        if now.astimezone(ZoneInfo("America/New_York")).date()!=self.session:
+        et_clock = now.astimezone(ZoneInfo("America/New_York"))
+        if et_clock.date()!=self.session:
             raise ValueError("M5_BSU_WRONG_SESSION")
+        # Native 5-minute completion times must be on exact ET :00/:05
+        # boundaries. Reject non-native/mislabeled M1 timestamps before
+        # they can become false historical source or BPU candles.
+        if (et_clock.minute%5 or et_clock.second or et_clock.microsecond):
+            raise ValueError("M5_BSU_INVALID_FIVE_MINUTE_END")
         if self._last is not None and now<=self._last:
             raise ValueError("M5_BSU_DUPLICATE_OR_OUT_OF_ORDER")
         # A missing native M5 bar breaks proof that the original BSU

@@ -226,6 +226,28 @@ def test_unbroken_fixed_support_remains_eligible_after_many_bars():
     assert result[0].source_end==FIRST
 
 
+def test_unaligned_native_m5_is_rejected_without_polluting_history():
+    scan=scanner()
+    first=bar(0)
+    invalid=Bar(FIRST+timedelta(minutes=1),100.2,100.5,100.,
+                100.2,timeframe="M5",volume=900.)
+    with pytest.raises(ValueError,match="M5_BSU_INVALID_FIVE_MINUTE_END"):
+        scan.observe(invalid)
+    assert not scan._history and scan._last is None
+    assert scan.observe(first)==()
+    assert len(scan._history)==1
+
+
+def test_utc_native_m5_end_still_valid_when_et_grid_aligned():
+    scan=scanner()
+    from datetime import timezone
+    source=bar(0)
+    utc=Bar(source.ts.astimezone(timezone.utc),source.open,source.high,
+            source.low,source.close,timeframe="M5",volume=source.volume)
+    assert scan.observe(utc)==()
+    assert scan.bpu1_count==0 and scan.completed==0
+
+
 def test_coverage_is_only_already_observed_same_day_m5():
     s=scanner()
     assert s.observe(bar(0))==()

@@ -94,13 +94,38 @@ for ticker in TICKERS:
             if not getattr(minute_bar, 'is_fill_forward', False):
                 minutes_seen.add(eastern(minute_bar.end_time))
                 consolidator.update(minute_bar)
+        # Without a later 1m update, the full 15:55-16:00 M5 remains
+        # buffered. Flush only genuine minute bars, never synthesize OHLC.
+        consolidator.scan(DAY.replace(hour=16, minute=1))
+        expected_minutes = [
+            eastern(DAY.replace(hour=9, minute=31)) + timedelta(minutes=i)
+            for i in range(390)]
+        missing_1m = [x.strftime("%H:%M") for x in expected_minutes
+                      if x not in minutes_seen]
+        expected_m5_ends = [
+            eastern(DAY.replace(hour=9, minute=35)) + timedelta(minutes=5*i)
+            for i in range(78)]
+        completed_ends = {eastern(b.ts) for b in m5_bars}
+        missing_m5 = [x.strftime("%H:%M") for x in expected_m5_ends
+                      if x not in completed_ends]
+        print("QWCT 4.3 DATA AUDIT", ticker,
+              "ACTUAL_1M=", len(minutes_seen), "/390",
+              "COMPLETE_M5=", len(m5_bars), "/78",
+              "MISSING_1M=", missing_1m[:15],
+              "MISSING_M5=", missing_m5[:15])
 
         evidence = []
         for completed in m5_bars:
             evidence.extend(scan.observe(completed))
-        print('native_complete_M5=', len(m5_bars),
+        print('QWCT 4.3 SUMMARY', ticker,
+              'native_complete_M5=', len(m5_bars),
               'BPU1_exact=', scan.bpu1_count,
-              'BPU2_closed=', scan.completed)
+              'BPU2_closed=', scan.completed,
+              'GAP_RESETS=', scan.rejected_counts.get(
+                  'M5_SOURCE_CONTINUITY_GAP_RESET',0),
+              'PIERCED_REJECTS=', scan.rejected_counts.get(
+                  'BSU_SOURCE_PIERCED_BEFORE_BPU1',0),
+              'AUTHOR_UNVERIFIED NO_ORDERS')
         for event in evidence[:20]:
             print(event.event,
                   'BSU_M5=', event.source_end,

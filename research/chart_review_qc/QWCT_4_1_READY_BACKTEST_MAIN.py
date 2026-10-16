@@ -92,7 +92,7 @@ class QwctM5SourceResearch(QCAlgorithm):
     def on_data(self, data):
         for ticker, state in self._research.items():
             symbol = state["symbol"]
-            if not data.bars.contains_key(symbol):
+            if symbol not in data.bars:
                 continue
             bar = data.bars[symbol]
             stamp = _et(bar.end_time)

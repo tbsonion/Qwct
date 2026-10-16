@@ -3,13 +3,14 @@
 Never authorizes trading, changes thresholds, fetches data or infers a TVX
 from closed candles. Caller provides native data and the frozen decision.
 """
-from datetime import datetime
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from .features import FEATURES, _coerce
 from .signals import GATE_IDS, build_intent
+from .sessions import SessionPolicy
 
 ET = ZoneInfo("America/New_York")
 
@@ -130,7 +131,12 @@ def audit_pipeline(decision, market, observed_at, cfg, *, equity=25000.0):
         report["level_source"] = str(decision.level.source)
         report["d1_bars"] = len(d1)
         report["m5_bars"] = len(m5)
-        if blockers:
+        entry_at = at-timedelta(seconds=30) if decision.model == "bounce" else at
+        allowed, why = SessionPolicy(cfg).is_entry_allowed(decision.model, entry_at.to_pydatetime())
+        report["entry_window"] = {"passed": allowed, "at": entry_at.isoformat(), "reason": why}
+        if not allowed:
+            blockers.append("SESSION_ENTRY_WINDOW_FALSE")
+        if any(x != "SESSION_ENTRY_WINDOW_FALSE" for x in blockers):
             return report
         # Do not let the intraday builder see a mutable/current D1 view.
         from .data import MarketData

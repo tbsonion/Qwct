@@ -1,5 +1,14 @@
 # QWCT 3.2 — Original RAW D1 source / tick / price basis / repeat-lineage census
 
+## Native QWCT 3.2 June 2024 — COMPLETE (2026-10-16)
+
+The second QuantConnect native run **`72525e4a13533ad65dd156a1cfc70073`** completed normally under the Free log cap (LEAN v2.5.0.0.18184). [**Full first-party observed source/basis count report**](./NATIVE_JUNE_2024_COMPLETE_RESULT.md). The original QWCT3.0 PIT baseline **matched exactly**: 19 market days, 20 callbacks (14 strict / 5 verified next-session), 950 ticker-day memberships, 949 valid native D1, 861 Stage2, 1,431 automatic mirrored level×day rows, **92** first-gate-research-eligible mirror level×day records.
+
+**Source result:** all **92/92 confirmed** original RAW D1 extrema; **87 on** current symbol native price grid, **5 off**; **65 RAW/SCALED_RAW source-and-latest D1 price basis MATCH**, **26 rebased at source**, **1 latest-close discrepancy** (example UNH 2024-06-17); **65** simultaneously confirmed+on-grid+basis-match. **35** strict unique software D1 source-lineage fingerprints, **57** repeated level-day records, and **1** source lineage whose cluster median changes across mornings. End check: `ready_records_match=1`, `unique_group_records=92`, `seen_matches_confirmed_sources=1`. There were 4 original-role ambiguity rejects and 1 incomplete D1 history in the unchanged original upstream screening.
+
+**3.2 is now CLOSED:** do not run this same month again. **65 is NOT 65 Gerchik BSUs or trades**; grid/basis matching does not establish the author-correct fixed price or intraday BPU1. The source/cluster level-price definition remains unresolved; next best-value task is labeled D1+actual M5 review of a **small predeclared sample of distinct software lineages** against verified primary Gerchik teaching examples. Preserve original strict original source level and no broker orders until independently justified.
+
+
 ## First native 3.2 attempt: output truncated (fix committed)
 
 The first QuantConnect native run **e644d96e3916606d003cab3db02a8934** (LEAN 2.5.0.0.18184) produced actual original source results through June 6, 2024 but stopped printing after the **10KB log limit** warning. The uploaded 32-line log contains **no full-month SOURCE SUMMARY**; therefore no 92-record source classification or deduplication conclusion can be made from it.

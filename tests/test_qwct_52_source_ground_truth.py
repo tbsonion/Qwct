@@ -129,3 +129,61 @@ def test_hard_fail_on_duplicate_wrong_tf_conflicting_source_and_bad_prediction()
         m.validate_prediction({**pred_row(a),"native_completed_bar":False})
     with pytest.raises(ValueError,match="M5_EXACT_CLOSED"):
         m.validate_truth({**a,"bar_end_iso":"2024-06-03T10:03:00-04:00"})
+
+
+# Metadata-only regression: no new market bars or author labels are created.
+@pytest.mark.parametrize('url', [
+    'https://gerchik.co/docs/TORGOVLYA_AKTSIYAMI.pdf',
+    'http://www.GERCHIK.co/docs/TORGOVLYA_AKTSIYAMI.pdf?download=1#page=25',
+    'https://gerchik.co/docs/TORGOVLYA_%41KTSIYAMI.pdf',
+    'https://gerchik.com/pdf/algoritm_forts.pdf',
+    'https://gerchik.com/torgovye-patterny/bsu-bpu-teoriya/',
+    'https://mybook.ru/author/aleksandr-gerchik/kurs-aktivnogo-trejdera/read/?page=9',
+])
+def test_known_guest_editorial_or_concept_cannot_be_promoted_by_true_flags(url):
+    with pytest.raises(ValueError, match='KNOWN_SOURCE_NOT_DIRECT_AUTHOR_M5'):
+        m.validate_truth({**author_row(positive=['BOUNCE']), 'source_url': url})
+
+
+def test_all_existing_editorial_references_are_excluded_even_if_relabelled():
+    catalog=json.loads((DIR/'QWCT_5_2_OFFICIAL_EDITORIAL_REFERENCE_CASES.json').read_text())
+    for case in catalog['cases']:
+        with pytest.raises(ValueError, match='KNOWN_SOURCE_NOT_DIRECT_AUTHOR_M5'):
+            m.validate_truth({**author_row(positive=['BOUNCE']), 'source_url': case['url']})
+
+
+def test_provenance_exclusion_does_not_block_entire_official_domain():
+    # Unknown resource is NOT verified by this test; all old gates still apply.
+    row={**author_row(positive=['BOUNCE']),
+         'source_url':'https://gerchik.co/TEST_ONLY_UNREVIEWED_RESOURCE'}
+    m.validate_truth(row)
+    with pytest.raises(ValueError, match='NOT_DIRECT_AUTHOR'):
+        m.validate_truth({**row, 'independent_review':False})
+
+
+def test_missing_provenance_registry_fails_closed(monkeypatch):
+    original=Path.read_text
+    def read(path,*args,**kwargs):
+        if path.name=='QWCT_5_9_SOURCE_PROVENANCE.json':
+            raise FileNotFoundError('test-only missing registry')
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'read_text',read)
+    with pytest.raises(ValueError, match='SOURCE_PROVENANCE_REGISTRY_UNAVAILABLE'):
+        m.validate_truth(author_row(positive=['BOUNCE']))
+
+
+@pytest.mark.parametrize('content', [
+    'not json',
+    '[]',
+    '{"schema_version":"WRONG","sources":[]}',
+    '{"schema_version":"QWCT_5_9_SOURCE_PROVENANCE_V1","sources":[]}',
+    '{"schema_version":"QWCT_5_9_SOURCE_PROVENANCE_V1","sources":[{}]}',
+    '{"schema_version":"QWCT_5_9_SOURCE_PROVENANCE_V1","sources":[{"url":"https://example.test","source_role":"UNKNOWN","direct_m5_ground_truth_eligible":true}]}',
+])
+def test_broken_registry_cannot_silently_disable_exclusion(monkeypatch,content):
+    original=Path.read_text
+    def read(path,*args,**kwargs):
+        return content if path.name=='QWCT_5_9_SOURCE_PROVENANCE.json' else original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'read_text',read)
+    with pytest.raises(ValueError, match='SOURCE_PROVENANCE_REGISTRY_UNAVAILABLE'):
+        m.validate_truth(author_row(positive=['BOUNCE']))

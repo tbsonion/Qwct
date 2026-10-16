@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
 import json
+from urllib.parse import unquote, urlsplit
 
 KINDS = frozenset((
     "BOUNCE", "WICK_BOUNCE", "WICK_RECLAIM", "FALSE_BREAK_1BAR",
@@ -60,6 +61,39 @@ def _kinds(values):
     return set(values)
 
 
+def _source_identity(url):
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return host, unquote(parts.path).rstrip("/")
+
+
+def _validate_known_source(url):
+    """A caller's True flags cannot override reviewed contrary provenance.
+
+    This is an exclusion registry, not automatic verification of other URLs.
+    Read on each validation so a missing/broken sibling cannot silently
+    disable the gate. It is used only by this offline research evaluator.
+    """
+    path = Path(__file__).with_name("QWCT_5_9_SOURCE_PROVENANCE.json")
+    try:
+        registry = json.loads(path.read_text(encoding="utf-8"))
+        if registry["schema_version"] != "QWCT_5_9_SOURCE_PROVENANCE_V1":
+            raise ValueError("INVALID_SCHEMA")
+        sources = registry["sources"]
+        if not isinstance(sources, list) or not sources:
+            raise ValueError("EMPTY_REGISTRY")
+        for source in sources:
+            if (not isinstance(source["url"], str)
+                    or source["direct_m5_ground_truth_eligible"] is not False
+                    or not source["source_role"]):
+                raise ValueError("INVALID_ENTRY")
+        denied = {_source_identity(source["url"]) for source in sources}
+    except (OSError, ValueError, TypeError, KeyError):
+        raise ValueError("SOURCE_PROVENANCE_REGISTRY_UNAVAILABLE") from None
+    if _source_identity(url) in denied:
+        raise ValueError("KNOWN_SOURCE_NOT_DIRECT_AUTHOR_M5_GROUND_TRUTH")
+
+
 def validate_truth(row):
     """Demand independently demonstrated direct author provenance."""
     key = _key(row)
@@ -80,6 +114,7 @@ def validate_truth(row):
         raise ValueError("NOT_DIRECT_AUTHOR_GROUND_TRUTH")
     if not row.get("source_url","").startswith(("https://","http://")):
         raise ValueError("AUTHOR_SOURCE_URL_REQUIRED")
+    _validate_known_source(row["source_url"])
     freeze = _date(row["level_frozen_before_bar_iso"])
     if freeze >= key[2]:
         raise ValueError("LOOKAHEAD_LEVEL_FREEZE")

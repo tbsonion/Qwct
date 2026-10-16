@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import pytest
 
-from strategy.bsu_source_evidence import frozen_mirror_source_evidence
+from strategy.levels import frozen_mirror_source_evidence
 
 ET = ZoneInfo("America/New_York")
 
@@ -99,7 +99,7 @@ def test_original_swing_and_available_from_are_verified():
 def test_no_orders_market_data_or_median_price_selection():
     from pathlib import Path
     src = (Path(__file__).resolve().parents[1] / "strategy" /
-           "bsu_source_evidence.py").read_text(encoding="utf-8")
+           "levels.py").read_text(encoding="utf-8")
     for forbidden in ("market_order(", "limit_order(", "stop_market_order(",
                       "qb.history(", "Resolution.MINUTE", "Resolution.SECOND",
                       "Resolution.TICK", "ATR(", "np.median("):

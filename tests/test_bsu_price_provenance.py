@@ -114,7 +114,7 @@ def label(cand,**changes):
 def test_no_chart_ground_truth_is_explicit_unknown():
     out=find()
     b=audit_author_bsu_labels(out,(),ticker="AMAT",session=ASOF,tick_size=.01)
-    r=audit_author_reaction_labels((),(),ticker="AMAT",session=ASOF)
+    r=audit_author_reaction_labels((),(),ticker="AMAT",session=ASOF,tick_size=.01)
     assert b.status==r.status=="NO_AUTHOR_GROUND_TRUTH"
     assert b.matches==r.matches==0 and b.precision.startswith("UNKNOWN")
     assert not b.can_trade and not r.can_trade
@@ -136,7 +136,7 @@ def test_manual_source_match_needs_exact_price_and_source_date():
     incomplete=audit_author_bsu_labels(
         out,(label(cand,source_date=None),),ticker="AMAT",
         session=ASOF,tick_size=.01)
-    assert incomplete.status=="INCOMPLETE_AUTHOR_SOURCE"
+    assert incomplete.status=="INCOMPLETE_AUTHOR_SOURCE_OR_HISTORICAL_GRID"
     with pytest.raises(ValueError,match="BSU40_UNSUPPORTED_AUTHOR_MARKUP"):
         audit_author_bsu_labels(
             out,(label(cand,ticker="NFLX"),),ticker="AMAT",
@@ -144,21 +144,38 @@ def test_manual_source_match_needs_exact_price_and_source_date():
 
 
 def test_positive_reaction_labels_never_claim_accuracy():
+    source=next(x for x in find() if x.native_grid=="ON_CURRENT_GRID")
     tag=D1ReactionTaxon(
         kind="BOUNCE",observed_on=date(2024,4,17),
-        anchor_on=date(2024,4,16),reference_price=100.,
+        anchor_on=date(2024,4,16),reference_price=source.price,
         source_label="FIRST_SWING",phase="MIRROR")
-    source=next(x for x in find() if x.native_grid=="ON_CURRENT_GRID")
     matched=label(source,reaction_kind="BOUNCE",
                   reaction_date=tag.observed_on)
     missed=label(source,reaction_kind="CHOP",
                  reaction_date=tag.observed_on)
     result=audit_author_reaction_labels(
-        (tag,),(matched,missed),ticker="AMAT",session=ASOF)
+        (tag,),(matched,missed),ticker="AMAT",session=ASOF,tick_size=.01)
     assert result.matches==1 and result.missed==1
     assert result.status=="POSITIVE_LABEL_COVERAGE_NOT_ACCURACY"
     assert "UNKNOWN" in result.precision
+    wrong_price=label(source,level_price=source.price+0.11,
+                      reaction_kind="BOUNCE",reaction_date=tag.observed_on)
+    compare=audit_author_reaction_labels(
+        (tag,),(wrong_price,),ticker="AMAT",session=ASOF,tick_size=.01)
+    assert compare.matches==0 and compare.missed==1
+    offgrid=label(source,level_price=source.price+0.005,
+                  reaction_kind="BOUNCE",reaction_date=tag.observed_on)
+    uncertain=audit_author_reaction_labels(
+        (tag,),(offgrid,),ticker="AMAT",session=ASOF,tick_size=.01)
+    assert uncertain.status=="INCOMPLETE_HISTORICAL_GRID"
+    assert uncertain.matches==uncertain.missed==0
+    off_candidate=next(x for x in find()
+                       if x.native_grid=="HISTORICAL_GRID_UNKNOWN")
+    source_audit=audit_author_bsu_labels(
+        find(),(label(off_candidate),),ticker="AMAT",session=ASOF,tick_size=.01)
+    assert source_audit.status=="INCOMPLETE_AUTHOR_SOURCE_OR_HISTORICAL_GRID"
+    assert source_audit.matches==source_audit.missed==0
     with pytest.raises(ValueError,match="BSU40_REACTION_LABEL_INCOMPATIBLE"):
         audit_author_reaction_labels(
             (tag,),(label(source,reaction_kind="BOUNCE",
-                          reaction_date=ASOF),),ticker="AMAT",session=ASOF)
+                          reaction_date=ASOF),),ticker="AMAT",session=ASOF,tick_size=.01)

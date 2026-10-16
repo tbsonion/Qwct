@@ -1,16 +1,27 @@
+## QWCT 5.10.1 — исправлен лимит сохранения research.ipynb (16.10.2026)
+
+**Фактический blocker:** пользователь получил `File research.ipynb not saved ... maximum size 64000 ... using 157508`. Это ошибка размера/сохранения, не результат выполнения native данных. Прежняя инструкция добавить большую cell к старым ячейкам неверна.
+
+- [x] [Компактная cell](research/chart_review_qc/QWCT_5_10_COMPACT_ONE_CELL.py): **37 509** символов; [готовый notebook](research/chart_review_qc/QWCT_5_10_COMPACT.ipynb): **41 645** символов всего JSON без outputs.
+- [x] Точный прежний исходный код упакован без изменения правил, сверяется SHA256, сетевых downloads нет. Сохранённый вывод ограничен бюджетом 10 000 символов JSON; пропущенные детали обозначаются OUTPUT_OMITTED и не считаются data PASS.
+- [x] Добавлены 8 regressions целого notebook, в том числе с outputs, Unicode escaping и отдельными stream objects. **717 passed** локально; [PR #49](https://github.com/tbsonion/Qwct/pull/49), code CI **2/2 success** на `e63e6bfa`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38974665094), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38974665130).
+- [ ] **Cloud acceptance всё ещё PENDING**: ошибки сохранения не дают новых native результатов. Ордера, Risk Gate, TVX, author accuracy и Databento/CVD без изменений.
+
+**Единственная актуальная инструкция:** сначала экспортировать старый notebook копией; затем в **Qwct-M5-Cohort-Research/research.ipynb** оставить **только одну** Code Cell с компактным кодом, без старых ячеек/outputs → Run. **Не добавлять её к большому notebook и не вставлять полную reference-версию.** main.py/Cloud Python-модули не менять. Нужны START…END и возможные OUTPUT_OMITTED/LOADER_ERROR.
+
 ## QWCT 5.10 — реализация и единая сквозная приёмка (16.10.2026)
 
 **Текущий следующий шаг — один Cloud запуск, не новый поиск источников.** Databento/CVD отложены; Schwab и ордера выключены.
 
 - [x] Исправлена потеря UNKNOWN: g12 не даёт положительный bounce-балл при неизвестном накоплении; g13 сохраняет неизвестность в деталях. NaN/числа/строки не превращаются в True. Пороги и модели не перенастраивались.
 - [x] [Read-only сквозной audit](strategy/pipeline_audit.py): все 14 признаков и 8 канонических фильтров, frozen D1 EndTime, точная M5 chronology/gaps, исходные сессионные окна. Нет разрешения на ордер.
-- [x] [Одна объединённая Code Cell 5.10](research/chart_review_qc/QWCT_5_10_PIPELINE_ACCEPTANCE_ONE_CELL.py): AMAT/NFLX/SRPT/MSFT 03.06.2024; native D1/M1→M5, 14 признаков, 8 фильтров, 10 реакций, strict-limit FIXED/FLOATING и BSU/BPU. SEC только условно после BPU1 и в исходном bounce-окне; History не подделывает OnData evidence.
+- [x] [Компактная объединённая Code Cell 5.10.1](research/chart_review_qc/QWCT_5_10_COMPACT_ONE_CELL.py): AMAT/NFLX/SRPT/MSFT 03.06.2024; native D1/M1→M5, 14 признаков, 8 фильтров, 10 реакций, strict-limit FIXED/FLOATING и BSU/BPU. SEC только условно после BPU1 и в исходном bounce-окне; History не подделывает OnData evidence.
 - [x] 63 новых metadata/logic/parity checks; **709 passed** локально, compile и 24py package PASS. Среди упакованных файлов изменился только `strategy/features.py`; `main.py`, `signals.py`, Risk Gate и execution не менялись.
 - [x] [PR #48](https://github.com/tbsonion/Qwct/pull/48), code CI **3/3 success** на `825a522c`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38973816981), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38973818546), [24py package](https://github.com/tbsonion/Qwct/actions/runs/38973816937).
 - [ ] **Cloud acceptance 5.10 PENDING:** агент не выполнил QuantConnect runtime. Исправление GitHub не обновляет старые Cloud копии автоматически; исправленные определения уже встроены в новую cell.
 - [ ] Реальный своевременный OnData TVX / author-certified BSU / независимая accuracy / неизвестные обязательные фильтры и Risk Gate не считаются пройденными. Прямых авторских M5 labels по-прежнему 0.
 
-**Одно действие:** весь код linked cell → одна новая **Code Cell** в существующем **Qwct-M5-Cohort-Research/research.ipynb** → Run → вернуть вывод START…END. **Не добавлять .py файл в Cloud и не заменять main.py.** Существующие cells/working project сохранить. [Что реализовано и что остаётся](research/chart_review_qc/QWCT_5_10_IMPLEMENTATION_RESULT_RU.md).
+**Исправленная инструкция 5.10.1:** после экспорта старого notebook копией оставить в **Qwct-M5-Cohort-Research/research.ipynb** только одну компактную Code Cell без старых ячеек/outputs → Run → вернуть START…END. Не добавлять .py файл в Cloud и не заменять main.py. [Что реализовано и что остаётся](research/chart_review_qc/QWCT_5_10_IMPLEMENTATION_RESULT_RU.md).
 
 ## QWCT 5.9 — BSU/10 реакций: первоисточники и защита авторства (16.10.2026)
 

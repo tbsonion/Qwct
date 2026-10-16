@@ -1,5 +1,17 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## 2026-10-16 — QWCT 3.3 native four-price D1 analysis COMPLETED
+
+The corrected 3.3 single QuantBook notebook cell now **ran successfully for all 4 predeclared original cases**, based on real user screenshot console and D1 figures, without any M5 re-fetch. [Read the native first/last source swing, software cluster median, original D1 breach/retest OHLC, tick and grid outcomes](./NATIVE_QWCT_3_3_FOUR_D1_PRICE_HYPOTHESES_RESULT.md).
+
+- AMAT FIRST 214.255 (off current grid); LAST 214.460; median 214.460; D1 retest LOW 212.140.
+- NFLX FIRST 634.540; LAST 633.010; median 633.775 (off current grid); D1 retest LOW 630.000.
+- SRPT FIRST 124.510; LAST 125.500; median 125.000; D1 retest LOW 124.745 (off current grid).
+- MSFT negative role/trend control: FIRST 415.320; LAST 415.860; median 415.590; retest LOW 412.800. Correctly `research_eligible=0` despite software mirror chronology.
+
+**No automatic price is certified BSU.** `PROXY_VERIFIED` means causal software breach/retest only. All four manual labels remain `INDETERMINATE`. Recorded exact data evidence addresses D1 price alternatives, not author-selected fixed BSU; repeated 3.1 M5 or entire 3.2 native June backtest is not required. **Next actionable decision:** label original-source D1 fixed vs floating against independently documented actual Gerchik examples, then and only then authorize a new mirror BPU study. There is currently no supported rule permitting an automated choice from first/last/median/retest or renaming any prior M5 range span BPU1.
+
+
 ## 2026-10-16 — QWCT 3.3 actual native first-run lookup error FIXED (requires rerun)
 
 Actual user's QuantConnect Research log: all four predeclared **AMAT/NFLX/SRPT/MSFT** cases successfully reproduced original `QWCT 3.3 FROZEN` eligibility and `SOURCE` RAW prices (including MSFT rejected role/trend control), then each failed at `HISTORICAL_D1_EVENT_NOT_IN_ASOF_FRAME_<breach date>` before printing any `D1 CANDIDATE` or D1 plots. The bug was purely **event-date lookup**: `audit_mirror` returns causal **calendar session dates** like `2024-05-15`, but original native LEAN daily D1 index can retain **non-midnight exchange-local time**. Old `asof_d1_event` compared a freshly constructed **midnight timestamp** with an existing complete native D1 timestamp; those are not equal despite same actual trading date. Neither 180 RAW D1 bars nor mirror causality was invalidated by this error.

@@ -1,5 +1,10 @@
 # QWCT 3.0 — Native PIT D1 mirror eligibility census (read-only)
 
+## Subsequent QWCT 3.1 native source check (2026-10-15)
+
+QWCT 3.0's **92** morning-eligible mirror level×stock-day records were further probed using **the first three actual eligible historical ticker-days** of June 3 2024 plus a rejected-control ticker. **Native QuantConnect execution succeeded** for that targeted chart experiment: [`NATIVE_JUNE03_RAW_SOURCE_M5_RESULT.md`](../chart_review_qc/NATIVE_JUNE03_RAW_SOURCE_M5_RESULT.md). All three reproduced the 3.0 D1 morning gates, but original confirmed swing RAW highs differed from the ATR-cluster medians by **+20.5 / −76.5 / +49 native ticks** (AMAT/NFLX/SRPT). Source observed M5 results show **zero exact original pivot wick touches** for AMAT/NFLX/SRPT and MSFT rejected control, despite **8/10/16/4** nonexact source price-range straddles. There was **one SRPT missing source minute** in bin 13:10 ET; AMAT/MSFT RAW vs SCALED_RAW source prices also differed. This **neither proves nor disproves any Gerchik trade**, but it means automatically including 92 mirror proxies into the BPU1 detector is not yet justified. Next: read-only **original source D1 basis/tick+grid census** of 92 before broader M5.
+
+
 ## 2026-10-15 — NATIVE EXECUTION COMPLETED; 92 research-level proxy observations
 
 Previous run instructions below are retained for reproducibility. **A real QuantConnect Cloud LEAN native execution is now confirmed** by user-supplied log. [**Exact native result report**](./NATIVE_JUNE_2024_RESULT.md): engine **2.5.0.0.18184**, analysis `f3bfd88e2caf06f53ff02c353b76d27f`. **All original coverage checks matched 2.8:** 19 approved market days / 950 stock-days / 949 closed D1 / 861 Stage2 / 14 strict + 5 next-session callback days.

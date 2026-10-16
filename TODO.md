@@ -1,3 +1,9 @@
+## QWCT 5.6 — Cloud output получен от пользователя (16.10.2026)
+
+[Сохранённый результат и границы доказательства](research/chart_review_qc/QWCT_5_6_CLOUD_DATA_AUDIT_RESULT_RU.md): SRPT **193 TRADE / 640 QUOTE**, SPY **2875 TRADE / 36576 QUOTE**. Все quote updates односторонние; **8/8** полных M1 объёмов совпали с tick sum. Native quote availability в этом окне подтверждена, предположение об отсутствии quotes снято. Полнота SIP, aggressor side, NBBO synchrony и receive-time delivery **не подтверждены**. CVD/positive limit-player observer/TVX по-прежнему BLOCKED. Это USER_SUPPLIED_CLOUD_OUTPUT, run ID не предоставлен; не независимый запуск агента.
+
+**Следующее:** исследовать официальные native quote semantics/reader и готовые механизмы до estimated trade classification. Cell 5.6 повторять не требуется; production файлы не заменять. Предыдущие ниже отметки PENDING описывают состояние до получения этого output.
+
 # QWCT — АКТУАЛЬНЫЙ TODO (16.10.2026) · после QWCT 5.6
 
 > **Этот блок — актуальный план.** Ниже сохранён исторический журнал 2.x–4.x с устаревшими формулировками «NEXT»; их не выполнять повторно. Текущий главный риск — не ошибки запуска LEAN, а **неизмеренная точность классификации реакций и правильности BSU по Герчику**. Торговый код и исполнение ордеров пока не меняем.
@@ -19,7 +25,7 @@
 - [x] Выявлено ограничение диагностики 4.9: equity QUOTE tick по формату **односторонний**; требование обеих сторон отбрасывает нормальные updates. Прежние 80 rejects не доказывают отсутствие quotes. Пауза без сделки не доказывает потерю данных. Строгий SRPT TVX по-прежнему BLOCKED.
 - [x] [Одна самостоятельная Code Cell 5.6](research/chart_review_qc/QWCT_5_6_ORDER_FLOW_DATA_AUDIT_ONE_CELL.py), SRPT + SPY, bounded native RAW history, shape/condition/venue inventory и closed-M1 volume comparison. Всегда CVD_UNAVAILABLE / ORDER_FLOW_UNAVAILABLE; никакого собственного book/feed.
 - [x] **UNIT:** 17 новых тестов; полный suite **611 passed** локально; 24py package собран без изменений. **GitHub CI 2/2 success** на code commit `aa7f9e16`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38967152007), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38967152207). CI не является Cloud data proof.
-- [ ] **Следующее действие:** выполнить cell 5.6 целиком в новой Code Cell существующего `Qwct-M5-Cohort-Research/research.ipynb`, сохранить вывод SRPT/SPY. Cloud 5.6 **не запускался**. Если History откажет, сначала разобрать API/data/entitlement, не покупать подписку автоматически.
+- [x] **Cloud inventory 5.6 выполнен пользователем:** TRADE/QUOTE получены для SRPT/SPY; 8/8 M1 volume parity. См. новый результат выше. Это не completeness/aggressor/TVX proof.
 - [ ] Aggressor / quote synchronization / NBBO scope / receive-time availability / source completeness остаются BLOCKED. Positive Limit Player Observer не реализован до evidence. SECOND/TICK документированы для Quant Researcher; текущие права аккаунта и точная цена UNKNOWN, прежние наблюдения 4.8–4.9 сохраняются.
 - [ ] Авторские правила по оригинальному аудио не проверены: caption-list HTTP 429, Rutube play-options HTTP 403. Оглавление перепроверено, но не заменяет стенограмму. DIRECT labels=0, accuracy UNKNOWN; CVD не обязательный универсальный фильтр.
 

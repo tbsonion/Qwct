@@ -27,6 +27,7 @@ PARTS={
  'strategy/native_m5_validation.py':['_duration_seconds','validate_m5_tradebar'],
  'strategy/native_second_tvx.py':['SECOND','BPU2_LENGTH','PRECLOSE_GAP','MAX_SECONDS',
                                 'MAX_UNOBSERVED_GAP','NativePrecloseSample','NativeSecondTvxWindow'],
+ 'strategy/sessions.py':['_ET','ModelWindow','_parse_windows','SessionPolicy'],
  'strategy/pipeline_audit.py':['_aware','_chronology','feature_snapshot','gate_snapshot','audit_pipeline'],
  'strategy/m5_reaction_taxonomy.py':['KINDS','M5ReactionEvent','M5ReactionHeuristics','M5TenReactionObserver'],
 }
@@ -207,7 +208,7 @@ def _historical_second(qb,symbol,bpu1):
 
 
 def run_qwct_pipeline_acceptance():
-    day=datetime(2024,6,3); cfg=StrategyConfig()
+    day=datetime(2024,6,3); cfg=StrategyConfig(); session_policy=SessionPolicy(cfg)
     qb=QuantBook(); qb.set_time_zone('America/New_York')
     qb.set_start_date(2024,7,1); qb.set_end_date(2024,7,2)
     _emit('START',sample=['AMAT','NFLX','SRPT','MSFT'],session=day.date(),
@@ -274,7 +275,11 @@ def run_qwct_pipeline_acceptance():
                     observed=link.detector.on_bar(b)
                     if before!=observed.phase and observed.phase in ('bpu1','bpu2_confirmed','invalidated'):
                         _emit('BPU',symbol=ticker,phase=observed.phase,at=at,reason=observed.reason,can_trade=False)
-                    if observed.phase=='bpu1' and before!='bpu1' and sec_queries<2:
+                    wants_sec=observed.phase=='bpu1' and before!='bpu1' and sec_queries<2
+                    allowed_sec=session_policy.is_entry_allowed('bounce',at+timedelta(minutes=4,seconds=30))[0]
+                    if wants_sec and not allowed_sec:
+                        _emit('HISTORICAL_SEC_NOT_REQUESTED',symbol=ticker,reason='OUTSIDE_BOUNCE_TVX_ENTRY_WINDOW',can_trade=False)
+                    if wants_sec and allowed_sec:
                         sec_queries+=1
                         try:
                             sample=_historical_second(qb,sym,at)
@@ -303,7 +308,7 @@ def run_qwct_pipeline_acceptance():
             _emit('REACTIONS_10',symbol=ticker,scope='FROZEN_LEVEL_SOFTWARE_TAGS_NOT_AUTHOR_ACCURACY',
                   counts={name:counts[name] if reactions else None for name in KINDS},
                   frozen_role=side,gap_resets=reactions.gap_resets if reactions else None,can_trade=False)
-            _emit('GATES_8',symbol=ticker,counts={key:dict(value) for key,value in gate_counts.items()},
+            _emit('GATES_8',symbol=ticker,conditional_sec_queries=sec_queries,counts={key:dict(value) for key,value in gate_counts.items()},
                   note='NO_CANONICAL_GATE_EVALUATION' if not decision.accepted else 'PER_BAR_COUNTS_NOT_TRADES')
             if best:
                 best.pop('features',None)

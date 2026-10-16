@@ -242,6 +242,7 @@ class QwctSourceCensus(QCAlgorithm):
         self.source_count=Counter()
         self.source_groups={}
         self.source_records=0
+        self.source_samples={}
         self.anchor=self.add_equity(
             "SPY",Resolution.MINUTE,fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
@@ -487,21 +488,25 @@ class QwctSourceCensus(QCAlgorithm):
                 group["count"]+=1
                 group["days"].add(str(day))
                 group["prices"].add(round(float(lvl.price),8))
-            # All 92 level x session records logged. These are NOT BSU labels.
-            self.log(
-                f"QWCT 3.2 SOURCE RECORD {day} {sym.value} "
-                f"role={gates['new_role']} side={gates['side']} "
-                f"original_kind={info['original_kind']} "
-                f"origin_day={info['origin_day']} "
-                f"last_swing_day={info['last_swing_day']} "
-                f"source_RAW={info['origin']} cluster={lvl.price:.6f} "
-                f"median_minus_source_ticks={info['median_ticks']} "
-                f"scaled_origin={info['scaled_origin']} "
-                f"scaled_last={info['scaled_last']} "
-                f"native_tick={tick} grid={info['raw_grid']} "
-                f"basis={info['basis']} state={info['status']} "
-                f"source_consistent={int(consistent)} "
-                f"valid_from={lvl.valid_from}; D1 ONLY / NO BPU/ORDERS")
+            # QC Free logs are capped at 10KB PER BACKTEST. Never log every
+            # source record: 92 multi-column rows hide end-of-run summaries.
+            # Keep up to TWO reproducible examples per *exception category*
+            # and report authoritative counts at on_end_of_algorithm.
+            category=("OFF_GRID" if info["raw_grid"]=="OFF_GRID" else
+                      "REBASED" if info["basis"]=="REBASED_SOURCE_HISTORY" else
+                      "UNKNOWN" if (info["status"]!="RAW_SOURCE_CONFIRMED" or
+                                    info["raw_grid"]=="UNKNOWN" or
+                                    info["basis"] not in ("MATCH",
+                                                         "REBASED_SOURCE_HISTORY"))
+                      else "MATCH_ON_GRID")
+            samples=self.source_samples.setdefault(category,[])
+            if len(samples)<2:
+                samples.append(
+                    f"QWCT 3.2 SAMPLE {category} {day} {sym.value} "
+                    f"origin={info['origin']} cluster={lvl.price:.4f} "
+                    f"grid={info['raw_grid']} basis={info['basis']} "
+                    f"state={info['status']} "
+                    f"origin_day={info['origin_day']}; NO ORDERS")
 
         self.log(f"QWCT MIRROR DAY {day} members={len(members)} "
                  f"mirrors={daymirrors} near={daynear} ready={dayready}; "
@@ -566,9 +571,10 @@ class QwctSourceCensus(QCAlgorithm):
             "no inferred trades or tick executions")
 
         self.log(f"QWCT MIRROR REJECTS {dict(self.reject.most_common(16))}")
-        for row in self.near_examples:
-            self.log(row)
-        for row in self.ready_examples[:50]:
-            self.log(row)
+        # Never replay 40 near + 50 ready examples in QC Free 10KB logs.
+        for category in ("OFF_GRID","REBASED","UNKNOWN","MATCH_ON_GRID"):
+            for row in self.source_samples.get(category,[]):
+                self.log(row)
         self.log(f"QWCT MIRROR OUTPUT near_samples={len(self.near_examples)} "
-                 f"ready_total={len(self.ready_examples)}; NO ORDERS")
+                 f"ready_total={len(self.ready_examples)} "
+                 "individual_records_suppressed_due_to_10KB_LOG_LIMIT; NO ORDERS")

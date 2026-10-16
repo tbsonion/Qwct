@@ -8,6 +8,7 @@ from QuantConnect.Research import QuantBook
 from strategy.config import StrategyConfig
 from strategy.levels import levels_for_session, native_cluster_tolerance, _confirmed_swings
 from strategy.levels import frozen_mirror_source_evidence
+from strategy.levels import observe_d1_level_reactions, D1_REACTION_KINDS
 from strategy.indicators import global_trend, trend_direction
 from strategy import passes_gerchik_screener
 from datetime import datetime, timedelta
@@ -372,7 +373,40 @@ def chart_reaction_markers(d1,evidences):
     return tuple(out)
 
 
-def plot_d1_evidence(case,d1,prices,breach,retest,markers):
+def chart_taxonomy_markers(d1, tags):
+    """Chart adapter: only precomputed closed D1 dated observations."""
+    if (not isinstance(d1.index,pd.DatetimeIndex) or
+            d1.index.tz is None or not d1.index.is_unique or
+            not d1.index.is_monotonic_increasing):
+        raise ValueError("QWCT39_BAD_D1_CHART_INDEX")
+    days={}
+    for stamp in d1.index:
+        if stamp.date() in days:
+            raise ValueError("QWCT39_DUPLICATE_DATE")
+        days[stamp.date()]=stamp
+    points=[]
+    for tag in tags:
+        if (tag.kind not in D1_REACTION_KINDS or
+                tag.can_trade or
+                tag.observed_on not in days or
+                tag.anchor_on not in days or
+                tag.observed_on<tag.anchor_on or
+                not isfinite(tag.reference_price) or tag.reference_price<=0):
+            raise ValueError("QWCT39_BAD_OR_FUTURE_TAG")
+        stamp=days[tag.observed_on]
+        row=d1.loc[stamp]
+        tip=(f"QWCT 3.9 {tag.kind}<br>"
+             f"source={tag.source_label} reference={tag.reference_price:.4f}<br>"
+             f"confirmed_on={tag.observed_on}; window_from={tag.anchor_on}<br>"
+             f"phase={tag.phase}; basis={tag.basis}<br>"
+             f"OHLC={row.open:.4f}/{row.high:.4f}/{row.low:.4f}/"
+             f"{row.close:.4f}<br>"
+             "HEURISTIC/OBSERVATION ONLY, NOT APPROVED BSU/BPU1")
+        points.append(dict(kind=tag.kind,at=stamp,y=float(row.close),tip=tip))
+    return tuple(points)
+
+
+def plot_d1_evidence(case,d1,prices,breach,retest,markers,taxonomy_marks):
     # Exactly the SAME historical candles as the ORIGINAL QWCT 3.0
     # morning freeze. No candle from 2024-06-03 or later appears.
     fig=make_subplots(rows=2,cols=1,row_heights=[.44,.56],
@@ -382,10 +416,24 @@ def plot_d1_evidence(case,d1,prices,breach,retest,markers):
     recent=d1.loc[d1.index>=d1.index[max(0,len(d1)-85)]]
     datasets=(d1,recent)
     reactions=(
-        ("TAIL_ONLY_RECLAIM","Tail-only wick reclaim","forestgreen","circle"),
-        ("BODY_CROSS_RECLAIM","Body-cross reclaim","darkorange","diamond"),
-        ("CLOSED_WRONG_SIDE","D1 close wrong side","firebrick","x"),
-        ("TWO_BAR_REENTRY","Two D1 close reentry","darkviolet","star"),
+        ("TAIL_ONLY_RECLAIM","3.8 Tail-only wick reclaim","forestgreen","circle"),
+        ("BODY_CROSS_RECLAIM","3.8 Body-cross reclaim","darkorange","diamond"),
+        ("CLOSED_WRONG_SIDE","3.8 D1 close wrong side","firebrick","x"),
+        ("TWO_BAR_REENTRY","3.8 Two D1 close reentry","darkviolet","star"),
+    )
+    # 10 separate observed event categories; labels are research-only,
+    # not author-certified setups. Dense patterns can be hidden by legend.
+    taxonomy_style=(
+        ("BOUNCE","Bounce (next close)","#168139","triangle-up"),
+        ("WICK_BOUNCE","Wick bounce (next close)","#008080","triangle-down"),
+        ("WICK_RECLAIM","Wick reclaim","#089c67","circle-open"),
+        ("FALSE_BREAK_1BAR","One-bar false-break proxy","#d47b00","diamond-open"),
+        ("FALSE_BREAK_2BAR","Two-bar false-break proxy","#8a40b8","star-open"),
+        ("BREAK_FOLLOWTHROUGH","Break + 2 closes (proxy)","#bd1f32","square"),
+        ("MIRROR_RETEST","Mirror retest (cluster audit)","#3374a5","cross"),
+        ("COMPRESSION","Compression proxy","#916c1b","triangle-right"),
+        ("CONSOLIDATION","Consolidation proxy","#5d6f7a","pentagon"),
+        ("CHOP","Chop proxy","#515151","hourglass"),
     )
     for row,frame in enumerate(datasets,start=1):
         fig.add_trace(go.Candlestick(
@@ -433,10 +481,27 @@ def plot_d1_evidence(case,d1,prices,breach,retest,markers):
                             line=dict(width=1,color="white"),opacity=.85),
                 text=[p["tip"] for p in subset],
                 hovertemplate="%{text}<extra></extra>"),row=row,col=1)
+        for kind,label,color,symbol in taxonomy_style:
+            subset=[p for p in taxonomy_marks
+                    if p["kind"]==kind and p["at"] in frame.index]
+            if not subset:
+                continue
+            fig.add_trace(go.Scatter(
+                x=[p["at"] for p in subset],y=[p["y"] for p in subset],
+                mode="markers",name="3.9 "+label,
+                legendgroup="QWCT39_"+kind,showlegend=(row==1),
+                marker=dict(color=color,size=10,symbol=symbol,
+                            line=dict(width=1,color=color),opacity=.75),
+                text=[p["tip"] for p in subset],
+                hovertemplate="%{text}<extra></extra>",
+                visible=True if kind in ("BOUNCE","BREAK_FOLLOWTHROUGH",
+                                          "MIRROR_RETEST","COMPRESSION") else
+                        "legendonly"
+                ),row=row,col=1)
     fig.update_xaxes(rangeslider_visible=False)
     fig.update_layout(
         width=1440,height=980,margin=dict(t=125,r=270,b=60,l=65),
-        title=f"QWCT 3.8 {case['ticker']} / 2024-06-03 "
+        title=f"QWCT 3.9 {case['ticker']} / 2024-06-03 "
               f"{case['decision']} / D1 REACTIONS NOT APPROVED BSU",
         legend=dict(orientation="v",x=1.02,y=1.0,
                     bgcolor="rgba(255,255,255,0.9)"),
@@ -506,7 +571,19 @@ for case in CASES:
                          for kind in ("TAIL_ONLY_RECLAIM","BODY_CROSS_RECLAIM",
                                       "CLOSED_WRONG_SIDE","TWO_BAR_REENTRY"))
               + " READ_ONLY NOT_AUTHOR_BSU NOT_BPU1 NO_ORDERS")
-        plot_d1_evidence(case,d1,prices,breach,retest,markers)
+        ten=[]
+        for e in evidences:
+            found=observe_d1_level_reactions(
+                d1,e,trace,session=SESSION.date(),tick_size=tick,
+                atr_column=f"atr{cfg.atr_period}")
+            ten.extend(found)
+            counts=" ".join(
+                f"{kind}={sum(t.kind==kind for t in found)}"
+                for kind in D1_REACTION_KINDS)
+            print(f"QWCT 3.9 ALL TEN D1 REACTIONS {ticker} {e.label} "
+                  + counts + " HEURISTIC_NOT_GERCHIK_APPROVAL NO_ORDERS")
+        taxonomy_marks=chart_taxonomy_markers(d1,ten)
+        plot_d1_evidence(case,d1,prices,breach,retest,markers,taxonomy_marks)
         print(f"QWCT 3.3 MANUAL LABEL {ticker} "
               "author_BSU_price=UNKNOWN price_reference=UNKNOWN "
               "fixed_or_floating=UNKNOWN author_graph_label=UNVERIFIED "

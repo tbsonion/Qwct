@@ -66,8 +66,8 @@ def selected_nodes(path,names):
                 if isinstance(target,ast.Name): found[target.id]=node
     return [BindExistingDefinitions().visit(deepcopy(found[name])) for name in names]
 
-HEADER='''# QWCT 5.10 — paste WHOLE file into ONE NEW CODE CELL, then Run.
-# Existing Qwct-M5-Cohort-Research/research.ipynb. Do not replace main.py.
+HEADER='''# QWCT 5.10 READABLE REFERENCE ONLY: too large for QC notebook saving.
+# Use QWCT_5_10_COMPACT_ONE_CELL.py as the ONLY cell; export old notebook first.
 # Fixed four-stock native history sample; no orders, fills or CVD.
 # Generated from canonical pure rules by tools/build_qwct_pipeline_cell.py.
 from __future__ import annotations

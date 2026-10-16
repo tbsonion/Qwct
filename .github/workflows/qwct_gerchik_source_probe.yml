@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tools/qwct_probe_gerchik_ids.py'
+      - 'tools/qwct_find_public_gerchik_trade_images.py'
       - '.github/workflows/qwct_gerchik_source_probe.yml'
 
 permissions:
@@ -19,3 +20,5 @@ jobs:
           python-version: '3.11'
       - name: Check at most three public file IDs (no downloads)
         run: python tools/qwct_probe_gerchik_ids.py
+      - name: Inspect original public article image references
+        run: python tools/qwct_find_public_gerchik_trade_images.py

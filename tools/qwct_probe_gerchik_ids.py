@@ -1,18 +1,19 @@
 """QWCT source discovery: tiny PUBLIC-only Gerchik file-ID probe.
 
-Only checks 3 adjacent user-provided IDs. One request per ID, one-second
+Checks 20 adjacent user-provided IDs. One request per ID, one-second
 delay, no authentication, no crawling linked resources, no saved files.
 No private, account-gated or HTTP 403/429 sources are pursued.
 """
 from __future__ import annotations
 from time import sleep
 from urllib.request import Request, urlopen
+from urllib.parse import unquote
 from urllib.error import HTTPError, URLError
 import json
 import sys
 
 URL = "https://gerchik.co/file/{}"
-IDS = (5537, 5536, 5535)
+IDS = tuple(range(5537, 5517, -1))
 TIMEOUT_S = 12
 
 
@@ -39,7 +40,7 @@ def inspect(file_id):
                           final_url=response.geturl(),
                           mime=mime, kind=kind,
                           content_length=length,
-                          filename_header=disp[:120])
+                          filename_header=unquote(disp[:120]))
     except HTTPError as exc:
         result = dict(id=file_id, status=exc.code,
                       error=f"HTTP_{exc.code}", blocked=exc.code in (401,403,429))

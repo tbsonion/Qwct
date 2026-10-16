@@ -173,6 +173,10 @@ def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
     result["source"] = str(source_day)
     if not scaled_bars:
         return result
+    # A missing native tick is an expected fail-closed condition,
+    # not an unexpected price-basis parsing exception.
+    if tick is None:
+        return done("UNKNOWN", "NO_NATIVE_TICK")
     try:
         tick = float(tick)
         if not isfinite(tick) or tick <= 0:

@@ -30,7 +30,7 @@ def main():
         # Reporting ID and context only; no attempt to link images to author
         # trading timestamps without manually inspecting the source chart.
         found={}
-        for m in re.finditer(r"(?:https?://(?:www\\.)?gerchik\\.co)?/file/(\\d{2,7})",body):
+        for m in re.finditer(r"(?:https?://(?:www\.)?gerchik\.co)?/file/(\d{2,7})",body):
             file_id=int(m.group(1))
             if file_id not in found:
                 surrounding=unescape(re.sub(r"<[^>]+>"," ",body[max(0,m.start()-180):m.end()+140]))

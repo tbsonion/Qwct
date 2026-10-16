@@ -519,26 +519,39 @@ def audit_author_bsu_labels(
             continue
         if mark.source_date>=session:
             raise ValueError("BSU40_FUTURE_AUTHOR_SOURCE_BAR")
-        matches=[c for c in candidates
-                 if c.source_date==mark.source_date and
-                 _on_current_grid(c.price,float(tick_size)) and
-                 _on_current_grid(mark.level_price,float(tick_size)) and
-                 _close_enough(c.price,mark.level_price,float(tick_size))]
+        same_day=[c for c in candidates if c.source_date==mark.source_date]
+        if (not _on_current_grid(mark.level_price,float(tick_size)) or
+                any(c.native_grid=="HISTORICAL_GRID_UNKNOWN" and
+                    abs(c.price-mark.level_price)<=max(1,c.price)*1e-12
+                    for c in same_day)):
+            results.append("HISTORICAL_PRICE_GRID_UNKNOWN")
+            continue
+        matches=[c for c in same_day if c.native_grid=="ON_CURRENT_GRID"
+                 and _close_enough(c.price,mark.level_price,float(tick_size))]
         results.append("PRICE_AND_SOURCE_MATCH" if matches else "NO_PRICE_SOURCE_MATCH")
     matched=results.count("PRICE_AND_SOURCE_MATCH")
+    incomplete=("UNKNOWN_AUTHOR_SOURCE_BAR" in results or
+                "HISTORICAL_PRICE_GRID_UNKNOWN" in results)
     return LabelAudit(
-        "INCOMPLETE_AUTHOR_SOURCE" if "UNKNOWN_AUTHOR_SOURCE_BAR" in results
+        "INCOMPLETE_AUTHOR_SOURCE_OR_HISTORICAL_GRID" if incomplete
         else "LABELLED_CANDIDATE_COVERAGE_ONLY",
         len(results),matched,results.count("NO_PRICE_SOURCE_MATCH"),tuple(results))
 
 
 def audit_author_reaction_labels(
-        tags: tuple, labels: tuple, *, ticker: str, session: date) -> LabelAudit:
-    """Positive-label recall only; never accuracy without negatives."""
+        tags: tuple, labels: tuple, *, ticker: str, session: date,
+        tick_size: float) -> LabelAudit:
+    """Positive labels: require DATE, KIND and matching exact LEVEL PRICE."""
+    from .levels import _on_current_grid, _close_enough
     if not labels:
         return LabelAudit("NO_AUTHOR_GROUND_TRUTH",0,0,0,())
-    found={(t.kind,t.observed_on) for t in tags
-           if isinstance(t,D1ReactionTaxon) and not t.can_trade}
+    try:
+        tick=float(tick_size)
+    except (TypeError,ValueError,OverflowError) as exc:
+        raise ValueError("BSU40_REACTION_TICK_INVALID") from exc
+    if not isfinite(tick) or tick<=0:
+        raise ValueError("BSU40_REACTION_TICK_INVALID")
+    found=[t for t in tags if isinstance(t,D1ReactionTaxon) and not t.can_trade]
     details=[]
     for mark in labels:
         if (not isinstance(mark,GerchikChartLabel) or mark.ticker!=ticker or
@@ -548,9 +561,21 @@ def audit_author_reaction_labels(
                 mark.reaction_kind not in D1_REACTION_KINDS or
                 mark.reaction_date is None or mark.reaction_date>=session):
             raise ValueError("BSU40_REACTION_LABEL_INCOMPATIBLE")
-        details.append("DATED_KIND_MATCH" if
-                       (mark.reaction_kind,mark.reaction_date) in found else
-                       "DATED_KIND_MISSING")
-    match=details.count("DATED_KIND_MATCH")
-    return LabelAudit("POSITIVE_LABEL_COVERAGE_NOT_ACCURACY",
-                      len(details),match,len(details)-match,tuple(details))
+        comparable=[t for t in found if
+                    t.kind==mark.reaction_kind and
+                    t.observed_on==mark.reaction_date]
+        if not _on_current_grid(mark.level_price,tick):
+            details.append("HISTORICAL_PRICE_GRID_UNKNOWN")
+        elif any(_on_current_grid(t.reference_price,tick) and
+                 _close_enough(t.reference_price,mark.level_price,tick)
+                 for t in comparable):
+            details.append("DATED_KIND_AND_PRICE_MATCH")
+        elif any(not _on_current_grid(t.reference_price,tick) for t in comparable):
+            details.append("HISTORICAL_PRICE_GRID_UNKNOWN")
+        else:
+            details.append("DATED_KIND_PRICE_MISSING")
+    match=details.count("DATED_KIND_AND_PRICE_MATCH")
+    return LabelAudit(
+        "INCOMPLETE_HISTORICAL_GRID" if "HISTORICAL_PRICE_GRID_UNKNOWN" in details
+        else "POSITIVE_LABEL_COVERAGE_NOT_ACCURACY",
+        len(details),match,details.count("DATED_KIND_PRICE_MISSING"),tuple(details))

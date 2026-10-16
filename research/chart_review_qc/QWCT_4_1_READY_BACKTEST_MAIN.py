@@ -30,7 +30,7 @@ class QwctM5SourceResearch(QCAlgorithm):
         self.set_cash(25000)
         self.cfg = StrategyConfig()
         self._research = {}
-        self.debug("QWCT 4.1 BACKTEST: read-only M5 source/BPU verification; NO ORDERS")
+        self.debug("QWCT 4.3 BACKTEST: closed native M5 BSU provenance; no orders")
 
         for ticker in TICKERS:
             equity = self.add_equity(
@@ -83,7 +83,9 @@ class QwctM5SourceResearch(QCAlgorithm):
             self._research[ticker] = {
                 "symbol": symbol, "consolidator": cons, "scan": scan,
                 "minutes_seen": set(), "m5_count": 0,
-                "closed_m5_ends": set(), "events_logged": 0,
+                "closed_m5_ends": set(),
+                "bpu1_logged": 0, "bpu2_logged": 0,
+                "bpu2_examples": [],
             }
             self.debug(
                 f"QWCT 4.1 INIT {ticker} D1={len(frame)} "
@@ -122,14 +124,28 @@ class QwctM5SourceResearch(QCAlgorithm):
             timeframe="M5", volume=float(closed.volume))
         events = state["scan"].observe(bar)
         for event in events:
-            # Always count all events but keep the cloud log short.
-            if state["events_logged"] < 12:
+            # BPU1 events are common and are only bounded examples.
+            # BPU2 must remain visible even after many preceding BPU1s.
+            if event.event == "BPU2_CLOSED":
+                if len(state["bpu2_examples"]) < 12:
+                    state["bpu2_examples"].append(
+                        (round(event.level_price, 4),
+                         event.source_end.strftime("%H:%M"),
+                         event.bpu1_end.strftime("%H:%M"),
+                         event.bpu2_end.strftime("%H:%M")))
+                if state["bpu2_logged"] < 12:
+                    self.debug(
+                        f"QWCT 4.3 BPU2 {ticker} "
+                        f"SOURCE={event.source_end} BPU1={event.bpu1_end} "
+                        f"BPU2={event.bpu2_end} RAW_PRICE={event.level_price:.4f} "
+                        "AUTHOR_UNVERIFIED NO_ORDERS")
+                    state["bpu2_logged"] += 1
+            elif event.event == "BPU1_EXACT" and state["bpu1_logged"] < 4:
                 self.debug(
-                    f"QWCT 4.1 {ticker} {event.event} "
-                    f"BSU={event.source_end} BPU1={event.bpu1_end} "
-                    f"BPU2={event.bpu2_end} RAW_PRICE={event.level_price:.4f} "
-                    f"D1_CONTEXT={event.d1_context_price:.4f} NO_ORDERS")
-                state["events_logged"] += 1
+                    f"QWCT 4.3 BPU1 {ticker} "
+                    f"SOURCE={event.source_end} BPU1={event.bpu1_end} "
+                    f"RAW_PRICE={event.level_price:.4f} NO_ORDERS")
+                state["bpu1_logged"] += 1
 
     def on_end_of_algorithm(self):
         # QuantConnect's timed consolidator normally waits for the NEXT
@@ -166,6 +182,8 @@ class QwctM5SourceResearch(QCAlgorithm):
                 f"COMPLETE_M5={state['m5_count']}/78 "
                 f"BPU1_EXACT={scan.bpu1_count} "
                 f"BPU2_CLOSED={scan.completed} "
+                f"BPU2_SAMPLES={state['bpu2_examples'][:12]} "
+                f"BPU2_SAMPLES_TRUNCATED={scan.completed > len(state['bpu2_examples'])} "
                 f"GAP_RESETS={scan.rejected_counts.get('M5_SOURCE_CONTINUITY_GAP_RESET',0)} "
                 f"PIERCED_REJECTS={scan.rejected_counts.get('BSU_SOURCE_PIERCED_BEFORE_BPU1',0)} "
                 "SAME_SESSION_ONLY AUTHOR_UNVERIFIED NO_ORDERS")

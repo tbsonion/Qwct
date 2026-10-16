@@ -1,5 +1,13 @@
 # Qwct — TODO / Deep Research Roadmap
 
+## 2026-10-15 — QWCT 3.4 MMS CASE13 ORIGINAL VIDEO CHECK: AUDIO/FRAMES INACCESSIBLE, NO EXACT PRICE
+
+- [x] **Case 13 isolated and source-verified**: actual 2026-05-20 Gerchik & Co live stream [U0xnrRrwE00](https://youtube.com/live/U0xnrRrwE00) is linked from official Telegram and [2026-05-21 editorial recap](https://gerchik.co/ru/analytics/tehnicheskiy-analiz/razbor-sdelok-s-aleksandrom-gerchikom-20-05-2026); official [MMS / MAXIMUS Inc (NYSE) multi-chart screenshot](https://gerchik.co/file/4937) inspected. [Focused evidence and unsuccessful video-access audit](research/chart_review_qc/QWCT_3_4_MMS_VIDEO_PRIMARY_EVIDENCE_ATTEMPT_RU.md).
+- [x] **No authenticated original-video MMS answer:** direct YouTube watch/live links were blocked/throttled, no accessible full transcript/video timeline or reliable mirrored scene; public transcript endpoints failed. Article claims stale excessively crossed level should be lowered to genuine price stoppage with a smaller stop (reports ~120-point excessive stop), but **neither exact corrected price nor source candle, author-drawn BEFORE/AFTER, effective timestamp, or BSU/BPU pattern type is observable**. No fake minute/price.
+- [x] **STOP: case 13 is insufficient as proof of a deterministic FIXED_BSU selection for US equities**, and cannot authorize ANY automatic price re-anchor in `strategy/levels.py`; statuses AMAT/NFLX/SRPT/MSFT remain INDETERMINATE. Research only, no new M5/LEAN backtest, no orders.
+- [ ] **One truly necessary external input if further source confirmation is wanted:** actual short **MMS Case 13 video segment** with the author moving the line (MP4 or real timestamped video plus frames). Without it, hold this branch rather than guess. Do not repeatedly attempt transcript scraping in this environment.
+
+
 ## 2026-10-16 — QWCT 3.4 YOUTUBE-LINKED VIDEO REVIEW: IMPORTANT REAL-TIME LEVEL REVISION LEAD
 
 - [x] **Focused primary-channel / official video-linked source search**: checked provenance for YouTube Gerchik & Co 2016 levels/mirrors lectures, original video-linked Q&A/2019 questions, plus **two official Gerchik & Co written recaps of real YouTube broadcasts (2026-05-20, 2026-07-01)**. [Detailed video source audit, direct links, evidence tiers](research/chart_review_qc/QWCT_3_4_YOUTUBE_LINKED_VIDEO_EVIDENCE_AUDIT_RU.md). **Full YouTube audio, on-screen annotations, and transcripts could NOT be independently accessed here; do not claim watched/heard answers.**

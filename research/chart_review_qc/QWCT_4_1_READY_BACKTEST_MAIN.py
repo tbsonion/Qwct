@@ -166,4 +166,6 @@ class QwctM5SourceResearch(QCAlgorithm):
                 f"COMPLETE_M5={state['m5_count']}/78 "
                 f"BPU1_EXACT={scan.bpu1_count} "
                 f"BPU2_CLOSED={scan.completed} "
+                f"GAP_RESETS={scan.rejected_counts.get('M5_SOURCE_CONTINUITY_GAP_RESET',0)} "
+                f"PIERCED_REJECTS={scan.rejected_counts.get('BSU_SOURCE_PIERCED_BEFORE_BPU1',0)} "
                 "SAME_SESSION_ONLY AUTHOR_UNVERIFIED NO_ORDERS")

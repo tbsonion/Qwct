@@ -170,6 +170,62 @@ def test_zero_volume_native_m5_never_becomes_a_source():
     assert not s._history and s.bpu1_count==0
 
 
+
+
+def test_broken_support_source_cannot_be_reused_as_exact_bpu1():
+    scan=scanner()
+    scan.observe(bar(0,100.00,100.5))
+    # Price ran THROUGH the earlier source, then later retouched 100.
+    # A true fixed support bounce requires intact historical provenance.
+    scan.observe(bar(1,99.60,100.3))
+    result=scan.observe(bar(2,100.00,100.4))
+    assert not any(x.event=="BPU1_EXACT" for x in result)
+    assert scan.bpu1_count==0
+    assert scan.rejected_counts.get("BSU_SOURCE_PIERCED_BEFORE_BPU1",0)>0
+
+
+def test_broken_resistance_source_cannot_be_reused_as_exact_bpu1():
+    scan=scanner(levels=[level(100.03,"resistance")])
+    scan.observe(bar(0,99.4,100.00,close=99.6))
+    scan.observe(bar(1,99.5,100.50,close=100.1))
+    result=scan.observe(bar(2,99.5,100.00,close=99.8))
+    assert not result
+    assert scan.rejected_counts.get("BSU_SOURCE_PIERCED_BEFORE_BPU1",0)>0
+
+
+def test_missing_closed_native_m5_resets_old_source_but_new_segment_can_pass():
+    scan=scanner()
+    scan.observe(bar(0))
+    # Missing closed bar(1) => cannot prove no wick penetrated old source.
+    assert scan.observe(bar(2))==()
+    assert scan.rejected_counts.get("M5_SOURCE_CONTINUITY_GAP_RESET")==1
+    assert len(scan._history)==1
+    assert scan.observe(bar(3))[0].event=="BPU1_EXACT"
+    assert scan.observe(bar(4,100.10,100.5))[0].event=="BPU2_CLOSED"
+
+
+def test_pending_bpu1_cannot_bridge_missing_closed_m5_interval():
+    scan=scanner()
+    scan.observe(bar(0))
+    scan.observe(bar(1))
+    assert scan.bpu1_count==1 and scan._pending
+    # No native bar(2). An M5 at +10min cannot be a BPU2.
+    out=scan.observe(bar(3,100.1,100.5))
+    assert not any(x.event=="BPU2_CLOSED" for x in out)
+    assert scan.completed==0 and not scan._pending
+    assert scan.rejected_counts.get("M5_SOURCE_CONTINUITY_GAP_RESET")==1
+
+
+def test_unbroken_fixed_support_remains_eligible_after_many_bars():
+    scan=scanner()
+    scan.observe(bar(0,100.,100.5))
+    for n in range(1,4):
+        scan.observe(bar(n,100.10,100.5))  # Other source prices may match.
+    result=scan.observe(bar(4,100.,100.5))
+    assert result and result[0].event=="BPU1_EXACT"
+    assert result[0].source_end==FIRST
+
+
 def test_coverage_is_only_already_observed_same_day_m5():
     s=scanner()
     assert s.observe(bar(0))==()

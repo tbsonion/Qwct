@@ -440,6 +440,8 @@ class M5BsuSequenceScanner:
         if not isinstance(bar,Bar) or bar.timeframe!="M5":
             raise ValueError("M5_BSU_REQUIRES_COMPLETED_M5")
         now=BsuDetector._validate_bar(bar)
+        if float(bar.volume)<=0:
+            raise ValueError("M5_BSU_REQUIRES_TRADED_NATIVE_VOLUME")
         from zoneinfo import ZoneInfo
         if now.astimezone(ZoneInfo("America/New_York")).date()!=self.session:
             raise ValueError("M5_BSU_WRONG_SESSION")

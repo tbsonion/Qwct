@@ -2,6 +2,16 @@
 
 **RESEARCH_ONLY / NO_ORDERS / NOT_TVX_PASS**. 16.10.2026.
 
+## 5.10.1 — исправление реальной ошибки сохранения notebook
+
+Пользователь получил `research.ipynb ... exceeds maximum size of 64000 ... 157508`. Это **не запуск данных и не data FAIL**: большой notebook не сохранился. Прежняя инструкция добавлять полную cell к старым ячейкам была неверной.
+
+Готовы [компактная cell](QWCT_5_10_COMPACT_ONE_CELL.py) и [целый notebook](QWCT_5_10_COMPACT.ipynb). Полный notebook JSON **41 645 символов**, пустые outputs; вывод ограничен бюджетом **10 000** символов сериализованного JSON. Тестируется также сохранение с выводом и более многословной JSON-сериализацией. Обрезка логов всегда обозначена `OUTPUT_OMITTED`, не считается data PASS. Сокращаются детали вывода, не значения данных или правила.
+
+Упакован **тот же** проверенный исходный код, без сетевой загрузки; перед запуском сверяется SHA256. Читаемая полная версия остаётся [здесь](QWCT_5_10_PIPELINE_ACCEPTANCE_ONE_CELL.py), **её не вставлять в Cloud**. Новых данных, ордеров или пройденных TVX от этого исправления не появилось.
+
+**Правильное действие:** сначала экспортировать старый notebook копией. Затем в существующем `research.ipynb` оставить **только одну** ячейку с компактным кодом, убрать старые outputs и запустить. Не добавлять компактную cell к прежним ячейкам. `main.py` и Python-модули Cloud не менять.
+
 ## Сделано в коде
 
 | Задача | Конкретный результат |
@@ -11,7 +21,7 @@
 | Контракт 14 признаков | Принимаются только bool / numpy.bool_ / None. `bool(NaN)`, строки и числа не могут превратиться в True; вычислительная ошибка остаётся UNKNOWN и отклоняется существующим оценщиком сценариев |
 | Сквозной аудит | [strategy/pipeline_audit.py](../../strategy/pipeline_audit.py): 14 значений с причинами/деталями, 8 фильтров с отдельными TRUE/FALSE/UNKNOWN, frozen D1, реальные EndTime, точное время M5 и отсутствие пропусков |
 | Целостность фильтров | Отсутствующие/лишние ключи, несовпадающий GateResult.id и truthy не-bool не считаются подтверждением. Сам `signals.py` и Risk Gate не изменены |
-| Объединённый Cloud запуск | [Одна Code Cell](QWCT_5_10_PIPELINE_ACCEPTANCE_ONE_CELL.py): фиксированные AMAT/NFLX/SRPT/MSFT, 03.06.2024; D1 → утренний сценарий → M5 → BSU/BPU → условный исторический SEC; одновременно 10 реакций и strict-limit FIXED/FLOATING |
+| Объединённый Cloud запуск | [Компактная Code Cell](QWCT_5_10_COMPACT_ONE_CELL.py): фиксированные AMAT/NFLX/SRPT/MSFT, 03.06.2024; D1 → утренний сценарий → M5 → BSU/BPU → условный исторический SEC; одновременно 10 реакций и strict-limit FIXED/FLOATING |
 | Переносимость | Cell генерируется [сборщиком](../../tools/build_qwct_pipeline_cell.py) из выбранных канонических read-only определений. Из небольшого Cloud проекта используются только существующие config / levels / patterns_bsu; добавлять остальные Python-модули не нужно |
 
 Это исправления контракта данных, а не изменение торговых порогов. Пример ошибки до исправления: `contaminated=True`, `accumulation=None` давали g12=True и +1.5 в bounce score; теперь g12=None, прибавки нет. Численные параметры 10 реакций, выбор модели, BPU1/BPU2, строгий SEC cutoff и Risk Gate сохранены.
@@ -38,8 +48,6 @@ Historical SEC sample не создаёт `BpuTvxEvidence` вместо реал
 
 ## Одно действие пользователя
 
-Открыть [QWCT_5_10_PIPELINE_ACCEPTANCE_ONE_CELL.py](QWCT_5_10_PIPELINE_ACCEPTANCE_ONE_CELL.py), скопировать **весь код** в **одну новую Code Cell** существующего **Qwct-M5-Cohort-Research → research.ipynb** и нажать Run. Нужен вывод от `QWCT 5.10 START` до `QWCT 5.10 END`.
+После экспорта старого notebook копией, в **Qwct-M5-Cohort-Research → research.ipynb** оставить **одну** Code Cell с полным содержимым [QWCT_5_10_COMPACT_ONE_CELL.py](QWCT_5_10_COMPACT_ONE_CELL.py), без старых ячеек/outputs, и нажать Run. Нужен вывод START…END и, если есть, OUTPUT_OMITTED / LOADER_ERROR.
 
-**Не добавлять этот файл как .py в Cloud:** он предназначен для notebook cell и содержит объединённые read-only определения. Не заменять рабочий main.py или существующие cells. Сборка/установка production-проекта для этого запуска не нужна. Исправленный features-код уже встроен в cell; изменение GitHub само по себе не обновляет прежнюю копию features.py в рабочем Cloud проекте.
-
-После этого остаётся разобрать конкретные runtime blockers, а не повторять весь поиск источников. Реальный event-driven TVX, неизвестные обязательные фильтры, Risk Gate и исполнение остаются отдельными непройденными этапами.
+Альтернативный готовый файл notebook: [QWCT_5_10_COMPACT.ipynb](QWCT_5_10_COMPACT.ipynb). Не вставлять JSON notebook в Python-cell. Рабочий main.py и production-проект не менять. Исправления GitHub не обновляют старые Cloud копии автоматически.

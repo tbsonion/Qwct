@@ -1,0 +1,99 @@
+{
+  "schema_version": "QWCT_5_9_SOURCE_PROVENANCE_V1",
+  "reviewed_on": "2026-10-16",
+  "owner": "research_only",
+  "policy": "Deny promotion of these reviewed materials to direct author M5 labels. Unknown URLs still require every existing independent-review gate; absence here does not verify authorship. URL query/fragment are ignored for these whole-resource exclusions. Registry changes require source review.",
+  "sources": [
+    {
+      "url": "https://mybook.ru/author/aleksandr-gerchik/kurs-aktivnogo-trejdera/read/",
+      "source_role": "DIRECT_AUTHOR_BOOK_CONCEPT",
+      "review_locator": "Public excerpt pages 8-10; chapter on price levels",
+      "reason": "Author text verified; no matched native M5 event identity in reviewed excerpt.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.co/docs/TORGOVLYA_AKTSIYAMI.pdf",
+      "source_role": "MIXED_EDITORIAL_GUEST_METHOD",
+      "review_locator": "PDF page 25 (zero-based 24), false-break section; following pages 26-28",
+      "reason": "False-break method explicitly attributed to Sergey Zabotkin. Whole brochure is not direct Gerchik M5 ground truth.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/pdf/algoritm_forts.pdf",
+      "source_role": "AUTHOR_UNVERIFIED_FORTS_PLAN",
+      "review_locator": "Cover and personal FORTS plan",
+      "reason": "Official hosting does not establish personal authorship or US equity M5 labels.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/torgovye-patterny/bsu-bpu-teoriya",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "Byline, 2024-05-09",
+      "reason": "Byline credits GTE editorial experts, not Alexander Gerchik personally.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/otboi-ot-urovnya-vtb/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-01-BOUNCE-VTB",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/otboi-ot-urovnya/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-02-WICK-BOUNCE-DEFINITION",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/mgnovennaya-sdelka-sbrf/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-03-WICK-RECLAIM-SBRF",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/foreks/kak-nayti-pravilnuyu-tochku-vkhoda-top-5-sposobov/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-04-FALSE-1-METHOD",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/proboi-urovnia-y-otboi-short-vtb/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-06-BREAK-VTB",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/azbuka-trejdera/zerkalniy-uroven",
+      "source_role": "GTE_EDUCATIONAL_GLOSSARY",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-07-MIRROR-GLOSSARY",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/podzhatie/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-08-COMPRESSION-BRK0",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/provoi-urovnya-i-otvoi-vtb/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-09-CONSOLIDATION-LKOH",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    },
+    {
+      "url": "https://gerchik.com/journal/instrukczii/lozhnii-proboi-dvumya-barami-na-dnevke-eurusd/",
+      "source_role": "GTE_EDITORIAL",
+      "review_locator": "QWCT 5.2 editorial catalog: GTE-10-CHOP-EURUSD",
+      "reason": "Existing reviewed editorial/concept reference; not a direct author native M5 label.",
+      "direct_m5_ground_truth_eligible": false
+    }
+  ]
+}

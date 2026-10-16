@@ -338,3 +338,168 @@ class BsuDetector:
             tick_size=self._tick_size, bsu_ts=self._bsu_ts)
         self.state.reason = "reset: wait for a new BPU1 from known BSU"
         return self.state
+
+
+# QWCT 4.1 — separate CLOSED M5 source -> BPU1 -> BPU2 RESEARCH.
+# No additional subscriptions or calls to History; do not treat the D1
+# cluster median as the originating exact M5 BSU price.
+@dataclass(frozen=True)
+class M5BsuZone:
+    d1_price: float
+    side: str
+    maximum_source_distance: float
+    provenance: str = "FROZEN_CONFIRMED_D1_CONTEXT_NOT_AUTHOR_BSU"
+
+
+@dataclass(frozen=True)
+class M5BsuSequenceEvidence:
+    event: str
+    level_price: float
+    d1_context_price: float
+    side: str
+    source_end: datetime
+    bpu1_end: datetime
+    observed_at: datetime
+    bpu2_end: datetime | None = None
+    provenance: str = "RAW_M5_PRIOR_BAR_PROXY_NOT_AUTHOR_BSU"
+    preclose_tvx_verified: bool = False
+    can_trade: bool = False
+
+
+class M5BsuSequenceScanner:
+    """Independently discover earlier RAW M5 source bars near frozen D1.
+
+    This scanner is independent of an ACCEPTED morning bounce decision.
+    Prior M5 high/low is only a candidate BSU until an exact BPU1; BPU2
+    is independently checked on the immediately following CLOSED native
+    M5 candle using the already existing strict BsuDetector. No TVX can
+    be inferred from a completed M5. Historical prior-day M5 candles are
+    NOT loaded, so this is strictly same-session source coverage.
+    """
+
+    def __init__(self, cfg: StrategyConfig, *, session, d1_levels,
+                 d1_atr: float, previous_d1_close: float, tick_size: float,
+                 history_limit: int = 80, max_pairs: int = 24):
+        from datetime import date
+        if not isinstance(session, date) or isinstance(session, datetime):
+            raise ValueError("M5_BSU_SESSION_REQUIRED")
+        self.session = session
+        self.tick = _positive("native_tick", tick_size)
+        self.atr = _positive("closed_D1_ATR", d1_atr)
+        prev = _positive("previous_D1_close", previous_d1_close)
+        if (not isinstance(history_limit, int) or history_limit<4
+                or history_limit>1000 or not isinstance(max_pairs, int)
+                or max_pairs<1 or max_pairs>1000):
+            raise ValueError("M5_BSU_INVALID_LIMIT")
+        self.cfg=cfg
+        self.history_limit=history_limit
+        self.max_pairs=max_pairs
+        self._tol=self.tick*(0.5+1e-7)
+        self._history=[]
+        self._pending=[]
+        self._last=None
+        self.rejected_counts={}
+        self.completed=0
+        self.bpu1_count=0
+        self.zones=[]
+        # D1 levels must ALREADY be confirmed before the session. The
+        # cluster is only an allowed NEIGHBORHOOD for actual M5 OHLC.
+        for lvl in d1_levels or ():
+            try:
+                price=float(lvl.price)
+                kind=lvl.kind
+                valid=lvl.valid_from
+                source=lvl.source
+                touches=lvl.touches
+                strength=lvl.strength
+            except (AttributeError,ValueError,TypeError):
+                continue
+            if (valid is None or valid>session or source!="swing_cluster"
+                    or kind not in ("support","resistance","mirror")
+                    or not isfinite(price) or price<=0
+                    or touches<cfg.min_touches
+                    or strength<cfg.min_level_strength):
+                continue
+            if kind=="mirror":
+                if prev>price+self._tol:
+                    side="long"
+                elif prev<price-self._tol:
+                    side="short"
+                else:
+                    continue  # indistinguishable role at morning close
+            else:
+                side="long" if kind=="support" else "short"
+            maxdist=self.atr*cfg.level_tolerance_atr
+            self.zones.append(M5BsuZone(price,side,maxdist))
+        self.zones=tuple(self.zones)
+
+    def _reject(self, reason):
+        self.rejected_counts[reason]=self.rejected_counts.get(reason,0)+1
+
+    def observe(self, bar: Bar) -> tuple[M5BsuSequenceEvidence,...]:
+        if not isinstance(bar,Bar) or bar.timeframe!="M5":
+            raise ValueError("M5_BSU_REQUIRES_COMPLETED_M5")
+        now=BsuDetector._validate_bar(bar)
+        if float(bar.volume)<=0:
+            raise ValueError("M5_BSU_REQUIRES_TRADED_NATIVE_VOLUME")
+        from zoneinfo import ZoneInfo
+        if now.astimezone(ZoneInfo("America/New_York")).date()!=self.session:
+            raise ValueError("M5_BSU_WRONG_SESSION")
+        if self._last is not None and now<=self._last:
+            raise ValueError("M5_BSU_DUPLICATE_OR_OUT_OF_ORDER")
+        self._last=now
+        # Check previous BPU1 BEFORE adding current bar as an eligible BSU.
+        events=[]
+        for detector,origin,zone in self._pending:
+            st=detector.on_bar(bar)
+            if st.phase=="bpu2_confirmed":
+                self.completed+=1
+                events.append(M5BsuSequenceEvidence(
+                    "BPU2_CLOSED",st.level_price,zone.d1_price,st.side,
+                    origin.ts,st.bpu1_ts,bar.ts,bpu2_end=bar.ts))
+            else:
+                self._reject("BPU2_"+st.reason[:65])
+        self._pending=[]
+        if self.zones:
+            found=[]
+            # Exact native-tick equality ONLY. Candles whose ranges merely
+            # straddle a price do not establish BPU1 for that price.
+            for zone in self.zones:
+                extreme=bar.low if zone.side=="long" else bar.high
+                for historical in self._history:
+                    source=historical.low if zone.side=="long" else historical.high
+                    if abs(source-zone.d1_price)>zone.maximum_source_distance:
+                        continue
+                    if abs(source-round(source/self.tick)*self.tick)>self.tick*1e-5:
+                        self._reject("SOURCE_OFF_CURRENT_NATIVE_GRID")
+                        continue
+                    if abs(extreme-source)<=self._tol:
+                        found.append((zone,source,historical))
+                        break  # earliest historical source for this D1 zone
+            # Duplicate zones/prices are independent *context* only, not
+            # independent BPU1 events for the same actual M5 source price.
+            unique={}
+            for zone,price,origin in found:
+                k=(zone.side,round(price/self.tick))
+                if k not in unique:
+                    unique[k]=(zone,price,origin)
+            if len(unique)>self.max_pairs:
+                self._reject("BPU1_CANDIDATE_OVERFLOW_FAIL_CLOSED")
+            else:
+                for zone,price,origin in unique.values():
+                    d=BsuDetector(self.cfg,price,zone.side,
+                                  atr_value=self.atr,tick_size=self.tick,
+                                  bsu_ts=origin.ts)
+                    stage=d.on_bar(bar)
+                    if stage.phase!="bpu1":
+                        self._reject("BPU1_REJECTED_"+stage.reason[:50])
+                        continue
+                    self._pending.append((d,origin,zone))
+                    self.bpu1_count+=1
+                    events.append(M5BsuSequenceEvidence(
+                        "BPU1_EXACT",price,zone.d1_price,zone.side,
+                        origin.ts,bar.ts,bar.ts))
+        # History grows ONLY from already closed RAW native M5 bars.
+        self._history.append(bar)
+        self._history=self._history[-self.history_limit:]
+        return tuple(events)

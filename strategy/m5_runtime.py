@@ -1,7 +1,7 @@
 """M5 native LEAN research callback implementation. No orders. """
 from .data import MarketData
 from .native_m5_validation import validate_m5_tradebar
-from .patterns_bsu import Bar as ResearchBpuBar
+from .patterns_bsu import Bar as ResearchBpuBar, M5BsuSequenceScanner
 from .signals import build_intent, GateResult
 from .lean_risk_observer import review_native_lean_risk
 from .protected_entry import review_schwab_protected_entry
@@ -42,6 +42,51 @@ def process_m5(self, bar, time_index):
         "low": float(bar.low), "close": float(bar.close),
         "volume": float(bar.volume)})
     state["m5_rows"] = state["m5_rows"][-80:]
+    # QWCT 4.1: independent M5 source/BPU sequence exploration.
+    # Frozen D1 levels only bound the relevant area; the candidate BSU
+    # PRICE comes from an actual EARLIER RAW M5 high/low, not a D1 median.
+    # Scanner does NOT promote a trading setup or construct a -30s TVX.
+    if (state.get("session_levels") is not None
+            and state.get("daily_rows")
+            and state.get("_m5_source_error_date")!=self._session_date):
+        try:
+            scan=state.get("_m5_source_scanner")
+            if scan is None or scan.session!=self._session_date:
+                tick=float(self.securities[symbol].symbol_properties.minimum_price_variation)
+                scan=M5BsuSequenceScanner(
+                    self.cfg,session=self._session_date,
+                    d1_levels=state["session_levels"],
+                    d1_atr=float(state["atr"].current.value),
+                    previous_d1_close=float(state["daily_rows"][-1]["close"]),
+                    tick_size=tick)
+                state["_m5_source_scanner"]=scan
+                state["_m5_source_reported"]=0
+            observed_m5=scan.observe(ResearchBpuBar(
+                ts=native_end.to_pydatetime(),open=float(bar.open),
+                high=float(bar.high),low=float(bar.low),
+                close=float(bar.close),volume=float(bar.volume)))
+            for evidence in observed_m5:
+                # Read-only, bounded Log/Run Ledger output: no fake
+                # broker, no fills, and never a BPU from D1 data.
+                count=state["_m5_source_reported"]
+                if count<8 and (evidence.event=="BPU2_CLOSED" or count<3):
+                    self._record(
+                        symbol,"M5_SOURCE_"+evidence.event,model="bounce",
+                        side=evidence.side,level=evidence.level_price,
+                        reason=(f"RAW_M5_SOURCE={evidence.source_end}; "
+                                f"BPU1_END={evidence.bpu1_end}; "
+                                f"source_exact={evidence.level_price:.6f}; "
+                                f"frozen_D1_context={evidence.d1_context_price:.6f}; "
+                                "UNVERIFIED_AUTHOR_BSU; NO TVX/ORDERS"))
+                    state["_m5_source_reported"]+=1
+        except Exception as exc:
+            # A source-data/normalization failure must NEVER be
+            # converted into a new trade candidate or silently repaired.
+            state["_m5_source_scanner"]=None
+            if state.get("_m5_source_error_date")!=self._session_date:
+                state["_m5_source_error_date"]=self._session_date
+                self._record(symbol,"ERROR",
+                             reason="Native M5 source observer: "+str(exc)[:180])
     breakout_observer = state.get("breakout_retest")
     if breakout_observer is not None:
         try:

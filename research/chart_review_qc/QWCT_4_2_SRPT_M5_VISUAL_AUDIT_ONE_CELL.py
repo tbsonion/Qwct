@@ -107,15 +107,31 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
     actual=[by_end.get(t) for t in ts]
     if any(x is None for x in actual):
         raise ValueError("MISSING_RECORDED_CANDLE")
+    # Infer the actual BSU-facing side from the TWO original RAW M5
+    # extrema; do not assume lows on a hypothetical resistance case.
+    sides=[
+        side for side,field in (("long","low"),("short","high"))
+        if all(abs(float(getattr(x,field))-price)<=tick/2+tick*1e-7
+               for x in actual[:2])
+    ]
+    if len(sides)!=1:
+        raise ValueError("M5_SOURCE_ROLE_UNKNOWN_OR_AMBIGUOUS")
+    side=sides[0]
+    if match and match[0].side!=side:
+        raise ValueError("RESEARCH_ROLE_DOES_NOT_MATCH_NATIVE_BARS")
     prior=[x for x in m5 if ts[0]<et(x.ts)<ts[1]]
     gaps=[t for t in pd.date_range(ts[0]+timedelta(minutes=5),
           ts[1]-timedelta(minutes=5),freq="5min") if t not in by_end]
-    pierced=[x for x in prior if x.low<price-tick/2]
+    pierced=[x for x in prior
+             if (x.low<price-tick/2 if side=="long"
+                 else x.high>price+tick/2)]
     rejected=bool(gaps or pierced)
     if rejected==bool(match):
         raise ValueError("CONTRADICTORY_SOURCE_STATUS")
     print("QWCT 4.3",price,"REJECTED" if rejected else "PASSES_SOFTWARE",
-          "prior_pierces=",[(fmt(x.ts),x.low) for x in pierced[:8]],
+          "SIDE=",side,
+          "prior_pierces=",[(fmt(x.ts),x.low if side=="long" else x.high)
+                           for x in pierced[:8]],
           "missing_M5=",[fmt(t) for t in gaps],"NO_AUTHOR_APPROVAL")
     for label,x in zip(("source","retouch","next_bar"),actual):
         print("SRPT",price,label,fmt(x.ts),
@@ -133,7 +149,7 @@ for row,(price,bsu,bpu1,bpu2) in enumerate(expected,start=1):
     for stage,b,color,symbol in zip(
         ("SOURCE CANDIDATE", "RETOUCH", "FOLLOWING BAR"),actual,
         ("#c43d39","#f29d24","#258c51"),("diamond","star","triangle-up")):
-        y=b.low
+        y=b.low if side=="long" else b.high
         fig.add_trace(go.Scatter(
             x=[et(b.ts)],y=[y],mode="markers",
             marker=dict(size=13,color=color,symbol=symbol),

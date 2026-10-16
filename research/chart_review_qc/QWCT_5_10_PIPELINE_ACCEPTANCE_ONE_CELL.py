@@ -1149,6 +1149,46 @@ class NativeSecondTvxWindow:
         return NativePrecloseSample(observed_at=end, observed_since=self.bpu1_end, bpu2_end=self.bpu2_end, observed_low=self.low, observed_high=self.high, last_price=self.last_price, observed_bars=self.count, unobserved_seconds=self.unobserved_seconds)
 
 
+# Canonical read-only subset: strategy/sessions.py
+_ET = ZoneInfo('America/New_York')
+
+@dataclass(frozen=True)
+class ModelWindow:
+    model: str
+    start: time
+    end: time
+
+def _parse_windows(raw: tuple, model: str) -> list[ModelWindow]:
+    out = []
+    for s, e in raw:
+        sh, sm = map(int, s.split(':'))
+        eh, em = map(int, e.split(':'))
+        out.append(ModelWindow(model, time(sh, sm), time(eh, em)))
+    return out
+
+class SessionPolicy:
+
+    def __init__(self, cfg: StrategyConfig):
+        self.cfg = cfg
+        self._windows = {'breakout': _parse_windows(cfg.session_windows_breakout, 'breakout'), 'bounce': _parse_windows(cfg.session_windows_bounce, 'bounce'), 'false_breakout': _parse_windows(cfg.session_windows_false_breakout, 'false_breakout')}
+
+    def is_entry_allowed(self, model: str, ts: datetime) -> tuple[bool, str]:
+        if ts.tzinfo is None or ts.utcoffset() is None:
+            return (False, 'нет достоверного биржевого часового пояса')
+        t = ts.astimezone(_ET).time()
+        wins = self._windows.get(model, [])
+        for w in wins:
+            if w.start <= t < w.end:
+                return (True, f'{model}: окно {w.start:%H:%M}-{w.end:%H:%M}')
+        if wins:
+            spans = ', '.join((f'{w.start:%H:%M}-{w.end:%H:%M}' for w in wins))
+            return (False, f'{model}: вне окон ({spans})')
+        return (False, f'{model}: окна не заданы')
+
+    def describe(self) -> dict[str, list[str]]:
+        return {m: [f'{w.start:%H:%M}-{w.end:%H:%M}' for w in ws] for m, ws in self._windows.items()}
+
+
 # Canonical read-only subset: strategy/pipeline_audit.py
 def _aware(value):
     at = pd.Timestamp(value)
@@ -1234,7 +1274,12 @@ def audit_pipeline(decision, market, observed_at, cfg, *, equity=25000.0):
         report['level_source'] = str(decision.level.source)
         report['d1_bars'] = len(d1)
         report['m5_bars'] = len(m5)
-        if blockers:
+        entry_at = at - timedelta(seconds=30) if decision.model == 'bounce' else at
+        allowed, why = SessionPolicy(cfg).is_entry_allowed(decision.model, entry_at.to_pydatetime())
+        report['entry_window'] = {'passed': allowed, 'at': entry_at.isoformat(), 'reason': why}
+        if not allowed:
+            blockers.append('SESSION_ENTRY_WINDOW_FALSE')
+        if any((x != 'SESSION_ENTRY_WINDOW_FALSE' for x in blockers)):
             return report
         frozen_market = MarketData(market.symbol, d1, m5, session_levels=market.session_levels, breakout_retest=market.breakout_retest, bpu_tvx=market.bpu_tvx)
         report['stage'] = 'CANONICAL_GATES'
@@ -1528,7 +1573,7 @@ def _historical_second(qb,symbol,bpu1):
 
 
 def run_qwct_pipeline_acceptance():
-    day=datetime(2024,6,3); cfg=StrategyConfig()
+    day=datetime(2024,6,3); cfg=StrategyConfig(); session_policy=SessionPolicy(cfg)
     qb=QuantBook(); qb.set_time_zone('America/New_York')
     qb.set_start_date(2024,7,1); qb.set_end_date(2024,7,2)
     _emit('START',sample=['AMAT','NFLX','SRPT','MSFT'],session=day.date(),
@@ -1595,7 +1640,11 @@ def run_qwct_pipeline_acceptance():
                     observed=link.detector.on_bar(b)
                     if before!=observed.phase and observed.phase in ('bpu1','bpu2_confirmed','invalidated'):
                         _emit('BPU',symbol=ticker,phase=observed.phase,at=at,reason=observed.reason,can_trade=False)
-                    if observed.phase=='bpu1' and before!='bpu1' and sec_queries<2:
+                    wants_sec=observed.phase=='bpu1' and before!='bpu1' and sec_queries<2
+                    allowed_sec=session_policy.is_entry_allowed('bounce',at+timedelta(minutes=4,seconds=30))[0]
+                    if wants_sec and not allowed_sec:
+                        _emit('HISTORICAL_SEC_NOT_REQUESTED',symbol=ticker,reason='OUTSIDE_BOUNCE_TVX_ENTRY_WINDOW',can_trade=False)
+                    if wants_sec and allowed_sec:
                         sec_queries+=1
                         try:
                             sample=_historical_second(qb,sym,at)
@@ -1624,7 +1673,7 @@ def run_qwct_pipeline_acceptance():
             _emit('REACTIONS_10',symbol=ticker,scope='FROZEN_LEVEL_SOFTWARE_TAGS_NOT_AUTHOR_ACCURACY',
                   counts={name:counts[name] if reactions else None for name in KINDS},
                   frozen_role=side,gap_resets=reactions.gap_resets if reactions else None,can_trade=False)
-            _emit('GATES_8',symbol=ticker,counts={key:dict(value) for key,value in gate_counts.items()},
+            _emit('GATES_8',symbol=ticker,conditional_sec_queries=sec_queries,counts={key:dict(value) for key,value in gate_counts.items()},
                   note='NO_CANONICAL_GATE_EVALUATION' if not decision.accepted else 'PER_BAR_COUNTS_NOT_TRADES')
             if best:
                 best.pop('features',None)

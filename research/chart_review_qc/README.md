@@ -1,5 +1,15 @@
 # QWCT 2.9 — Chart-first BSU / Mirror verification (read-only)
 
+## QWCT 3.1 NATIVE RUN COMPLETED — original RAW source diverges from clustered D1 mirror median
+
+**Native QuantConnect Research Notebook chart/console evidence actually received** for preselected first-day June 3 **AMAT/NFLX/SRPT** and predeclared **MSFT negative control**. [Read the exact observed D1 source, native tick, RAW/SCALED_RAW and 5-minute wick findings](./NATIVE_JUNE03_RAW_SOURCE_M5_RESULT.md).
+
+- **All 3 morning-positive D1 mirror proxies reproduced from real frozen 180-source bars**, and MSFT negative control correctly failed role and trend despite being near.
+- **Original fixed D1 source swings were not at the D1-cluster medians**: AMAT +20.5 ticks, NFLX −76.5, SRPT +49, MSFT +27; original `AMAT 214.255` is subpenny relative to current native $0.01 tick. AMAT and MSFT historical RAW versus SCALED_RAW origins differ, NFLX and SRPT match.
+- **Real native LEAN M1→M5** gave AMAT78/78, NFLX78/78, SRPT77/78 (one M1 missing from bucket **13:10 ET**), MSFT78/78 original-minute-complete source M5. **All 4 show ZERO half-native-tick exact original source relevant-wick touches**; range *straddles* were **8, 10, 16, and 4** respectively. An exact AMAT wick against the **median** occurred once, but not against original source; do not confuse the two or count a level pass-through as BPU1. No 3.1 source result justifies changing original BPU equality logic or inferring trades.
+- **Next best-value step is a read-only D1-only source basis/tick/grid/duplicate census** of the 92 frozen morning-eligible mirrored **level×stock-day records** before considering any more native M5 requests. Automatic `PROXY_VERIFIED` is not a human-approved Gerchik BSU.
+
+
 ## QWCT 3.1 — June 3 first-candidate ORIGINAL RAW source and actual LEAN M5 geometry (NEW; native run pending)
 
 **Ready-to-paste one cell:** [`MIRROR_JUNE03_RAW_D1_NATIVE_M5_ONE_CELL.py`](./MIRROR_JUNE03_RAW_D1_NATIVE_M5_ONE_CELL.py). In the **existing QuantConnect `Qwct-M5-Cohort-Research` project**, open **Research Notebook `research.ipynb`**, add one **new code cell** beneath the old AON/DELL cells, copy the complete new Python file, paste, and **Shift+Enter**. **Do not** overwrite the 3.0 Cloud `main.py`, change prior cells or rerun the 19-session June census.

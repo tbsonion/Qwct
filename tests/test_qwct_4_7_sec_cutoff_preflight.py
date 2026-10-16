@@ -113,3 +113,19 @@ def test_47_43_missing_m5_resets_source_history():
     assert scan.rejected_counts["M5_SOURCE_CONTINUITY_GAP_RESET"]==1
     assert len(scan._history)==1
     assert scan._history[0].ts==m5(2).ts
+
+
+def test_47_adapter_cannot_fake_cutoff_timestamp():
+    w=NativeSecondTvxWindow(BPU1_END)
+    actual=sec(1)
+    assert w.accept(actual,symbol="SRPT",end_at=w.cutoff) is None
+    assert w.blocked_reason=="SEC_ADAPTER_END_MISMATCH"
+
+
+def test_47_fractional_second_cutoff_rejected():
+    w=NativeSecondTvxWindow(BPU1_END)
+    actual=sec(1)
+    actual.end_time += timedelta(microseconds=1)
+    actual.time += timedelta(microseconds=1)
+    assert w.accept(actual,symbol="SRPT") is None
+    assert w.blocked_reason=="SEC_END_NOT_ALIGNED_TO_SECOND"

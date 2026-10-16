@@ -2,7 +2,7 @@
 # Paste the entire script into ONE NEW QuantConnect Research Notebook cell.
 # Existing chart and 3.0 Cloud backtest code remain unchanged.
 # 3 original positive June 3 cohort candidates and 1 preselected rejected control.
-# Actual LEAN RAW D1 TradeBar source + LEAN M1->M5 consolidator, NO ORDERS.
+# ONLY original LEAN RAW D1 TradeBar source; NO M1/M5 requests or orders.
 from AlgorithmImports import *
 from QuantConnect.Research import QuantBook
 from strategy.config import StrategyConfig
@@ -247,7 +247,10 @@ def price_hypotheses(d1,level,trace,side,tick):
         raise ValueError("SOURCE_LAST_BREACH_RETEST_NOT_STRICTLY_CAUSAL")
     # New support is touched by LOW from above; new resistance by HIGH
     # from below. Mirror confirmation alone DOES NOT establish a BPU1.
-    field="low" if side=="long" else "high"
+    # Mirror's NEW ROLE, not a disqualified trade-side (MSFT negative), fixes
+    # which D1 retest wick is appropriate. In old resistance -> support the
+    # retest is LOW even if algorithmic morning trade-side=short (rejected).
+    field="low" if trace["original_kind"]=="resistance" else "high"
     origfield="high" if trace["original_kind"]=="resistance" else "low"
     prices=[
         ("FIRST_SWING",source_at,float(d1.iloc[level.first_idx][origfield]),origfield),
@@ -306,7 +309,7 @@ def plot_d1_evidence(case,d1,prices,breach,retest):
             (prices[1][1],"LAST D1 swing","darkorange",prices[1][3]),
             (breach[0],"D1 close-through breach","darkviolet","close"),
             (retest[0],"D1 role reversal retest","forestgreen",
-             "low" if case["decision"]=="POSITIVE_LONG" else "high")):
+             prices[3][3])):
             if event in frame.index:
                 fig.add_trace(go.Scatter(
                     x=[event],y=[float(frame.loc[event][field])],
@@ -327,7 +330,7 @@ for case in CASES:
     print(f"\\n======== QWCT 3.3 SOURCE DECISION {ticker} ========")
     try:
         symbol=qb.add_equity(
-            ticker,Resolution.MINUTE,fill_forward=False,
+            ticker,Resolution.DAILY,fill_forward=False,
             data_normalization_mode=DataNormalizationMode.RAW).symbol
         d1=native_d1_frame(typed_d1(symbol,DataNormalizationMode.RAW))
         lvl,trace,side,original,source_at,old_field=mirror_morning(case,d1)

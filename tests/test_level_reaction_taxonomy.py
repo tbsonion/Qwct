@@ -171,6 +171,68 @@ def test_future_bar_cannot_shift_existing_reaction_into_past():
     assert tuple(x for x in extended if x.observed_on<=cutoff)==old
 
 
+def test_body_open_beyond_level_is_not_a_one_day_false_break():
+    idx,d1,e,trace=_fixture()
+    # Price opens BELOW old-resistance/new-support 100 and closes back
+    # above it. A body-cross return does not BEGIN on defended side.
+    d1.loc[idx[8],["open","high","low","close"]]=[99.,103.,97.,102.]
+    body_cross=_d1_wick_reaction(
+        d1.iloc[8],100.,.01,"support",idx[8].date(),5.,True)
+    assert body_cross.event=="BODY_CROSS_RECLAIM"
+    e=replace(e,wick_reactions=(*e.wick_reactions,body_cross))
+    result=_run(d1,e,trace)
+    assert any(t.kind=="WICK_RECLAIM" and t.observed_on==idx[8].date()
+               for t in result)
+    assert not any(t.kind=="FALSE_BREAK_1BAR"
+                   and t.observed_on==idx[8].date() for t in result)
+    assert any(t.kind=="FALSE_BREAK_1BAR"
+               and t.observed_on==idx[5].date() for t in result)
+
+
+def test_wick_bounce_recomputes_relevant_fraction_from_closed_candle():
+    idx,d1,e,trace=_fixture()
+    before=_run(d1,e,trace)
+    assert any(t.kind=="WICK_BOUNCE"
+               and t.observed_on==idx[6].date() for t in before)
+    # Preserve the source's event classification, change only low.
+    # Previous cached ratio >0.40 must NOT fabricate a long-wick bounce.
+    d1.loc[idx[5],"low"]=99.5
+    after=_run(d1,e,trace)
+    assert any(t.kind=="WICK_RECLAIM"
+               and t.observed_on==idx[5].date() for t in after)
+    assert not any(t.kind=="WICK_BOUNCE"
+                   and t.observed_on==idx[6].date() for t in after)
+
+
+def test_second_independent_mirror_retest_is_not_lost():
+    idx,d1,e,trace=_fixture()
+    # A later candle approaches support from defended side, touches it,
+    # and closes back above. Distinct from original audited first retest.
+    d1.loc[idx[19],"low"]=99.
+    out=_run(d1,e,trace)
+    assert any(t.kind=="MIRROR_RETEST"
+               and t.observed_on==idx[19].date()
+               and t.phase=="MIRROR" for t in out)
+    assert any(t.kind=="MIRROR_RETEST"
+               and t.observed_on==idx[3].date()
+               and t.phase=="MIRROR_TRANSITION" for t in out)
+
+
+def test_gap_only_close_flips_do_not_pass_chop_observation():
+    idx,d1,e,trace=_fixture()
+    for i in range(22,28):
+        close=101. if i%2==0 else 99.
+        if close>100:
+            d1.loc[idx[i],["open","high","low","close"]]=[
+                101.,101.8,100.5,101.]
+        else:
+            d1.loc[idx[i],["open","high","low","close"]]=[
+                99.,99.5,98.2,99.]
+    result=_run(d1,e,trace)
+    assert not any(t.kind=="CHOP" and t.observed_on==idx[27].date()
+                   for t in result)
+
+
 def test_no_orders_portfolio_or_live_broker_in_taxonomy():
     from pathlib import Path
     txt=(Path(__file__).resolve().parents[1]/"strategy"/"indicators.py").read_text(

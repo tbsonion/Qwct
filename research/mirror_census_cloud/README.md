@@ -1,5 +1,14 @@
 # QWCT 3.0 — Native PIT D1 mirror eligibility census (read-only)
 
+## 2026-10-15 — NATIVE EXECUTION COMPLETED; 92 research-level proxy observations
+
+Previous run instructions below are retained for reproducibility. **A real QuantConnect Cloud LEAN native execution is now confirmed** by user-supplied log. [**Exact native result report**](./NATIVE_JUNE_2024_RESULT.md): engine **2.5.0.0.18184**, analysis `f3bfd88e2caf06f53ff02c353b76d27f`. **All original coverage checks matched 2.8:** 19 approved market days / 950 stock-days / 949 closed D1 / 861 Stage2 / 14 strict + 5 next-session callback days.
+
+The **new** scope yielded **689 symbol-days with mirrors**, **1,431 mirror level×symbol-day proxies**, **1,427 independent causal traces**, **323** originally near (≤1 ATR), **289** also Stage2+strength, **152** also role-aligned, and **92** meeting ALL frozen **morning D1** criteria (including trends+causality). Four origin kind conflicts and 1 D1 history insufficiency were marked rejects, not silently called 0 candidates. Every day's reported members/mirrors/near/ready sum to the final monthly counts. **None of the 92 counts BPU1, BPU2, trade entry, profitable trade or distinct unique setup**. The coverage omission in original `kind='mirror'` D1 research is now evidenced at the stage of morning candidate *proxies* only. No old trading rules were changed.
+
+**Next** is first-day historical chart-source verification for only **AMAT $214.460, NFLX $633.775, SRPT $125.000 on June 3, 2024**. All three have `stage2=1 strong=1 role_ok=1 trend_ok=1 audit=PROXY_VERIFIED` in this run and were selected **before knowing their later intraday action**. Read-only check each original source D1 high/low and precise native tick, original-vs-cluster/RAW-SCALED normalization, mirror chronology, and original native M1→complete M5 extremum touches. Do not count range straddles or median touches as fixed RAW BSU, and include a nearby rejected control case. No repeat 3.0 census needed.
+
+
 **Status: code and pure regression tests committed. Native QuantConnect Cloud execution is NOT yet verified.** No performance backtest, simulated orders, M5 replay, BPU, SEC/TICK or broker integration. This is a point-in-time (PIT) **morning screener eligibility census**, not the full Gerchik strategy.
 
 ## Why this study is necessary

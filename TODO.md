@@ -1,8 +1,18 @@
+## QWCT 5.7 — native bid/ask semantics и одна проверка пар
+
+[Исследование готовых механизмов](research/chart_review_qc/QWCT_5_7_NATIVE_QUOTE_SEMANTICS_RU.md): прочитаны pinned LEAN Tick reader, SecurityCache, QuoteBar.Update, TickQuoteBarConsolidator на `1a914155265ef0f3e979b7d6bd9671b1e8e3cb8f`. Cache обновляет ненулевые стороны без отдельного per-side last-change provenance; consolidator переносит предыдущие значения без fill-forward flag. AlgoSeek описывает парные NBBO строки с одинаковым временем и возможными разными venues; QC QuoteBar документирован как NBBO aggregate, но точный mapping сырых native Tick требует проверки. Это SOURCE_VERIFIED, Cloud-version parity UNKNOWN.
+
+**CODE / UNIT:** [одна самостоятельная cell 5.7](research/chart_review_qc/QWCT_5_7_NATIVE_QUOTE_PAIR_AUDIT_ONE_CELL.py), без новых свечей/стакана/feed/CVD: exact-timestamp groups, unique regular positive bid/ask pair metadata, ties/locked/crossed/flagged rejection, unsigned объём по причинам и возраст публикации пары (не last-change age сторон). Последняя плохая группа не заменяется старой хорошей. Весь объём остаётся unknown_aggressor_volume; CVD_UNAVAILABLE / ORDER_FLOW_UNAVAILABLE / can_trade=false.
+
+**Проверки:** 20 новых тестов, полный локальный suite **631 passed**, 24py package сохранён. [PR #44](https://github.com/tbsonion/Qwct/pull/44); code CI **2/2 success** на `17077941`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38969739047), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38969739082). Это не Cloud output 5.7 и не оценка Герчика.
+
+**Следующее действие:** заменить диагностическую Code Cell 5.6 в существующем `Qwct-M5-Cohort-Research/research.ipynb` **целиком** кодом cell 5.7, выполнить один раз, передать строки QWCT 5.7. Других файлов заменять не нужно. Cloud 5.7 PENDING; результат 5.6 сохранён. Aggressor/NBBO exact-message mapping/receive-time availability/полнота/positive limit-player labels/TVX и авторская точность остаются BLOCKED. Торговые модули, BSU/BPU и Risk Gate неизменны.
+
 ## QWCT 5.6 — Cloud output получен от пользователя (16.10.2026)
 
 [Сохранённый результат и границы доказательства](research/chart_review_qc/QWCT_5_6_CLOUD_DATA_AUDIT_RESULT_RU.md): SRPT **193 TRADE / 640 QUOTE**, SPY **2875 TRADE / 36576 QUOTE**. Все quote updates односторонние; **8/8** полных M1 объёмов совпали с tick sum. Native quote availability в этом окне подтверждена, предположение об отсутствии quotes снято. Полнота SIP, aggressor side, NBBO synchrony и receive-time delivery **не подтверждены**. CVD/positive limit-player observer/TVX по-прежнему BLOCKED. Это USER_SUPPLIED_CLOUD_OUTPUT, run ID не предоставлен; не независимый запуск агента.
 
-**Следующее:** исследовать официальные native quote semantics/reader и готовые механизмы до estimated trade classification. Cell 5.6 повторять не требуется; production файлы не заменять. Предыдущие ниже отметки PENDING описывают состояние до получения этого output.
+**Источник следующего этапа:** native quote semantics исследованы в 5.7 (см. выше); следующий runtime gate — paired-quote cell 5.7. Cell 5.6 повторять не требуется; production файлы не заменять. Предыдущие ниже отметки PENDING описывают состояние до получения output.
 
 # QWCT — АКТУАЛЬНЫЙ TODO (16.10.2026) · после QWCT 5.6
 

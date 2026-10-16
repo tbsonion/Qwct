@@ -41,6 +41,17 @@ def test_43_preflight_bpu2_not_hidden_by_first_bpu1_print_limit():
     assert "PIERCED_REJECTS=" in s and "GAP_RESETS=" in s
 
 
+def test_43_quantbook_and_backtest_diagnostics_use_same_real_minutes():
+    path=DRIVER.with_name("QWCT_4_1_READY_M5_RESEARCH.py")
+    source=path.read_text(encoding="utf-8")
+    ast.parse(source,filename=str(path))
+    assert "consolidator.scan(DAY.replace(hour=16, minute=1))" in source
+    assert "MISSING_1M=" in source and "MISSING_M5=" in source
+    assert "PIERCED_REJECTS=" in source and "GAP_RESETS=" in source
+    assert "range(390)" in source and "range(78)" in source
+    assert "market_order(" not in source.lower()
+
+
 def test_42_history_request_is_never_future_and_flushes_real_last_m5():
     script=DRIVER.read_text(encoding="utf-8")
     assert "SESSION,  # Only history known at Initialize (00:00 ET)." in script

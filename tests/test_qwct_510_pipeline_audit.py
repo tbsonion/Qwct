@@ -177,3 +177,17 @@ def test_evaluate_all_rejects_truthy_bad_function_outputs(monkeypatch):
     monkeypatch.setattr(feature_module,'FEATURES',[('g01',lambda *args: FeatureResult('g01',float('nan')))])
     out=feature_module.evaluate_all(None,None,AT,None,[],StrategyConfig())
     assert out['g01'].value is None and out['g01'].reason.startswith('ошибка:')
+
+
+def test_bounce_window_is_checked_at_cutoff_not_later_m5_close(monkeypatch):
+    d,m=metadata_market()
+    at=AT.replace(hour=13,minute=30)
+    m.m5.index=pd.DatetimeIndex([at-timedelta(minutes=5),at])
+    monkeypatch.setattr(audit_module,'build_intent',lambda *args,**kwargs: None)
+    result=audit_pipeline(d,m,at,StrategyConfig())
+    assert result['entry_window']['passed'] is True  # 13:29:30, still allowed.
+    late=at+timedelta(minutes=5)
+    m.m5.index=pd.DatetimeIndex([late-timedelta(minutes=5),late])
+    result=audit_pipeline(d,m,late,StrategyConfig())
+    assert result['entry_window']['passed'] is False
+    assert 'SESSION_ENTRY_WINDOW_FALSE' in result['blockers']

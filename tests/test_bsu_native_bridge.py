@@ -198,3 +198,23 @@ def test_split_adjusted_historical_origin_off_real_native_tick_is_blocked():
         decision, daily, native_tick_size=.01, cfg=StrategyConfig())
     assert link is None
     assert "tick grid" in why
+
+
+def test_proven_mirror_support_to_resistance_can_arm_short_bsu_proxy():
+    decision, daily = evidence(kind="support", side="short")
+    decision.level.original_kind = "support"
+    decision.level.kind = "mirror"
+    link, reason = create_bsu_research_observer(
+        decision, daily, native_tick_size=.01, cfg=StrategyConfig())
+    assert link is not None, reason
+    assert link.origin_price == 100.0
+
+
+def test_proven_mirror_resistance_to_support_can_arm_long_bsu_proxy():
+    decision, daily = evidence(kind="resistance", side="long")
+    decision.level.original_kind = "resistance"
+    decision.level.kind = "mirror"
+    link, reason = create_bsu_research_observer(
+        decision, daily, native_tick_size=.01, cfg=StrategyConfig())
+    assert link is not None, reason
+    assert link.origin_price == 100.0

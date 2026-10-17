@@ -1,3 +1,10 @@
+## QWCT 5.13 — после реального Cloud 5.12 (17.10.2026)
+
+- [x] Пользовательский Cloud 5.12 завершён без BLOCKED: **0 accepted / 4 rejected**, feature calculation errors отсутствуют. Все модели ниже неизменённого `min_model_score=4.0`: AMAT max 3.5, NFLX 3.5, SRPT 2.5, MSFT 2.5. M5/8 gates/TVX в этом запуске намеренно не выполнялись.
+- [x] Все четыре ближайших уровня имеют `kind=mirror`, `source=swing_cluster`, но `bsu_origin_eligible=false`. Не интерпретировать это как ошибку данных и **не понижать score threshold**, чтобы искусственно получить accepted case.
+- [x] [Сохранён raw-structured result](research/chart_review_qc/QWCT_5_12_USER_RUNTIME_RESULT_2026_10_17.json) как USER_SUPPLIED_CLOUD_STDOUT.
+- [ ] **Следующий один diagnostic:** 5.13 должен показать канонический `score_provenance` для каждой модели и точные `bsu_eligibility_checks`, чтобы отделить нормальный low-score rejection от логического разрыва mirror↔BSU. Никаких изменений правил/весов/уровней/ордеров.
+
 ## QWCT 5.12 — текущий Cloud D1 diagnostic (17.10.2026; PR #54)
 
 - **Что реально подтверждено в Cloud:** 5.11 plain-text smoke напечатал `MODULE_IMPORTS_OK`, `can_trade=False`, `orders=DISABLED`. Это только проверка импортов 4 модулей, НЕ сквозной 5.10 pipeline и НЕ D1 acceptance.

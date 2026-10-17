@@ -47,6 +47,11 @@ def summarize(d10, d12, author, predictions):
              "PREDICTION_SCHEMA")
     _require(type(author.get("events")) is list and
              type(predictions.get("bars")) is list, "AUTHOR_DATA_FORMAT")
+    # The archived snapshot predates any independently matched author labels.
+    # New rows require the separate, strict QWCT 5.2 evaluation, never a
+    # silent accuracy upgrade inferred from simply counting source rows.
+    _require(not author["events"] and not predictions["bars"],
+             "AUTHOR_SNAPSHOT_CHANGED")
     n_features, errors, obs, expected, missing = 0, 0, 0, 0, {}
     for ticker in SYMBOLS:
         a, b = d10["symbols"][ticker], d12["symbols"][ticker]

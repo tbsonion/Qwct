@@ -472,9 +472,7 @@ class ScenarioEvaluator:
             side_br = 'long' if lvl.price >= price else 'short'
             s_bo, p_bo = _score_bounce(feats, cfg)
             side_bo = 'short' if lvl.price >= price else 'long'
-            pivot_kind = lvl.original_kind if lvl.kind == 'mirror' else lvl.kind
-            bsu_role_ok = lvl.kind == 'mirror' and (pivot_kind == 'support' and side_bo == 'short' or (pivot_kind == 'resistance' and side_bo == 'long')) or (lvl.kind != 'mirror' and (pivot_kind == 'support' and side_bo == 'long' or (pivot_kind == 'resistance' and side_bo == 'short')))
-            if bsu_role_ok and lvl.source == 'swing_cluster' and (lvl.valid_from is not None) and (lvl.valid_from <= session) and (lvl.formed_at is not None) and (lvl.touches >= cfg.min_touches) and (lvl.strength >= cfg.min_level_strength):
+            if lvl.kind in ('support', 'resistance') and lvl.source == 'swing_cluster' and (lvl.valid_from is not None) and (lvl.valid_from <= session) and (lvl.formed_at is not None) and (lvl.touches >= cfg.min_touches) and (lvl.strength >= cfg.min_level_strength):
                 has_eligible_bsu_level = True
                 best_bounce = s_bo if best_bounce is None else max(best_bounce, s_bo)
             s_fp, p_fp = _score_false_breakout(feats, cfg)
@@ -513,6 +511,7 @@ def _atr_value(d1: pd.DataFrame, cfg: StrategyConfig) -> float:
     if pd.isna(v) or not isfinite(float(v)) or v <= 0:
         raise ValueError('Native LEAN ATR is not ready')
     return float(v)
+
 
 # Canonical read-only subset: strategy/breakout_retest.py
 M5 = timedelta(minutes=5)
@@ -939,10 +938,6 @@ class FixedFloatingLimitObserver:
 
 
 # Canonical read-only subset: strategy/bsu_bridge.py
-def _pivot_kind(level):
-    kind = level.original_kind if level.kind == 'mirror' else level.kind
-    return kind if kind in ('support', 'resistance') else None
-
 @dataclass(frozen=True)
 class BsuResearchLink:
     detector: BsuDetector
@@ -969,14 +964,8 @@ def create_bsu_research_observer(decision: ScenarioDecision, d1_asof: pd.DataFra
     if decision is None or not decision.accepted or decision.model != 'bounce':
         return (None, 'not an accepted D1 bounce scenario')
     lvl = decision.level
-    if lvl is None:
-        return (None, 'D1 bounce level missing')
-    pivot_kind = _pivot_kind(lvl)
-    if pivot_kind is None:
-        return (None, 'D1 bounce level has no supported pivot provenance')
-    expected_side = ('short' if pivot_kind == 'support' else 'long') if lvl.kind == 'mirror' else 'long' if pivot_kind == 'support' else 'short'
-    if decision.side != expected_side:
-        return (None, 'D1 bounce level kind/side mismatch')
+    if lvl is None or (lvl.kind, decision.side) not in (('support', 'long'), ('resistance', 'short')):
+        return (None, 'D1 bounce level kind/side mismatch (mirror not assumed)')
     if lvl.source != 'swing_cluster':
         return (None, 'no traced D1 swing_cluster origin')
     if lvl.valid_from is None or lvl.valid_from > decision.session or lvl.formed_at is None or (lvl.touches < cfg.min_touches) or (lvl.strength < cfg.min_level_strength):
@@ -1007,7 +996,7 @@ def create_bsu_research_observer(decision: ScenarioDecision, d1_asof: pd.DataFra
             return (None, 'native D1 source originates after morning decision')
         if d1_asof.index[lvl.first_idx].date() >= decision.session:
             return (None, 'historical origin not closed before session')
-        scaled_origin = float(d1_asof.iloc[lvl.first_idx]['low' if pivot_kind == 'support' else 'high'])
+        scaled_origin = float(d1_asof.iloc[lvl.first_idx]['low' if lvl.kind == 'support' else 'high'])
         if require_raw and raw_evidence is None:
             return (None, 'native RAW D1 pivot evidence missing; fail closed')
         if raw_evidence is not None:
@@ -1030,6 +1019,7 @@ def create_bsu_research_observer(decision: ScenarioDecision, d1_asof: pd.DataFra
     except (ValueError, TypeError, KeyError, IndexError, OverflowError) as exc:
         return (None, f'invalid native D1 BSU proxy evidence: {exc}')
     return (BsuResearchLink(detector=detector, origin_time=origin_end.to_pydatetime(), tick_size=tick, cluster_price=float(lvl.price), origin_price=origin_price), ('native RAW D1 origin confirmed; ' if raw_evidence is not None else 'research-only D1 native pivot linked; ') + 'cluster median distinct from pivot; NOT a canonical BSU or TVX')
+
 
 # Canonical read-only subset: strategy/native_m5_validation.py
 def _duration_seconds(value):

@@ -26,7 +26,7 @@ def et(value):
 
 
 def d1_shadow_shortlist(passed, limit):
-    """D1-first shadow shortlist."""
+    """Read-only D1-first max-N shadow; retains original liquidity rank."""
     if type(limit) is not int or limit <= 0:
         raise ValueError("shadow capacity must be a positive integer")
     qualified = [
@@ -37,7 +37,7 @@ def d1_shadow_shortlist(passed, limit):
 
 
 def classify_snapshot(d1, cfg, session):
-    """Existing D1 screener and trend rules."""
+    """Use existing Qwct D1 screener, levels, and native-SMA trend rules."""
     if len(d1) < 60 or not d1.index.is_unique:
         raise ValueError("incomplete or duplicated as-of D1")
     last = d1.iloc[-1]
@@ -93,7 +93,7 @@ def classify_snapshot(d1, cfg, session):
                 shadow_levels=shadow_levels, examples=examples, _role_levels=role_aligned)
 
 def origin_d1_audit(d1, lvl, session, cfg, native_tick):
-    """RAW D1 origin audit; not canonical BSU."""
+    """PASS = RAW D1 pivot/grid/chronology ONLY, not canonical BSU."""
     r = dict(status="UNKNOWN", reason="", cluster=lvl.price,
              origin=None, source_date=None, confirmed_at=None,
              formed_at=str(lvl.formed_at), valid_from=str(lvl.valid_from),
@@ -151,7 +151,7 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
 
 
 def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
-    """RAW/SCALED_RAW price-basis observation."""
+    """PIT RAW/SCALED_RAW price-basis observation, never BSU authorization."""
     result = dict(status="UNKNOWN", why="MISSING_SCALED_HISTORY",
                   source=None, raw=None, scaled=None, last_raw=None,
                   last_scaled=None, ratio=None, tick=tick, bars=0)
@@ -219,7 +219,7 @@ def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
 
 
 class QwctM5CohortResearch(QCAlgorithm):
-    """Freeze D1 at 09:29; replay native M1/M5 after close."""
+
 
     def initialize(self):
         start = datetime.strptime(
@@ -464,7 +464,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                 f"basis_R={self.basis['REBASED']}; retrospective M5 ONLY")
 
     def on_data(self, data):
-        """Quarantine split days."""
+
         splits = getattr(data, "splits", None)
         if splits is None:
             return

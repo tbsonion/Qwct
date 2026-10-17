@@ -22,6 +22,8 @@ def write_reports(self):
     self.set_runtime_statistic("Qwct native BPU1", self._bsu_bpu1_count)
     self.set_runtime_statistic(
         "Qwct native SEC feed bars", getattr(self, "_native_sec_received", 0))
+    self.set_runtime_statistic(
+        "Qwct native SEC -30s windows", self._tvx_cutoff_samples)
     preclose_reviews = [
         row for row in self._signal_rows
         if row["type"] == "TVX_PRECLOSE_REVIEW"]

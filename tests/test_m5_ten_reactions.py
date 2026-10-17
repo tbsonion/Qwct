@@ -178,3 +178,35 @@ def test_heuristics_are_explicitly_not_author_thresholds():
     with pytest.raises(ValueError,match="WINDOW_NOT_INTEGER"):
         M5TenReactionObserver(100.,"long",.01,
              M5ReactionHeuristics(chop_min_flips=3.5))
+
+def test_short_two_bar_false_break_reenters_only_after_closed_bar():
+    s = obs("short")
+    assert "FALSE_BREAK_2BAR" not in kinds(
+        s, bar(0, o=99.8, h=99.95, l=99.6, c=99.8))
+    assert "FALSE_BREAK_2BAR" not in kinds(
+        s, bar(1, o=99.9, h=100.3, l=99.8, c=100.2))
+    out = s.observe(bar(2, o=100.2, h=100.4, l=99.6, c=99.8), 1.)
+    assert "FALSE_BREAK_2BAR" in {e.kind for e in out}
+    assert all(not e.can_trade and e.anchor_end <= e.bar_end for e in out)
+
+
+def test_short_break_followthrough_mirror_retest_requires_closed_confirmation():
+    s = obs("short")
+    kinds(s, bar(0, o=99.8, h=99.95, l=99.6, c=99.8))
+    kinds(s, bar(1, o=99.9, h=100.3, l=99.8, c=100.2))
+    confirmed = kinds(s, bar(2, o=100.2, h=100.5, l=100.1, c=100.4))
+    assert "BREAK_FOLLOWTHROUGH" in confirmed
+    assert "MIRROR_RETEST" not in confirmed
+    mirror = kinds(s, bar(3, o=100.4, h=100.4, l=99.9, c=100.2))
+    assert "MIRROR_RETEST" in mirror
+
+
+def test_short_mirror_retest_fails_closed_across_missing_native_m5():
+    s = obs("short")
+    kinds(s, bar(0, o=99.8, h=99.95, l=99.6, c=99.8))
+    kinds(s, bar(1, o=99.9, h=100.3, l=99.8, c=100.2))
+    assert "BREAK_FOLLOWTHROUGH" not in kinds(
+        s, bar(3, o=100.2, h=100.5, l=100.1, c=100.4))
+    assert s.gap_resets == 1
+    assert "MIRROR_RETEST" not in kinds(
+        s, bar(4, o=100.4, h=100.4, l=99.9, c=100.2))

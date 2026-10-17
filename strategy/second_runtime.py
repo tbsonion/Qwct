@@ -59,6 +59,9 @@ def process_second_slice(self, data, time_index):
             continue
         if sample is None:
             continue
+        # This counts genuine completed SEC cutoff windows, not TVX
+        # acceptance, a BPU2 confirmation, or broker authorization.
+        self._tvx_cutoff_samples += 1
         detector = state["bsu_link"].detector
         try:
             if (detector.state.phase != "bpu1" or

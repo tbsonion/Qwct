@@ -23,7 +23,7 @@ PARTS={
  'strategy/signals.py':['GATE_IDS','GateResult','TradeIntent','_direction','_gate','evaluate_gates',
                       '_check_m5','_limit_price','_atr','_session_levels','build_intent'],
  'strategy/patterns_bsu.py':['_positive','FixedFloatingEvidence','FixedFloatingLimitObserver'],
- 'strategy/bsu_bridge.py':['BsuResearchLink','RawBsuEvidence','create_bsu_research_observer'],
+ 'strategy/bsu_bridge.py':['_pivot_kind','BsuResearchLink','RawBsuEvidence','create_bsu_research_observer'],
  'strategy/native_m5_validation.py':['_duration_seconds','validate_m5_tradebar'],
  'strategy/native_second_tvx.py':['SECOND','BPU2_LENGTH','PRECLOSE_GAP','MAX_SECONDS',
                                 'MAX_UNOBSERVED_GAP','NativePrecloseSample','NativeSecondTvxWindow'],

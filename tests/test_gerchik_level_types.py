@@ -93,3 +93,46 @@ def test_46_bad_price_and_ohlc_fail_closed():
 
 def test_46_source_without_confirmation_not_fixed():
     assert check("HISTORICAL",[b(0)]).status==UNKNOWN
+
+def test_short_limit_player_requires_three_exact_unpierced_highs():
+    bars = [
+        b(0, o=99., h=100., l=98., c=99.),
+        b(1, o=99., h=100., l=98., c=99.),
+        b(2, o=99., h=100., l=98., c=99.),
+    ]
+    two = check("LIMIT_PLAYER", bars[:2], side="short")
+    three = check("LIMIT_PLAYER", bars, side="short")
+    assert two.status == UNKNOWN
+    assert three.status == FIXED_CANDIDATE
+    assert three.confirmation_end == bars[-1].end
+    assert not three.author_verified and not three.can_trade
+
+
+def test_short_limit_player_adverse_pierce_is_floating_not_limit_proof():
+    bars = [
+        b(0, o=99., h=100., l=98., c=99.),
+        b(1, o=99., h=100.01, l=98., c=99.),
+        b(2, o=99., h=100., l=98., c=99.),
+    ]
+    result = check("LIMIT_PLAYER", bars, side="short")
+    assert result.status == FLOATING
+    assert result.reason == "LIMIT_PLAYER_WICK_PIERCED"
+    assert result.can_trade is False
+
+
+def test_mirror_without_original_role_retest_stays_indeterminate():
+    bars = [
+        b(0, o=99., h=100., l=98., c=99.),
+        b(1, o=99., h=102., l=99., c=101.),
+        b(2, o=101.1, h=102., l=100.01, c=101.5),
+    ]
+    result = check("MIRROR", bars, side="long")
+    assert result.status == UNKNOWN
+    assert result.reason == "MIRROR_BREAK_OR_RETEST_NOT_CONFIRMED"
+
+
+def test_floating_classification_cannot_emit_fixed_price_or_order():
+    result = check("FLOATING", [b(0), b(1), b(2)])
+    assert result.status == FLOATING
+    assert result.reason == "NO_FIXED_PRICE_PROVEN"
+    assert result.author_verified is False and result.can_trade is False

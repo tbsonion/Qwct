@@ -105,6 +105,7 @@ class QwctGerchikAlgorithm(QCAlgorithm):
         self._bpu_invalid_reasons = Counter()
         self._breakout_retest_counts = Counter()
         self._native_sec_received = 0
+        self._tvx_cutoff_samples = 0
         self._tvx_preclose_count = 0
         self._tvx_preclose_reconciled = 0
         self._tvx_second_reasons = Counter()

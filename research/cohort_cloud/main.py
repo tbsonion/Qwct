@@ -1,4 +1,4 @@
-"""QWCT 2.8 read-only D1 source-to-native M5 geometry audit; no orders."""
+"""Read-only native D1/M5 cohort; NO ORDERS."""
 from AlgorithmImports import *
 from collections import Counter
 from datetime import datetime, timedelta, time
@@ -13,6 +13,7 @@ from strategy.patterns_bsu import Bar as ClosedBar, BsuDetector
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.timing_gate import next_session_fundamentals, freeze_fundamental_event
 from strategy.bsu_touch_audit import TouchAudit, audit_report
+from strategy import native_minute_coverage
 from strategy.levels import levels_for_session, _confirmed_swings, native_cluster_tolerance
 from strategy.indicators import trend_direction, global_trend
 
@@ -218,7 +219,7 @@ def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
 
 
 class QwctM5CohortResearch(QCAlgorithm):
-    """Freeze native D1 selection at 09:29; AFTER CLOSE replay native M1->M5."""
+
 
     def initialize(self):
         start = datetime.strptime(
@@ -463,7 +464,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                 f"basis_R={self.basis['REBASED']}; retrospective M5 ONLY")
 
     def on_data(self, data):
-        """Quarantine real split days; never replay a mixed native price basis."""
+
         splits = getattr(data, "splits", None)
         if splits is None:
             return
@@ -524,6 +525,10 @@ class QwctM5CohortResearch(QCAlgorithm):
                 self.rejects["BAD_OR_UNORDERED_M1_" + symbol.value] += 1
                 return
             times.append(start)
+        gap = native_minute_coverage(minute_bars,
+            datetime.combine(day,time(9,30),ET), et(close), et)
+        if gap["status"] != "PASS":
+            self.log(f"QWCT NATIVE GAP {symbol.value} {day} {gap}")
         emitted = []
         consolidator = TradeBarConsolidator(timedelta(minutes=5))
         def collect(sender, bar):
@@ -571,6 +576,9 @@ class QwctM5CohortResearch(QCAlgorithm):
             at = et(bar.end_time)
             if at == et(close) and not tail_ok:
                 self.rejects["M5_CLOSE_UNVERIFIED_SOURCE"] += 1
+                continue
+            if at.strftime("%H:%M") in gap["m5_buckets_with_missing_m1"]:
+                self.rejects["M5_SOURCE_MINUTE_GAP"] += 1
                 continue
             if not time(9, 35) <= at.time() <= time(16, 0):
                 self.rejects["M5_OUTSIDE_REGULAR_SESSION"] += 1

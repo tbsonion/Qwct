@@ -102,9 +102,25 @@ def _load_daily(qb, symbol, day, cfg, ai):
     return frame, freeze
 
 
-def _bsu_eligibility(level, session, cfg):
+def _bsu_eligibility(level, session, cfg, bounce_side):
+    """Mirror-aware D1 *structural* proxy check; not native RAW or BPU proof.
+
+    Keep the source-pivot/side rule aligned with the canonical scenario
+    evaluator and BSU bridge. A mirror without its pre-break source role
+    must fail closed, even if its screening score is high.
+    """
+    pivot_kind = (getattr(level, "original_kind", None)
+                  if level.kind == "mirror" else level.kind)
+    supported = pivot_kind in ("support", "resistance")
+    expected_side = None
+    if supported:
+        if level.kind == "mirror":
+            expected_side = "short" if pivot_kind == "support" else "long"
+        else:
+            expected_side = "long" if pivot_kind == "support" else "short"
     checks = {
-        "kind_support_or_resistance": level.kind in ("support", "resistance"),
+        "supported_original_pivot_kind": supported,
+        "bounce_side_matches_source_role": supported and bounce_side == expected_side,
         "source_swing_cluster": level.source == "swing_cluster",
         "valid_from_ready": level.valid_from is not None and level.valid_from <= session,
         "formed_at_known": level.formed_at is not None,
@@ -157,7 +173,9 @@ def _diagnose_symbol(qb, ticker, day, cfg, ai):
             {"id": key, "reason": fr.reason} for key, fr in feats.items()
             if fr.reason.startswith("ошибка:") or fr.value is None
         ]
-        eligible_bsu, bsu_checks = _bsu_eligibility(level, day.date(), cfg)
+        eligible_bsu, bsu_checks = _bsu_eligibility(
+            level, day.date(), cfg,
+            "short" if level.price >= close else "long")
         scored = {
             "breakout": _score_breakout(feats, cfg),
             "bounce": _score_bounce(feats, cfg),

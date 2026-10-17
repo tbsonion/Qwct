@@ -34,6 +34,7 @@ class ResearchHarness:
         self._bsu_proxy_bpu2_count = 0
         self._bpu_invalid_reasons = Counter()
         self._native_sec_received = 0
+        self._tvx_cutoff_samples = 0
         self._tvx_preclose_count = 0
         self._tvx_preclose_reconciled = 0
         self._tvx_second_reasons = Counter()
@@ -102,6 +103,7 @@ def test_complete_270_native_seconds_marks_preclose_then_m5_reconciles():
     assert a._tvx_preclose_count == 0
     assert a._symbols["NVDA"]["bsu_link"].detector.state.phase == "bpu1"
     on_sec(a, sec_bar(270))
+    assert a._tvx_cutoff_samples == 1  # real cutoff, not accepted setup
     st = a._symbols["NVDA"]["bsu_link"].detector.state
     assert a._tvx_preclose_count == 1
     assert st.phase == "preclose_candidate"

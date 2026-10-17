@@ -12,8 +12,6 @@ REQUIRED_MODULES = (
     "strategy.features",
     "strategy.levels",
     "strategy.scenarios",
-    "strategy.m5_runtime",
-    "strategy.native_m5_validation",
 )
 
 def run():

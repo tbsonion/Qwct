@@ -1,4 +1,4 @@
-"""Checks for QWCT 5.12 readable research runner (no Cloud data proof)."""
+"""Checks for QWCT 5.13 readable research runner (no Cloud data proof)."""
 import importlib.util
 import json
 from pathlib import Path
@@ -7,13 +7,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
-    "_q512builder", ROOT / "tools/build_qwct_pipeline_runner.py")
+    "_q513builder", ROOT / "tools/build_qwct_pipeline_runner.py")
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
 
 
 def runner():
-    spec = importlib.util.spec_from_file_location("_q512runner", builder.RUNNER)
+    spec = importlib.util.spec_from_file_location("_q513runner", builder.RUNNER)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
@@ -68,7 +68,7 @@ def test_missing_cloud_module_is_explicit_loader_error(monkeypatch, capsys):
     printed = capsys.readouterr().out
     assert output == {"status": "LOADER_ERROR", "can_trade": False}
     assert "LOADER_ERROR" in printed
-    assert "QWCT 5.12 END" not in printed
+    assert "QWCT 5.13 END" not in printed
     assert "can_trade" in printed and "false" in printed
 
 
@@ -76,12 +76,31 @@ def test_critical_scope_remains_d1_research_only():
     source = builder.RUNNER.read_text(encoding="utf-8")
     assert "_load_daily" in source and "Decision" not in source
     assert "D1_LEVEL" in source and "rejection_details" in source
+    assert "score_provenance" in source and "bsu_eligibility_checks" in source
     assert 'm5="NOT_RUN"' in source
     assert 'gates_8="NOT_EVALUATED"' in source
     assert 'orders="DISABLED"' in source
     assert "qb.history[ai.TradeBar]" in source
     assert "data_normalization_mode=ai.DataNormalizationMode.RAW" in source
     assert "QuantBook()" in source
+
+
+def test_bsu_eligibility_explains_mirror_exclusion():
+    r = runner()
+    class Level:
+        kind = "mirror"
+        source = "swing_cluster"
+        valid_from = __import__("datetime").date(2024, 1, 1)
+        formed_at = __import__("datetime").date(2023, 1, 1)
+        touches = 3
+        strength = 3.0
+    class Cfg:
+        min_touches = 2
+        min_level_strength = 2.0
+    ok, checks = r._bsu_eligibility(Level(), __import__("datetime").date(2024, 6, 3), Cfg())
+    assert ok is False
+    assert checks["kind_support_or_resistance"] is False
+    assert all(v is True for k, v in checks.items() if k != "kind_support_or_resistance")
 
 
 def test_explicit_no_orders_and_unknown_author_proof(capsys):

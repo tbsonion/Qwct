@@ -97,10 +97,43 @@ def test_bsu_eligibility_explains_mirror_exclusion():
     class Cfg:
         min_touches = 2
         min_level_strength = 2.0
-    ok, checks = r._bsu_eligibility(Level(), __import__("datetime").date(2024, 6, 3), Cfg())
+    ok, checks = r._bsu_eligibility(
+        Level(), __import__("datetime").date(2024, 6, 3), Cfg(), "short")
     assert ok is False
-    assert checks["kind_support_or_resistance"] is False
-    assert all(v is True for k, v in checks.items() if k != "kind_support_or_resistance")
+    assert checks["supported_original_pivot_kind"] is False
+    assert checks["bounce_side_matches_source_role"] is False
+    assert all(v is True for k, v in checks.items()
+               if k not in ("supported_original_pivot_kind",
+                            "bounce_side_matches_source_role"))
+
+
+@pytest.mark.parametrize("kind,original_kind,bounce_side,eligible", [
+    ("support", None, "long", True),
+    ("resistance", None, "short", True),
+    ("mirror", "support", "short", True),
+    ("mirror", "resistance", "long", True),
+    ("mirror", None, "short", False),
+    ("mirror", "support", "long", False),
+    ("mirror", "resistance", "short", False),
+    ("support", None, "short", False),
+    ("resistance", None, "long", False),
+])
+def test_513_bsu_proxy_respects_original_pivot_and_bounce_side(
+        kind, original_kind, bounce_side, eligible):
+    r = runner()
+    from types import SimpleNamespace
+    from datetime import date
+    level = SimpleNamespace(kind=kind, original_kind=original_kind,
+                            source="swing_cluster",
+                            valid_from=date(2024, 6, 1),
+                            formed_at=date(2024, 4, 15), touches=3,
+                            strength=3.0)
+    cfg = SimpleNamespace(min_touches=2, min_level_strength=2.0)
+    result, checks = r._bsu_eligibility(
+        level, date(2024, 6, 3), cfg, bounce_side)
+    assert result is eligible
+    if eligible:
+        assert all(checks.values())
 
 
 def test_explicit_no_orders_and_unknown_author_proof(capsys):

@@ -1,13 +1,28 @@
-## QWCT 5.10.1 — исправлен лимит сохранения research.ipynb (16.10.2026)
+## QWCT 5.11 — результат Cloud получен; код вынесен из notebook (16.10.2026)
+
+[Сохранённый вывод пользователя](research/chart_review_qc/QWCT_5_10_USER_RUNTIME_RESULT_2026_10_16.json), [разбор и точные Cloud paths](research/chart_review_qc/QWCT_5_11_SAVE_FIX_AND_RUNTIME_RESULT_RU.md).
+
+- [x] Реальные вычисления 5.10 завершены для 4 акций: **56 feature values**, errors=[]; native M5 **311/312**. SRPT пропуск 13:10 сохранён, не заполнен.
+- [x] У всех четырёх **PREMARKET_PROBE_ONLY** и **NO_CANONICAL_GATE_EVALUATION**: принятых D1-сценариев не видно; 8 фильтров **НЕ проверялись**, SECOND queries=0, TVX не пройден.
+- [ ] Причины D1 отказов и FIXED_FLOATING/REACTIONS_10 неизвестны: их строки **OUTPUT_OMITTED**, не нули и не PASS.
+- [x] Повторный реальный save FAIL **97 399 / 97 396** при лимите 64k зафиксирован. Прежняя оценка размера 5.10.1 не является доказанным Cloud fix.
+- [x] [Один helper qwct_pipeline_runner.py](research/chart_review_qc/qwct_pipeline_runner.py), **31 792** символа (<32k, в том числе CRLF). [Новая cell](research/chart_review_qc/QWCT_5_11_RUN_CELL.py) **176** символов; [целый import-only notebook](research/chart_review_qc/QWCT_5_11_RESEARCH.ipynb) **533** символа. Payload больше не хранится в notebook source.
+- [x] D1 rejection records имеют высший приоритет; полный raw stdout хранится в памяти helper. Исходные вычисления и SHA256 сохранены; нет сетевой загрузки, изменения порогов, main.py, Risk Gate или ордеров.
+- [x] 8 новых transport/result regressions; **725 passed** локально, compile PASS. [PR #51](https://github.com/tbsonion/Qwct/pull/51), code CI **2/2 success** на `59e309de`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38975776298), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38975776519).
+- [ ] **Новая Cloud-сохраняемость/загрузка helper 5.11 PENDING**, не подменять native запуск unit tests. Author accuracy UNKNOWN; Databento/CVD отложены, Schwab не подключён.
+
+**Актуальная инструкция:** в корне **Qwct-M5-Cohort-Research** создать один файл **qwct_pipeline_runner.py** из ссылки выше, сохранить; в **research.ipynb** удалить старые cells/outputs и оставить только четыре строки из новой cell → Run. Старые large/compact payload cells больше не вставлять. main.py/strategy не менять. Нужны D1 и END либо LOADER_ERROR.
+
+## ИСТОРИЯ QWCT 5.10.1 — локальная упаковка; последующий Cloud save FAIL (см. 5.11)
 
 **Фактический blocker:** пользователь получил `File research.ipynb not saved ... maximum size 64000 ... using 157508`. Это ошибка размера/сохранения, не результат выполнения native данных. Прежняя инструкция добавить большую cell к старым ячейкам неверна.
 
 - [x] [Компактная cell](research/chart_review_qc/QWCT_5_10_COMPACT_ONE_CELL.py): **37 509** символов; [готовый notebook](research/chart_review_qc/QWCT_5_10_COMPACT.ipynb): **41 645** символов всего JSON без outputs.
 - [x] Точный прежний исходный код упакован без изменения правил, сверяется SHA256, сетевых downloads нет. Сохранённый вывод ограничен бюджетом 10 000 символов JSON; пропущенные детали обозначаются OUTPUT_OMITTED и не считаются data PASS.
 - [x] Добавлены 8 regressions целого notebook, в том числе с outputs, Unicode escaping и отдельными stream objects. **717 passed** локально; [PR #49](https://github.com/tbsonion/Qwct/pull/49), code CI **2/2 success** на `e63e6bfa`: [Pure Strategy](https://github.com/tbsonion/Qwct/actions/runs/38974665094), [Cohort](https://github.com/tbsonion/Qwct/actions/runs/38974665130).
-- [ ] **Cloud acceptance всё ещё PENDING**: ошибки сохранения не дают новых native результатов. Ордера, Risk Gate, TVX, author accuracy и Databento/CVD без изменений.
+- [x] **Обновлено в 5.11:** пользователь прислал завершившиеся native вычисления четырёх акций, но save всё ещё FAILED; 8 фильтров/TVX не проверены. Ордера, Risk Gate, TVX, author accuracy и Databento/CVD без изменений.
 
-**Единственная актуальная инструкция:** сначала экспортировать старый notebook копией; затем в **Qwct-M5-Cohort-Research/research.ipynb** оставить **только одну** Code Cell с компактным кодом, без старых ячеек/outputs → Run. **Не добавлять её к большому notebook и не вставлять полную reference-версию.** main.py/Cloud Python-модули не менять. Нужны START…END и возможные OUTPUT_OMITTED/LOADER_ERROR.
+**УСТАРЕВШАЯ инструкция 5.10.1 — заменена helper-вариантом 5.11:** сначала экспортировать старый notebook копией; затем в **Qwct-M5-Cohort-Research/research.ipynb** оставить **только одну** Code Cell с компактным кодом, без старых ячеек/outputs → Run. **Не добавлять её к большому notebook и не вставлять полную reference-версию.** main.py/Cloud Python-модули не менять. Нужны START…END и возможные OUTPUT_OMITTED/LOADER_ERROR.
 
 ## QWCT 5.10 — реализация и единая сквозная приёмка (16.10.2026)
 

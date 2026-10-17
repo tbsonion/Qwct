@@ -1,0 +1,259 @@
+{
+  "schema_version": "QWCT_5_10_USER_RUNTIME_RESULT_V1",
+  "evidence_source": "USER_SUPPLIED_CLOUD_STDOUT_NOT_INDEPENDENT_AGENT_RUN",
+  "session": "2024-06-03",
+  "received_on": "2026-10-16",
+  "symbols": {
+    "AMAT": {
+      "scope": "PREMARKET_PROBE_ONLY",
+      "level": 214.46,
+      "feature_values": {
+        "g01": false,
+        "g02": false,
+        "g03": false,
+        "g04": false,
+        "g05": false,
+        "g06": false,
+        "g07": false,
+        "g08": false,
+        "g09": true,
+        "g10": false,
+        "g11": false,
+        "g12": true,
+        "g13": false,
+        "g14": false
+      },
+      "feature_errors": [],
+      "nullable_subfields": {
+        "g06": {
+          "m5_staircase": null
+        },
+        "g09": {
+          "market_aligned": null
+        },
+        "g10": {
+          "m5_exception": null
+        },
+        "g14": {
+          "big_bar_against": null,
+          "poke_atr": null
+        }
+      },
+      "m5_coverage": {
+        "expected": 78,
+        "observed": 78,
+        "missing": [],
+        "rejects": {}
+      },
+      "bsu": {
+        "status": "UNAVAILABLE",
+        "reason": "not an accepted D1 bounce scenario",
+        "author_verified": false,
+        "can_trade": false
+      },
+      "gates_note": "NO_CANONICAL_GATE_EVALUATION",
+      "conditional_sec_queries": 0,
+      "all_eight_gate_count_maps_empty": true
+    },
+    "NFLX": {
+      "scope": "PREMARKET_PROBE_ONLY",
+      "level": 633.775,
+      "feature_values": {
+        "g01": false,
+        "g02": false,
+        "g03": false,
+        "g04": false,
+        "g05": false,
+        "g06": false,
+        "g07": false,
+        "g08": false,
+        "g09": true,
+        "g10": false,
+        "g11": true,
+        "g12": true,
+        "g13": false,
+        "g14": false
+      },
+      "feature_errors": [],
+      "nullable_subfields": {
+        "g06": {
+          "m5_staircase": null
+        },
+        "g09": {
+          "market_aligned": null
+        },
+        "g10": {
+          "m5_exception": null
+        },
+        "g14": {
+          "big_bar_against": null,
+          "poke_atr": null
+        }
+      },
+      "m5_coverage": {
+        "expected": 78,
+        "observed": 78,
+        "missing": [],
+        "rejects": {}
+      },
+      "bsu": {
+        "status": "UNAVAILABLE",
+        "reason": "not an accepted D1 bounce scenario",
+        "author_verified": false,
+        "can_trade": false
+      },
+      "gates_note": "NO_CANONICAL_GATE_EVALUATION",
+      "conditional_sec_queries": 0,
+      "all_eight_gate_count_maps_empty": true
+    },
+    "SRPT": {
+      "scope": "PREMARKET_PROBE_ONLY",
+      "level": 125.0,
+      "feature_values": {
+        "g01": false,
+        "g02": false,
+        "g03": false,
+        "g04": false,
+        "g05": false,
+        "g06": false,
+        "g07": false,
+        "g08": false,
+        "g09": true,
+        "g10": false,
+        "g11": true,
+        "g12": true,
+        "g13": false,
+        "g14": false
+      },
+      "feature_errors": [],
+      "nullable_subfields": {
+        "g06": {
+          "m5_staircase": null
+        },
+        "g09": {
+          "market_aligned": null
+        },
+        "g10": {
+          "m5_exception": null
+        },
+        "g14": {
+          "big_bar_against": null,
+          "poke_atr": null
+        }
+      },
+      "m5_coverage": {
+        "expected": 78,
+        "observed": 77,
+        "missing": [
+          "2024-06-03T13:10:00"
+        ],
+        "rejects": {
+          "M5_MISSING_NATIVE_MINUTE": 1
+        }
+      },
+      "bsu": {
+        "status": "UNAVAILABLE",
+        "reason": "not an accepted D1 bounce scenario",
+        "author_verified": false,
+        "can_trade": false
+      },
+      "gates_note": "NO_CANONICAL_GATE_EVALUATION",
+      "conditional_sec_queries": 0,
+      "all_eight_gate_count_maps_empty": true
+    },
+    "MSFT": {
+      "scope": "PREMARKET_PROBE_ONLY",
+      "level": 415.59000000000003,
+      "feature_values": {
+        "g01": false,
+        "g02": false,
+        "g03": false,
+        "g04": false,
+        "g05": false,
+        "g06": false,
+        "g07": true,
+        "g08": false,
+        "g09": true,
+        "g10": false,
+        "g11": false,
+        "g12": false,
+        "g13": false,
+        "g14": false
+      },
+      "feature_errors": [],
+      "nullable_subfields": {
+        "g06": {
+          "m5_staircase": null
+        },
+        "g09": {
+          "market_aligned": null
+        },
+        "g10": {
+          "m5_exception": null
+        },
+        "g14": {
+          "big_bar_against": null,
+          "poke_atr": null
+        }
+      },
+      "m5_coverage": {
+        "expected": 78,
+        "observed": 78,
+        "missing": [],
+        "rejects": {}
+      },
+      "bsu": {
+        "status": "UNAVAILABLE",
+        "reason": "not an accepted D1 bounce scenario",
+        "author_verified": false,
+        "can_trade": false
+      },
+      "gates_note": "NO_CANONICAL_GATE_EVALUATION",
+      "conditional_sec_queries": 0,
+      "all_eight_gate_count_maps_empty": true
+    }
+  },
+  "summary_from_stdout": {
+    "symbols_completed": 4
+  },
+  "computed_from_shared_counts": {
+    "feature_results": 56,
+    "m5_observed": 311,
+    "m5_expected": 312
+  },
+  "output_omitted_from_stdout": {
+    "D1": 4,
+    "FIXED_FLOATING": 4,
+    "REACTIONS_10": 4
+  },
+  "d1_rejection_reasons": "NOT_VISIBLE_D1_ROWS_OMITTED",
+  "fixed_floating_and_reaction_counts": "NOT_VISIBLE_NOT_ZERO_NOT_A_PASS",
+  "orders": "DISABLED",
+  "risk_gate": "UNCHANGED",
+  "tvx_pass": false,
+  "author_accuracy": "UNKNOWN",
+  "build_log": {
+    "project": "Qwct-M5-Cohort-Research",
+    "lean_engine": "2.5.0.0.18188",
+    "build_id": "ea2381-f7b5a2",
+    "is_history_run_id": false
+  },
+  "save_errors_from_user": [
+    {
+      "limit": 64000,
+      "used": 97399
+    },
+    {
+      "limit": 64000,
+      "used": 97396
+    }
+  ],
+  "limitations": [
+    "Data execution completed but notebook save failed; do not confuse the two.",
+    "No accepted D1 scenario is inferred from PREMARKET_PROBE_ONLY and NO_CANONICAL_GATE_EVALUATION, not from missing candles.",
+    "Empty gate counts mean NOT EVALUATED, never eight passes or eight failures.",
+    "No SECOND requests occurred; no new TVX test passed.",
+    "Null conditional subfields do not all imply missing market data.",
+    "Do not relax score, trend, BPU or SECOND filters to force a positive example."
+  ]
+}

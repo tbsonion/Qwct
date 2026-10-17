@@ -37,9 +37,23 @@ class PrecloseReview:
 
     @property
     def evidence_ready(self) -> bool:
-        """All *observable* Gerchik mechanics passed; broker still UNKNOWN."""
-        return all(ok is True for name, ok in self.checks
-                   if name != "broker_protection")
+        """All REQUIRED observable checks passed; broker remains UNKNOWN.
+
+        An empty or incomplete tuple must never be a successful preclose
+        evidence review (all([]) is True in Python).
+        """
+        required = {
+            "native_second_cutoff", "frozen_origin_level",
+            "bpu1_bpu2_preclose", "asof_d1_m5", "native_d1_trend",
+            "daily_atr_ready", "native_tick_limit_stop",
+            "last_trade_no_chase", "frozen_next_level_room_4r",
+            "target_3r", "gerchik_session", "preliminary_risk_budget",
+        }
+        checks = dict(self.checks)
+        return (len(checks) == len(self.checks)
+                and set(checks) == required | {"broker_protection"}
+                and checks["broker_protection"] is None
+                and all(checks[name] is True for name in required))
 
 
 def review_preclose(*, decision, link, detector_state, sample, d1,

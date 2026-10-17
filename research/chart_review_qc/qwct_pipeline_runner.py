@@ -1,4 +1,4 @@
-"""QWCT 5.12 read-only Cloud D1 rejection diagnostic.
+"""QWCT 5.13 read-only D1 score-provenance diagnostic.
 
 Run only from research.ipynb, in the existing Cloud project.
 Four fixed 2024-06-03 symbols. No M5 requests, trades, signals or orders.
@@ -32,7 +32,7 @@ def summarize_rejections(reasons, limit=16):
 
 
 def _emit(label, **fields):
-    print("QWCT 5.12 " + label + " " +
+    print("QWCT 5.13 " + label + " " +
           json.dumps(fields, sort_keys=True, ensure_ascii=False,
                      allow_nan=False, default=str))
 
@@ -102,6 +102,18 @@ def _load_daily(qb, symbol, day, cfg, ai):
     return frame, freeze
 
 
+def _bsu_eligibility(level, session, cfg):
+    checks = {
+        "kind_support_or_resistance": level.kind in ("support", "resistance"),
+        "source_swing_cluster": level.source == "swing_cluster",
+        "valid_from_ready": level.valid_from is not None and level.valid_from <= session,
+        "formed_at_known": level.formed_at is not None,
+        "touches_ready": level.touches >= cfg.min_touches,
+        "strength_ready": level.strength >= cfg.min_level_strength,
+    }
+    return all(checks.values()), checks
+
+
 def _diagnose_symbol(qb, ticker, day, cfg, ai):
     from strategy.features import evaluate_all
     from strategy.levels import levels_for_session, nearest_levels
@@ -145,25 +157,22 @@ def _diagnose_symbol(qb, ticker, day, cfg, ai):
             {"id": key, "reason": fr.reason} for key, fr in feats.items()
             if fr.reason.startswith("ошибка:") or fr.value is None
         ]
-        eligible_bsu = bool(
-            level.kind in ("support", "resistance") and
-            level.source == "swing_cluster" and
-            level.valid_from is not None and level.valid_from <= day.date() and
-            level.formed_at is not None and
-            level.touches >= cfg.min_touches and
-            level.strength >= cfg.min_level_strength
-        )
-        scores = {
-            "breakout": _score_breakout(feats, cfg)[0],
-            "bounce": _score_bounce(feats, cfg)[0],
-            "false_breakout": _score_false_breakout(feats, cfg)[0],
+        eligible_bsu, bsu_checks = _bsu_eligibility(level, day.date(), cfg)
+        scored = {
+            "breakout": _score_breakout(feats, cfg),
+            "bounce": _score_bounce(feats, cfg),
+            "false_breakout": _score_false_breakout(feats, cfg),
         }
+        scores = {name: value[0] for name, value in scored.items()}
+        score_provenance = {name: value[1] for name, value in scored.items()}
         _emit(
             "D1_LEVEL", symbol=ticker, level=float(level.price),
             kind=level.kind, source=level.source,
             touches=int(level.touches), strength=float(level.strength),
             bsu_origin_eligible=eligible_bsu,
+            bsu_eligibility_checks=bsu_checks,
             scores=scores,
+            score_provenance=score_provenance,
             min_model_score=float(cfg.min_model_score),
             below_threshold=[k for k, v in scores.items()
                              if v < cfg.min_model_score],
@@ -178,7 +187,7 @@ def _diagnose_symbol(qb, ticker, day, cfg, ai):
 
 
 def run():
-    print("QWCT 5.12 RUNNER: PLAIN_TEXT D1_DIAGNOSTIC NO_ORDERS")
+    print("QWCT 5.13 RUNNER: PLAIN_TEXT D1_SCORE_PROVENANCE NO_ORDERS")
     failures = []
     for name in REQUIRED_MODULES:
         try:

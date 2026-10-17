@@ -156,7 +156,17 @@ class ScenarioEvaluator:
             side_bo = "short" if lvl.price >= price else "long"
             # A shadow count only: never promote bounce over the winner.
             # Ignore mirror/unconfirmed/weak levels for native BSU research.
-            if (lvl.kind in ("support", "resistance")
+            pivot_kind = (lvl.original_kind
+                          if lvl.kind == "mirror" else lvl.kind)
+            bsu_role_ok = (
+                (lvl.kind == "mirror" and (
+                    (pivot_kind == "support" and side_bo == "short")
+                    or (pivot_kind == "resistance" and side_bo == "long")))
+                or (lvl.kind != "mirror" and (
+                    (pivot_kind == "support" and side_bo == "long")
+                    or (pivot_kind == "resistance" and side_bo == "short")))
+            )
+            if (bsu_role_ok
                     and lvl.source == "swing_cluster"
                     and lvl.valid_from is not None
                     and lvl.valid_from <= session

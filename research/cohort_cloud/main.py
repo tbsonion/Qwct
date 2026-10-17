@@ -1,4 +1,4 @@
-"""QWCT 2.8 read-only D1 source-to-native M5 geometry audit; no orders."""
+"""Read-only native D1/M5 cohort; NO ORDERS."""
 from AlgorithmImports import *
 from collections import Counter
 from datetime import datetime, timedelta, time
@@ -13,6 +13,7 @@ from strategy.patterns_bsu import Bar as ClosedBar, BsuDetector
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.timing_gate import next_session_fundamentals, freeze_fundamental_event
 from strategy.bsu_touch_audit import TouchAudit, audit_report
+from strategy.native_acceptance_audit import native_minute_coverage
 from strategy.levels import levels_for_session, _confirmed_swings, native_cluster_tolerance
 from strategy.indicators import trend_direction, global_trend
 
@@ -25,7 +26,7 @@ def et(value):
 
 
 def d1_shadow_shortlist(passed, limit):
-    """Read-only D1-first max-N shadow; retains original liquidity rank."""
+    """D1-first shadow shortlist."""
     if type(limit) is not int or limit <= 0:
         raise ValueError("shadow capacity must be a positive integer")
     qualified = [
@@ -36,7 +37,7 @@ def d1_shadow_shortlist(passed, limit):
 
 
 def classify_snapshot(d1, cfg, session):
-    """Use existing Qwct D1 screener, levels, and native-SMA trend rules."""
+    """Existing D1 screener and trend rules."""
     if len(d1) < 60 or not d1.index.is_unique:
         raise ValueError("incomplete or duplicated as-of D1")
     last = d1.iloc[-1]
@@ -92,7 +93,7 @@ def classify_snapshot(d1, cfg, session):
                 shadow_levels=shadow_levels, examples=examples, _role_levels=role_aligned)
 
 def origin_d1_audit(d1, lvl, session, cfg, native_tick):
-    """PASS = RAW D1 pivot/grid/chronology ONLY, not canonical BSU."""
+    """RAW D1 origin audit; not canonical BSU."""
     r = dict(status="UNKNOWN", reason="", cluster=lvl.price,
              origin=None, source_date=None, confirmed_at=None,
              formed_at=str(lvl.formed_at), valid_from=str(lvl.valid_from),
@@ -150,7 +151,7 @@ def origin_d1_audit(d1, lvl, session, cfg, native_tick):
 
 
 def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
-    """PIT RAW/SCALED_RAW price-basis observation, never BSU authorization."""
+    """RAW/SCALED_RAW price-basis observation."""
     result = dict(status="UNKNOWN", why="MISSING_SCALED_HISTORY",
                   source=None, raw=None, scaled=None, last_raw=None,
                   last_scaled=None, ratio=None, tick=tick, bars=0)
@@ -218,7 +219,7 @@ def compare_raw_scaled(d1, lvl, session, scaled_bars, tick):
 
 
 class QwctM5CohortResearch(QCAlgorithm):
-    """Freeze native D1 selection at 09:29; AFTER CLOSE replay native M1->M5."""
+    """Freeze D1 at 09:29; replay native M1/M5 after close."""
 
     def initialize(self):
         start = datetime.strptime(
@@ -463,7 +464,7 @@ class QwctM5CohortResearch(QCAlgorithm):
                 f"basis_R={self.basis['REBASED']}; retrospective M5 ONLY")
 
     def on_data(self, data):
-        """Quarantine real split days; never replay a mixed native price basis."""
+        """Quarantine split days."""
         splits = getattr(data, "splits", None)
         if splits is None:
             return
@@ -524,6 +525,10 @@ class QwctM5CohortResearch(QCAlgorithm):
                 self.rejects["BAD_OR_UNORDERED_M1_" + symbol.value] += 1
                 return
             times.append(start)
+        gap = native_minute_coverage(minute_bars,
+            datetime.combine(day,time(9,30),ET), et(close), et)
+        if gap["status"] != "PASS":
+            self.log(f"QWCT NATIVE GAP {symbol.value} {day} {gap}")
         emitted = []
         consolidator = TradeBarConsolidator(timedelta(minutes=5))
         def collect(sender, bar):
@@ -571,6 +576,9 @@ class QwctM5CohortResearch(QCAlgorithm):
             at = et(bar.end_time)
             if at == et(close) and not tail_ok:
                 self.rejects["M5_CLOSE_UNVERIFIED_SOURCE"] += 1
+                continue
+            if at.strftime("%H:%M") in gap["m5_buckets_with_missing_m1"]:
+                self.rejects["M5_SOURCE_MINUTE_GAP"] += 1
                 continue
             if not time(9, 35) <= at.time() <= time(16, 0):
                 self.rejects["M5_OUTSIDE_REGULAR_SESSION"] += 1

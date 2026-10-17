@@ -1,0 +1,88 @@
+{
+  "schema_version": "QWCT_5_12_USER_RUNTIME_RESULT_V1",
+  "evidence_source": "USER_SUPPLIED_CLOUD_STDOUT_NOT_INDEPENDENT_AGENT_RUN",
+  "session": "2024-06-03",
+  "received_on": "2026-10-17",
+  "summary": {
+    "accepted": 0,
+    "rejected": 4,
+    "blocked": 0
+  },
+  "symbols": {
+    "AMAT": {
+      "level": 214.46,
+      "kind": "mirror",
+      "source": "swing_cluster",
+      "scores": {
+        "breakout": 1,
+        "bounce": 3.5,
+        "false_breakout": 0
+      },
+      "min_model_score": 4,
+      "true_features": [
+        "g09",
+        "g12"
+      ],
+      "bsu_origin_eligible": false
+    },
+    "NFLX": {
+      "level": 633.775,
+      "kind": "mirror",
+      "source": "swing_cluster",
+      "scores": {
+        "breakout": 1,
+        "bounce": 3.5,
+        "false_breakout": 2.5
+      },
+      "min_model_score": 4,
+      "true_features": [
+        "g09",
+        "g11",
+        "g12"
+      ],
+      "bsu_origin_eligible": false
+    },
+    "SRPT": {
+      "level": 125,
+      "kind": "mirror",
+      "source": "swing_cluster",
+      "scores": {
+        "breakout": 1,
+        "bounce": 1.5,
+        "false_breakout": 2.5
+      },
+      "min_model_score": 4,
+      "true_features": [
+        "g09",
+        "g11",
+        "g12"
+      ],
+      "bsu_origin_eligible": false
+    },
+    "MSFT": {
+      "level": 415.59000000000003,
+      "kind": "mirror",
+      "source": "swing_cluster",
+      "scores": {
+        "breakout": 2.5,
+        "bounce": 2,
+        "false_breakout": 0
+      },
+      "min_model_score": 4,
+      "true_features": [
+        "g07",
+        "g09"
+      ],
+      "bsu_origin_eligible": false
+    }
+  },
+  "conclusions": [
+    "All four D1 scenarios were rejected solely because every model score was below the existing 4.0 minimum.",
+    "No feature calculation errors were reported.",
+    "All four nearby levels were kind=mirror and bsu_origin_eligible=false.",
+    "M5, eight canonical gates, TVX and author accuracy were not evaluated by 5.12.",
+    "Do not lower min_model_score based on this sample."
+  ],
+  "orders": "DISABLED",
+  "can_trade": false
+}

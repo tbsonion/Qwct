@@ -1,3 +1,13 @@
+## QWCT 5.12 — текущий Cloud D1 diagnostic (17.10.2026; PR #54)
+
+- **Что реально подтверждено в Cloud:** 5.11 plain-text smoke напечатал `MODULE_IMPORTS_OK`, `can_trade=False`, `orders=DISABLED`. Это только проверка импортов 4 модулей, НЕ сквозной 5.10 pipeline и НЕ D1 acceptance.
+- **Проблема исправлена в GitHub:** после PR #52/#53 helper был заменён на короткий import-only runner, но прежний generator/tests и тексты 5.11 продолжали описывать compressed full pipeline. PR [#54](https://github.com/tbsonion/Qwct/pull/54) синхронизирует их с plain-text исполнением.
+- **Что добавлено для одной проверки:** `research/chart_review_qc/qwct_pipeline_runner.py` QWCT 5.12 читает native RAW D1 03.06.2024 через QuantBook, вызывает существующий `ScenarioEvaluator`, сообщает D1 `accepted/rejected`, точные `rejected_reasons` и ближайшие модельные баллы с честным `omitted`. Данные Cloud-модулей/их parity отдельно НЕ сертифицированы.
+- **Ограничения:** M5 НЕ запускается заново; 8 canonical gates NOT_EVALUATED, TVX NOT_TESTED, author accuracy UNKNOWN, orders DISABLED, Risk Gate UNCHANGED. Ни одна D1 строка ещё не подтверждена новым native запуском.
+- **Следующий gate:** review + CI PR #54; затем только один Cloud paste **этого же файла** `qwct_pipeline_runner.py` в корне существующего `Qwct-M5-Cohort-Research`, без новых файлов и без изменений 4-line notebook cell. Запустить её один раз; нужен `QWCT 5.12 D1` и `QWCT 5.12 END` либо `BLOCKED`. Не вставлять code сейчас до завершения PR проверки.
+
+> Записи 5.11 ниже — исторические: после #53 НЕ содержат 31 792-символьного helper или полного audit; старое описание и инструкции superseded этим блоком.
+
 ## QWCT 5.11 — результат Cloud получен; код вынесен из notebook (16.10.2026)
 
 [Сохранённый вывод пользователя](research/chart_review_qc/QWCT_5_10_USER_RUNTIME_RESULT_2026_10_16.json), [разбор и точные Cloud paths](research/chart_review_qc/QWCT_5_11_SAVE_FIX_AND_RUNTIME_RESULT_RU.md).

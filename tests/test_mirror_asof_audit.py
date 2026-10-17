@@ -82,3 +82,24 @@ def test_not_a_mirror_cannot_be_upgraded_by_audit():
     d,l=specimen()
     l.kind="support"
     assert audit_mirror(d,l,DAY,1,.5)["status"]=="SKIP"
+
+
+def test_production_mirror_preserves_original_role():
+    from strategy.config import StrategyConfig
+    from strategy.levels import Level, _mark_mirror
+
+    days = pd.date_range("2024-01-01", periods=5, freq="D")
+    d1 = pd.DataFrame([
+        dict(open=101, high=102, low=100, close=101),
+        dict(open=101, high=102, low=100, close=101),
+        dict(open=100, high=101, low=98, close=99),   # breach support
+        dict(open=99, high=100.2, low=98, close=99), # retest from below
+        dict(open=99, high=100, low=98, close=99),
+    ], index=days)
+    level = Level(
+        price=100., kind="support", touches=2, strength=3.,
+        valid_from=date(2024, 1, 3), first_idx=0, last_idx=1,
+        formed_at=date(2024, 1, 2), source="swing_cluster")
+    _mark_mirror([level], d1, StrategyConfig())
+    assert level.kind == "mirror"
+    assert level.original_kind == "support"

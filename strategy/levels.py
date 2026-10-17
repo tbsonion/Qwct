@@ -36,6 +36,7 @@ class Level:
                                    # high_5d|low_5d|prev_close|open_today
     formed_at: date | None = None   # когда сформировался источник
     intraday: bool = False          # True: ориентир только текущей сессии
+    original_kind: str | None = None  # mirror only: role before D1 break/retest
 
 
 def _confirmed_swings(d1: pd.DataFrame, k: int):
@@ -208,6 +209,7 @@ def _mark_mirror(levels: list[Level], d1: pd.DataFrame,
                 if not confirmed and b["close"] > lvl.price:
                     breached = True
             if confirmed:
+                lvl.original_kind = lvl.kind
                 lvl.kind = "mirror"
                 # Mirror is a NEW observed role reversal. Its valid_from
                 # is after the completed confirming retest, never the

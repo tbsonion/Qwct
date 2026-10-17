@@ -173,3 +173,17 @@ def test_real_main_uses_raw_once_per_bounce_with_orders_disabled():
     sources = build_sources(repo)
     assert len(sources) == 24
     assert "resolve_raw_bsu_evidence" in sources["main.py"]
+
+
+def test_mirror_uses_original_resistance_high_for_raw_pivot():
+    decision, daily, bars = sample()
+    decision.level.original_kind = "resistance"
+    decision.level.kind = "mirror"
+    decision.side = "long"
+    raw = confirm(decision, daily, bars)
+    assert raw.origin_price == pytest.approx(502.66)
+    link, why = create_bsu_research_observer(
+        decision, daily, .01, StrategyConfig(),
+        raw_evidence=raw, require_raw=True)
+    assert link is not None, why
+    assert link.origin_price == pytest.approx(502.66)

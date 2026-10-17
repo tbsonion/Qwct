@@ -13,7 +13,7 @@ from strategy.patterns_bsu import Bar as ClosedBar, BsuDetector
 from strategy.native_m5_validation import validate_m5_tradebar
 from strategy.timing_gate import next_session_fundamentals, freeze_fundamental_event
 from strategy.bsu_touch_audit import TouchAudit, audit_report
-from strategy.native_acceptance_audit import native_minute_coverage
+from strategy import native_minute_coverage
 from strategy.levels import levels_for_session, _confirmed_swings, native_cluster_tolerance
 from strategy.indicators import trend_direction, global_trend
 

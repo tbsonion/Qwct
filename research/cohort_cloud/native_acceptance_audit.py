@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from math import isfinite
 
 
-def native_minute_coverage(bars, session_open, session_close):
+def native_minute_coverage(bars, session_open, session_close, time_index=None):
     """Inspect real native M1 starts and identify missing 5-minute buckets.
 
     The expected grid is a *clock*, not fabricated OHLC data. Missing
@@ -29,8 +29,9 @@ def native_minute_coverage(bars, session_open, session_close):
     for bar in bars:
         try:
             start, end = bar.time, bar.end_time
-            # LEAN DateTime can be pythonnet; caller converts via its
-            # existing ET adapter, so no independent timezone inference.
+            # Use caller's existing LEAN-to-ET adapter.
+            if time_index is not None:
+                start, end = time_index(start), time_index(end)
             start = start if isinstance(start, datetime) else None
             end = end if isinstance(end, datetime) else None
             if start is None or end is None:

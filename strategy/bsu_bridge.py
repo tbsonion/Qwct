@@ -20,6 +20,12 @@ from .patterns_bsu import BsuDetector
 from .scenarios import ScenarioDecision
 
 
+def _pivot_kind(level):
+    """Return the original swing side used to source the exact D1 pivot."""
+    kind = level.original_kind if level.kind == "mirror" else level.kind
+    return kind if kind in ("support", "resistance") else None
+
+
 @dataclass(frozen=True)
 class BsuResearchLink:
     detector: BsuDetector
@@ -71,9 +77,10 @@ def resolve_raw_bsu_evidence(
     idx = lvl.first_idx
     pivot_date = d1_asof.index[idx].date()
     latest_date = d1_asof.index[-1].date()
-    field = "low" if lvl.kind == "support" else "high"
-    if lvl.kind not in ("support", "resistance"):
+    pivot_kind = _pivot_kind(lvl)
+    if pivot_kind is None:
         raise ValueError("RAW basis: unsupported pivot direction")
+    field = "low" if pivot_kind == "support" else "high"
     decision_at = pd.Timestamp(decision.decided_at)
     pivot_end = pd.Timestamp(d1_asof.iloc[idx]["bar_end"])
     scaled_origin = float(d1_asof.iloc[idx][field])
@@ -161,11 +168,18 @@ def create_bsu_research_observer(
     if decision is None or not decision.accepted or decision.model != "bounce":
         return None, "not an accepted D1 bounce scenario"
     lvl = decision.level
-    if lvl is None or (
-        (lvl.kind, decision.side) not in (("support", "long"),
-                                          ("resistance", "short"))
-    ):
-        return None, "D1 bounce level kind/side mismatch (mirror not assumed)"
+    if lvl is None:
+        return None, "D1 bounce level missing"
+    pivot_kind = _pivot_kind(lvl)
+    if pivot_kind is None:
+        return None, "D1 bounce level has no supported pivot provenance"
+    expected_side = (
+        ("short" if pivot_kind == "support" else "long")
+        if lvl.kind == "mirror"
+        else ("long" if pivot_kind == "support" else "short")
+    )
+    if decision.side != expected_side:
+        return None, "D1 bounce level kind/side mismatch"
     if lvl.source != "swing_cluster":
         return None, "no traced D1 swing_cluster origin"
     if (lvl.valid_from is None or lvl.valid_from > decision.session
@@ -211,7 +225,7 @@ def create_bsu_research_observer(
         if d1_asof.index[lvl.first_idx].date() >= decision.session:
             return None, "historical origin not closed before session"
         scaled_origin = float(d1_asof.iloc[lvl.first_idx][
-            "low" if lvl.kind == "support" else "high"])
+            "low" if pivot_kind == "support" else "high"])
         if require_raw and raw_evidence is None:
             return None, "native RAW D1 pivot evidence missing; fail closed"
         if raw_evidence is not None:
@@ -267,7 +281,10 @@ def audit_bsu_price_basis(decision, d1_asof, native_tick_size,
     """Print the reconciled true pivot and cluster WITHOUT changing orders."""
     e = resolve_raw_bsu_evidence(
         decision, d1_asof, native_tick_size, raw_bars, time_index)
-    side_field = "low" if decision.level.kind == "support" else "high"
+    pivot_kind = _pivot_kind(decision.level)
+    if pivot_kind is None:
+        raise ValueError("RAW basis: unsupported pivot direction")
+    side_field = "low" if pivot_kind == "support" else "high"
     def offset(price):
         return abs(price - round(price / e.tick) * e.tick)
     return (

@@ -9,7 +9,7 @@ from strategy.features import FeatureResult
 from strategy.levels import Level
 
 
-def _case(monkeypatch, *, bounce_parts=2, kind="resistance"):
+def _case(monkeypatch, *, bounce_parts=2, kind="resistance", original_kind=None):
     dates = pd.bdate_range("2024-01-01", periods=85, tz="America/New_York")
     d1 = pd.DataFrame({
         "open": 100., "high": 101., "low": 99., "close": 100.,
@@ -18,7 +18,8 @@ def _case(monkeypatch, *, bounce_parts=2, kind="resistance"):
     now = (dates[-1] + pd.Timedelta(days=1, hours=9, minutes=29)).to_pydatetime()
     level = Level(price=100., kind=kind, touches=3, strength=4.,
                   source="swing_cluster", formed_at=dates[24].date(),
-                  valid_from=dates[30].date(), first_idx=12, last_idx=24)
+                  valid_from=dates[30].date(), first_idx=12, last_idx=24,
+                  original_kind=original_kind)
     def features(*_a, **_kw):
         return {
             "g09": FeatureResult("g09", False, detail={
@@ -59,3 +60,11 @@ def test_mirror_bounce_score_does_not_claim_native_bsu_eligible(monkeypatch):
     assert ev.scan_model_audit["bsu_level_present"] == 0
     assert ev.scan_model_audit["no_bsu_eligible_level"] == 1
     assert ev.scan_model_audit["bounce_scored_eligible"] == 0
+
+
+def test_proven_mirror_bounce_is_counted_bsu_eligible(monkeypatch):
+    ev, decision = _case(
+        monkeypatch, bounce_parts=2, kind="mirror", original_kind="support")
+    assert decision.model == "false_breakout"
+    assert ev.scan_model_audit["bsu_level_present"] == 1
+    assert ev.scan_model_audit["bounce_scored_eligible"] == 1

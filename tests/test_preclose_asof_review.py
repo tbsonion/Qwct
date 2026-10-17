@@ -123,3 +123,21 @@ def test_unknown_broker_risk_never_becomes_true_even_all_pattern_checks_pass():
     result = review_preclose(**inputs)
     assert result.can_submit is False
     assert dict(result.checks)["broker_protection"] is None
+
+def test_preclose_evidence_never_passes_with_missing_duplicate_or_extra_checks():
+    from dataclasses import replace
+    review = review_preclose(**setup())
+    assert review.evidence_ready is True  # verified research fixture only
+    assert replace(review, checks=()).evidence_ready is False
+    assert replace(review, checks=review.checks[:-1]).evidence_ready is False
+    assert replace(review, checks=review.checks + (review.checks[0],)).evidence_ready is False
+    assert replace(review, checks=review.checks + (("unknown_gate", True),)).evidence_ready is False
+    assert replace(
+        review, checks=tuple(
+            (k, True) if k == "broker_protection" else (k, v)
+            for k, v in review.checks)).evidence_ready is False
+    assert all(replace(review, checks=tuple(
+        (key, False) if key == k else (key, value)
+        for key, value in review.checks)).evidence_ready is False
+               for k, v in review.checks if k != "broker_protection")
+    assert review.can_submit is False
